@@ -1,0 +1,32 @@
+{
+  "name": "contextus",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev --start 'next dev'",
+    "predev": "convex init && node setup.mjs --once",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ignore-pattern \"convex/_generated/**\""
+  },
+  "dependencies": {
+    "@convex-dev/auth": "^0.0.91",
+    "convex": "^1.36.1",
+    "next": "16.2.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@convex-dev/eslint-plugin": "^1.2.2",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.2.4",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.3"
+  }
+}
