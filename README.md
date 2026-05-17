@@ -1,46 +1,45 @@
-# Welcome to your Convex + Next.js + Convex Auth app
+# Contextus
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+Co-op multiplayer [Contexto](https://contexto.me) using the public Contexto API. Next.js + Convex + Convex Auth (Google) + shadcn.
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+## Run locally
 
-- Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
-- [Next.js](https://nextjs.org/) for optimized web hosting and page routing
-- [Tailwind](https://tailwindcss.com/) for building great looking accessible UI
-- [Convex Auth](https://labs.convex.dev/auth) for authentication
-
-## Get started
-
-If you just cloned this codebase and didn't use `npm create convex`, run:
-
-```
-npm install
-npm run dev
+```bash
+bun install
+bun run dev
 ```
 
-If you're reading this README on GitHub and want to use this template, run:
+`bun run dev` starts both `convex dev` and `next dev`. First run will prompt you to log into Convex and provision a deployment.
 
+Google OAuth credentials are required for sign-in. Add to your Convex dashboard env vars:
+
+- `AUTH_GOOGLE_ID`
+- `AUTH_GOOGLE_SECRET`
+
+And to `.env.local`:
+
+- `NEXT_PUBLIC_CONVEX_URL` (auto-populated by `convex dev`)
+
+## Tests
+
+```bash
+bun run test          # one shot
+bun run test:watch    # interactive
 ```
-npm create convex@latest -- -t nextjs-convexauth
-```
 
-## Learn more
+Tests use `convex-test` + `vitest` + `@edge-runtime/vm`. The Contexto API is mocked via `mockContextoFetch` (see `tests/helpers.ts`).
 
-To learn more about developing your project with Convex, check out:
+## Architecture
 
-- The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
-- The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
-- [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
-- [Convex Auth docs](https://labs.convex.dev/auth) for documentation on the Convex Auth library.
+- `convex/schema.ts` — tables: `rooms`, `roomMembers`, `games`, `gameGuesses`, `wordDistances` (global cache), `pendingRequests`, `userGameHistory`
+- `convex/contexto.ts` — internal actions wrapping `https://api.contexto.me/machado/en/{game,tip,giveup}/...`
+- `convex/guesses.ts` `submit` — cache lookup → external API → record (deduped by lemma per game) → win detection
+- `convex/hints.ts` — request/approve flow; algorithm in `lib/hint.ts`
+- `convex/giveup.ts` — request/approve flow
+- `convex/presence.ts` — wraps `@convex-dev/presence`; UI uses `usePresence` hook
+- `convex/cleanup.ts` + `convex/crons.ts` — every 5 minutes: migrate host if offline, end idle (30 min) rooms
+- `app/r/[code]/page.tsx` — state machine: lobby → in-progress → ended
 
-## Configuring other authentication methods
+## Deploy
 
-To configure different authentication methods, see [Configuration](https://labs.convex.dev/auth/config) in the Convex Auth docs.
-
-## Join the community
-
-Join thousands of developers building full-stack apps with Convex:
-
-- Join the [Convex Discord community](https://convex.dev/community) to get help in real-time.
-- Follow [Convex on GitHub](https://github.com/get-convex/), star and contribute to the open-source implementation of Convex.
+Vercel-ready. Add `NEXT_PUBLIC_CONVEX_URL` to Vercel env, then push.

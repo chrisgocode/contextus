@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAction } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +22,13 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
         setError(null);
         setBusy(true);
         try {
-          await submit({ gameId, word });
+          const res = await submit({ gameId, word });
           setWord("");
+          if (res.won) toast.success(`You got it: ${res.lemma}!`);
         } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed");
+          const msg = err instanceof Error ? err.message : "Failed";
+          setError(msg);
+          toast.error(msg);
         } finally {
           setBusy(false);
         }

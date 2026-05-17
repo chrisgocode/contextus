@@ -88,6 +88,18 @@ export const getById = query({
   },
 });
 
+export const listMyHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("userGameHistory")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    return rows.map((r) => r.contextoGameId);
+  },
+});
+
 export const listFinished = query({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {

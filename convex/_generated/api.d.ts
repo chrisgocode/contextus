@@ -10,15 +10,19 @@
 
 import type * as auth from "../auth.js";
 import type * as auth_helpers from "../auth_helpers.js";
+import type * as cleanup from "../cleanup.js";
 import type * as contexto from "../contexto.js";
+import type * as crons from "../crons.js";
 import type * as games from "../games.js";
 import type * as giveup from "../giveup.js";
 import type * as guesses from "../guesses.js";
 import type * as hints from "../hints.js";
 import type * as http from "../http.js";
+import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_code from "../lib/code.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_hint from "../lib/hint.js";
+import type * as presence from "../presence.js";
 import type * as requests from "../requests.js";
 import type * as rooms from "../rooms.js";
 
@@ -31,15 +35,19 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   auth_helpers: typeof auth_helpers;
+  cleanup: typeof cleanup;
   contexto: typeof contexto;
+  crons: typeof crons;
   games: typeof games;
   giveup: typeof giveup;
   guesses: typeof guesses;
   hints: typeof hints;
   http: typeof http;
+  "lib/cleanup": typeof lib_cleanup;
   "lib/code": typeof lib_code;
   "lib/dates": typeof lib_dates;
   "lib/hint": typeof lib_hint;
+  presence: typeof presence;
   requests: typeof requests;
   rooms: typeof rooms;
 }>;
@@ -70,4 +78,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+};
