@@ -8,7 +8,11 @@ export function usePresenceSet(
   roomId: Id<"rooms">,
   viewerUserId: string,
 ): Set<string> {
-  const state = usePresence(api.presence, roomId, viewerUserId);
+  const state = usePresence(
+    api.presence as Parameters<typeof usePresence>[0],
+    roomId,
+    viewerUserId,
+  );
   return new Set(
     (state ?? []).filter((p) => p.online).map((p) => p.userId),
   );
