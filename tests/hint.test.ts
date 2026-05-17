@@ -9,8 +9,12 @@ test("best=500 -> 299", () => {
   expect(initialHintTarget(500)).toBe(HINT_FLOOR);
 });
 
-test("best=299 -> 299", () => {
-  expect(initialHintTarget(299)).toBe(HINT_FLOOR);
+test("best=300 -> 299", () => {
+  expect(initialHintTarget(300)).toBe(HINT_FLOOR);
+});
+
+test("best=299 -> 149 (avoid re-fetching same rank)", () => {
+  expect(initialHintTarget(299)).toBe(149);
 });
 
 test("best=100 -> 50", () => {
