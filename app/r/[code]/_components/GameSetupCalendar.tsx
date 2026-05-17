@@ -78,7 +78,7 @@ export function GameSetupCalendar({
       >
         {busy ? "Starting…" : "Start game"}
       </Button>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
     </section>
   );
 }

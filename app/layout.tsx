@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <ConvexAuthNextjsServerProvider>
-      <html lang="en" className={cn("font-sans", figtree.variable)}>
+      <html lang="en" className={cn("dark font-sans", figtree.variable)}>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >

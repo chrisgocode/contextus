@@ -8,13 +8,14 @@ import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HomeSkeleton } from "./r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const { signOut } = useAuthActions();
 
-  if (isLoading) return <Centered>Loading…</Centered>;
+  if (isLoading) return <HomeSkeleton />;
   if (!isAuthenticated) {
     return (
       <Centered>
@@ -117,7 +118,7 @@ function JoinRoom() {
           Join
         </Button>
       </form>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
     </section>
   );
 }

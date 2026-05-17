@@ -14,7 +14,7 @@ export function EndGameBanner({
   winnerImage: string | null;
 }) {
   return (
-    <section className="rounded-lg border-2 border-amber-400 bg-amber-50 p-6 text-center flex flex-col items-center gap-3">
+    <section className="rounded-lg border-2 border-amber-500/60 bg-amber-500/10 p-6 text-center flex flex-col items-center gap-3">
       <h2 className="text-2xl font-bold">
         {status === "won" ? "Won!" : "Game given up"}
       </h2>

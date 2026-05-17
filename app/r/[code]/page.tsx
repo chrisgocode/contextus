@@ -13,6 +13,7 @@ import { GuessList } from "./_components/GuessList";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
+import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 
 export default function RoomPage({
   params,
@@ -72,9 +73,9 @@ export default function RoomPage({
     }
   }, [data, isMember, joining, join, upper]);
 
-  if (isLoading) return <Centered>Loading…</Centered>;
-  if (!isAuthenticated) return <Centered>Redirecting…</Centered>;
-  if (data === undefined) return <Centered>Loading room…</Centered>;
+  if (isLoading) return <RoomSkeleton />;
+  if (!isAuthenticated) return <RoomSkeleton />;
+  if (data === undefined) return <RoomSkeleton />;
   if (data === null)
     return (
       <Centered>
@@ -82,7 +83,7 @@ export default function RoomPage({
         <Button onClick={() => router.push("/")}>Home</Button>
       </Centered>
     );
-  if (!isMember) return <Centered>Joining room…</Centered>;
+  if (!isMember) return <RoomSkeleton />;
 
   return (
     <RoomLoaded
@@ -160,7 +161,7 @@ function RoomLoaded({
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <div className="flex flex-col gap-6 min-w-0">
           {activeGame === undefined ? (
-            <p className="text-center text-muted-foreground">Loading game…</p>
+            <GuessListSkeleton />
           ) : activeGame === null ? (
             <>
               {recent &&
@@ -208,7 +209,7 @@ function RoomLoaded({
                   >
                     <span
                       className={`h-2 w-2 rounded-full ${
-                        online ? "bg-emerald-500" : "bg-slate-300"
+                        online ? "bg-emerald-400" : "bg-muted-foreground/40"
                       }`}
                     />
                     <Avatar className="h-6 w-6">
@@ -223,7 +224,7 @@ function RoomLoaded({
                       {m.name ?? "Anonymous"}
                     </span>
                     {m.isHost && (
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">
+                      <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
                         host
                       </span>
                     )}

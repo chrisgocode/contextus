@@ -3,18 +3,26 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireUser } from "./auth_helpers";
 import type { Doc, Id } from "./_generated/dataModel";
 
-export async function assertMember(
+export async function isMember(
   ctx: { db: any },
   roomId: Id<"rooms">,
   userId: Id<"users">,
-): Promise<void> {
+): Promise<boolean> {
   const member = await ctx.db
     .query("roomMembers")
     .withIndex("by_room_user", (q: any) =>
       q.eq("roomId", roomId).eq("userId", userId),
     )
     .unique();
-  if (member === null) {
+  return member !== null;
+}
+
+export async function assertMember(
+  ctx: { db: any },
+  roomId: Id<"rooms">,
+  userId: Id<"users">,
+): Promise<void> {
+  if (!(await isMember(ctx, roomId, userId))) {
     throw new ConvexError("Not a member of this room");
   }
 }
@@ -59,7 +67,7 @@ export const getActive = query({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
     const userId = await requireUser(ctx);
-    await assertMember(ctx, roomId, userId);
+    if (!(await isMember(ctx, roomId, userId))) return null;
     return await ctx.db
       .query("games")
       .withIndex("by_room_status", (q) =>
@@ -104,7 +112,7 @@ export const listFinished = query({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
     const userId = await requireUser(ctx);
-    await assertMember(ctx, roomId, userId);
+    if (!(await isMember(ctx, roomId, userId))) return [];
     return await ctx.db
       .query("games")
       .withIndex("by_room_started", (q) => q.eq("roomId", roomId))

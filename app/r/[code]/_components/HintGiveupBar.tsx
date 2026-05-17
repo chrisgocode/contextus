@@ -70,7 +70,7 @@ export function HintGiveupBar({
           Give-up request pending host approval.
         </p>
       )}
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
     </div>
   );
 }

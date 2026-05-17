@@ -46,7 +46,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
           {busy ? "…" : "Guess"}
         </Button>
       </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
     </form>
   );
 }

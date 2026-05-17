@@ -50,7 +50,7 @@ test("getActive returns the active game for a member", async () => {
   expect(active?._id).toBe(gameId);
 });
 
-test("getActive throws for non-member", async () => {
+test("getActive returns null for non-member (silent skip)", async () => {
   const t = setupTest();
   const { host, roomId } = await createRoomWith(t);
   await asUser(t, host).mutation(api.games.start, {
@@ -58,9 +58,10 @@ test("getActive throws for non-member", async () => {
     contextoGameId: 1336,
   });
   const outsider = await seedUser(t);
-  await expect(
-    asUser(t, outsider).query(api.games.getActive, { roomId }),
-  ).rejects.toThrow();
+  const result = await asUser(t, outsider).query(api.games.getActive, {
+    roomId,
+  });
+  expect(result).toBeNull();
 });
 
 test("start: upserts user history", async () => {
