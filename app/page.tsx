@@ -21,8 +21,14 @@ export default function Home() {
 	if (!isAuthenticated) {
 		return (
 			<Centered>
-				<p className="mb-4">You need to sign in to play.</p>
-				<Button onClick={() => router.push("/signin")}>Sign in</Button>
+				<h1 className="text-4xl font-bold tracking-tight">Contextus</h1>
+				<p className="max-w-md text-muted-foreground">
+					Co-op Contexto with friends. Create a room, share the code, guess
+					together.
+				</p>
+				<Button className="mt-2" size="lg" onClick={() => router.push("/signin")}>
+					Sign in to play
+				</Button>
 			</Centered>
 		);
 	}
