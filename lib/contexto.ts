@@ -14,9 +14,7 @@ export function launchDate(): Date {
 	return new Date(LAUNCH_DATE_UTC);
 }
 
-export function todayUtcMidnight(): Date {
+export function todayLocalMidnight(): Date {
 	const n = new Date();
-	return new Date(
-		Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()),
-	);
+	return new Date(n.getFullYear(), n.getMonth(), n.getDate());
 }

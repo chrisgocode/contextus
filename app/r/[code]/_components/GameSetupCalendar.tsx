@@ -9,7 +9,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
 	contextoGameIdForDate,
 	launchDate,
-	todayUtcMidnight,
+	todayLocalMidnight,
 } from "@/lib/contexto";
 
 export function GameSetupCalendar({
@@ -19,7 +19,7 @@ export function GameSetupCalendar({
 	roomId: Id<"rooms">;
 	isHost: boolean;
 }) {
-	const [date, setDate] = useState<Date | undefined>(todayUtcMidnight());
+	const [date, setDate] = useState<Date | undefined>(todayLocalMidnight());
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const start = useMutation(api.games.start);
@@ -34,7 +34,7 @@ export function GameSetupCalendar({
 		);
 	}
 
-	const today = todayUtcMidnight();
+	const today = todayLocalMidnight();
 	const min = launchDate();
 	const gameId = date ? contextoGameIdForDate(date) : null;
 	const isPlayed = (d: Date) => playedSet.has(contextoGameIdForDate(d));
@@ -50,12 +50,17 @@ export function GameSetupCalendar({
 				defaultMonth={date}
 				modifiers={{ played: isPlayed }}
 				modifiersClassNames={{
-					played: "after:content-['•'] after:text-amber-500 after:ml-0.5",
+					played:
+						"after:pointer-events-none after:absolute after:bottom-0 after:left-1/2 after:z-[9999] after:-translate-x-1/2 after:size-1 after:rounded-full after:bg-amber-500 after:content-['']",
+				}}
+				classNames={{
+					today:
+						"rounded-full bg-muted text-foreground data-[selected=true]:bg-transparent",
 				}}
 			/>
 			{gameId !== null && (
 				<p className="text-sm text-muted-foreground">
-					Game #{gameId} — {date!.toISOString().slice(0, 10)}
+					Game #{gameId} — {`${date!.getFullYear()}-${String(date!.getMonth() + 1).padStart(2, "0")}-${String(date!.getDate()).padStart(2, "0")}`}
 					{playedSet.has(gameId) && (
 						<span className="ml-2 text-amber-600">(already played)</span>
 					)}
