@@ -170,8 +170,7 @@ function RoomLoaded({
                   <EndGameBanner
                     status={recent.status}
                     answerLemma={recent.answerLemma}
-                    winnerName={null}
-                    winnerImage={null}
+                    gameId={recent._id}
                   />
                 )}
               <GameSetupCalendar roomId={room._id} isHost={isViewerHost} />
