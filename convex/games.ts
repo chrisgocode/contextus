@@ -1,16 +1,17 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireUser } from "./auth_helpers";
 
 export async function isMember(
-	ctx: { db: any },
+	ctx: Pick<QueryCtx, "db">,
 	roomId: Id<"rooms">,
 	userId: Id<"users">,
 ): Promise<boolean> {
 	const member = await ctx.db
 		.query("roomMembers")
-		.withIndex("by_room_user", (q: any) =>
+		.withIndex("by_room_user", (q) =>
 			q.eq("roomId", roomId).eq("userId", userId),
 		)
 		.unique();
@@ -18,7 +19,7 @@ export async function isMember(
 }
 
 export async function assertMember(
-	ctx: { db: any },
+	ctx: Pick<QueryCtx, "db">,
 	roomId: Id<"rooms">,
 	userId: Id<"users">,
 ): Promise<void> {
@@ -122,13 +123,13 @@ export const listFinished = query({
 });
 
 export async function upsertHistory(
-	ctx: { db: any },
+	ctx: Pick<MutationCtx, "db">,
 	userId: Id<"users">,
 	contextoGameId: number,
 ): Promise<void> {
 	const existing = await ctx.db
 		.query("userGameHistory")
-		.withIndex("by_user_game", (q: any) =>
+		.withIndex("by_user_game", (q) =>
 			q.eq("userId", userId).eq("contextoGameId", contextoGameId),
 		)
 		.unique();

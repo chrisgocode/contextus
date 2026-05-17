@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import {
 	action,
 	internalMutation,
@@ -10,7 +11,10 @@ import {
 import { requireUser } from "./auth_helpers";
 import { assertMember } from "./games";
 
-async function loadGameAndRoom(ctx: { db: any }, gameId: Id<"games">) {
+async function loadGameAndRoom(
+	ctx: Pick<MutationCtx, "db">,
+	gameId: Id<"games">,
+) {
 	const game = await ctx.db.get(gameId);
 	if (game === null) throw new ConvexError("Game not found");
 	if (game.status !== "in_progress") {
@@ -122,7 +126,7 @@ export const _finalizeGiveup = internalMutation({
 });
 
 async function executeGiveup(
-	ctx: { runQuery: any; runAction: any; runMutation: any },
+	ctx: Pick<ActionCtx, "runQuery" | "runAction" | "runMutation">,
 	args: {
 		gameId: Id<"games">;
 		hostUserId: Id<"users">;
@@ -147,11 +151,12 @@ async function executeGiveup(
 
 export const approve = action({
 	args: { requestId: v.id("pendingRequests") },
-	handler: async (ctx, { requestId }) => {
+	handler: async (ctx, { requestId }): Promise<{ lemma: string }> => {
 		const hostUserId = await requireUser(ctx);
-		const req: any = await ctx.runQuery(internal.giveup._readRequest, {
-			requestId,
-		});
+		const req: Doc<"pendingRequests"> | null = await ctx.runQuery(
+			internal.giveup._readRequest,
+			{ requestId },
+		);
 		if (req === null || req.type !== "giveup" || req.status !== "pending") {
 			throw new ConvexError("Request not found or already handled");
 		}
