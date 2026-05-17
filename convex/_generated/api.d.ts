@@ -9,8 +9,10 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as auth_helpers from "../auth_helpers.js";
 import type * as http from "../http.js";
-import type * as myFunctions from "../myFunctions.js";
+import type * as lib_code from "../lib/code.js";
+import type * as rooms from "../rooms.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +22,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  auth_helpers: typeof auth_helpers;
   http: typeof http;
-  myFunctions: typeof myFunctions;
+  "lib/code": typeof lib_code;
+  rooms: typeof rooms;
 }>;
 
 /**

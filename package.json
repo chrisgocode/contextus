@@ -7,7 +7,9 @@
     "predev": "convex init && node setup.mjs --once",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ignore-pattern \"convex/_generated/**\""
+    "lint": "eslint . --ignore-pattern \"convex/_generated/**\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.91",
@@ -26,15 +28,18 @@
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.2.2",
+    "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "convex-test": "^0.0.52",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.2.4",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^3"
   }
 }
