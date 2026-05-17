@@ -17,6 +17,7 @@
     "@convex-dev/presence": "^0.3.0",
     "@hugeicons/core-free-icons": "^4.1.4",
     "@hugeicons/react": "^1.1.6",
+    "@sentry/nextjs": "^10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.36.1",

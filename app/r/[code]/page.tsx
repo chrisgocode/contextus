@@ -14,6 +14,7 @@ import { EndGameBanner } from "./_components/EndGameBanner";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
+import { reportClientError } from "@/lib/report-error";
 
 export default function RoomPage({
   params,
@@ -66,8 +67,11 @@ export default function RoomPage({
     if (data && data.room.status === "active" && !isMember && !joining) {
       setJoining(true);
       join({ code: upper })
-        .catch(() => {
-          /* surfaced via getByCode refetch / error UI */
+        .catch((err) => {
+          reportClientError(err, {
+            userMessage: "Could not join room.",
+            context: "room.autojoin",
+          });
         })
         .finally(() => setJoining(false));
     }
@@ -100,9 +104,18 @@ export default function RoomPage({
       }}
       copied={copied}
       onCopy={() => {
-        navigator.clipboard.writeText(data.room.code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        navigator.clipboard
+          .writeText(data.room.code)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+          .catch((err) => {
+            reportClientError(err, {
+              userMessage: "Copy failed.",
+              context: "room.clipboard",
+            });
+          });
       }}
     />
   );

@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HomeSkeleton } from "./r/[code]/_components/RoomSkeleton";
+import { reportClientError } from "@/lib/report-error";
 
 export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
@@ -70,6 +71,11 @@ function CreateRoom() {
           try {
             const { code } = await create({});
             router.push(`/r/${code}`);
+          } catch (err) {
+            reportClientError(err, {
+              userMessage: "Could not create room.",
+              context: "room.create",
+            });
           } finally {
             setBusy(false);
           }

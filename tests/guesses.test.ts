@@ -129,6 +129,18 @@ test("submit: non-member rejected", async () => {
   ).rejects.toThrow();
 });
 
+test("listForGame returns empty for ex-member after leaving room", async () => {
+  const t = setupTest();
+  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  const { host, other, roomId, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
+  await asUser(t, other).mutation(api.rooms.leave, { roomId });
+  const res = await asUser(t, other).query(api.guesses.listForGame, {
+    gameId,
+  });
+  expect(res).toEqual({ sorted: [], latest: null });
+});
+
 test("listForGame returns sorted asc + latest", async () => {
   const t = setupTest();
   mockContextoFetch({

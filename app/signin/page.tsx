@@ -2,14 +2,13 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { reportClientError } from "@/lib/report-error";
 
 export default function SignIn() {
 	const { signIn } = useAuthActions();
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
-	const router = useRouter();
 
 	return (
 		<div className="flex flex-col gap-8 w-full max-w-lg mx-auto h-screen justify-center items-center px-4">
@@ -42,11 +41,22 @@ export default function SignIn() {
 			</div>
 			<form
 				className="flex flex-col gap-4 w-full bg-slate-100 dark:bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-300 dark:border-slate-600"
-				onSubmit={(e) => {
+				onSubmit={async (e) => {
 					e.preventDefault();
 					setLoading(true);
 					setError(null);
-					void signIn("google");
+					try {
+						await signIn("google");
+					} catch (err) {
+						const message =
+							err instanceof Error ? err.message : "Sign-in failed";
+						setError(message);
+						reportClientError(err, {
+							userMessage: "Sign-in failed. Try again.",
+							context: "auth.signin",
+						});
+						setLoading(false);
+					}
 				}}
 			>
 				<button

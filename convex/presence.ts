@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { components } from "./_generated/api";
 import { Presence } from "@convex-dev/presence";
 import { requireUser } from "./auth_helpers";
-import { assertMember } from "./games";
+import { isMember } from "./games";
 import type { Id } from "./_generated/dataModel";
 
 export const presence = new Presence(components.presence);
@@ -19,7 +19,7 @@ export const heartbeat = mutation({
     const authedUserId = await requireUser(ctx);
     const normalized = ctx.db.normalizeId("rooms", roomId);
     if (normalized === null) throw new Error("Invalid room id");
-    await assertMember(ctx, normalized, authedUserId);
+    if (!(await isMember(ctx, normalized, authedUserId))) return null;
     return await presence.heartbeat(
       ctx,
       normalized,

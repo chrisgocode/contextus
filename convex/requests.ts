@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireUser } from "./auth_helpers";
-import { assertMember } from "./games";
+import { isMember } from "./games";
 
 export const listPending = query({
   args: { gameId: v.id("games") },
@@ -9,7 +9,7 @@ export const listPending = query({
     const userId = await requireUser(ctx);
     const game = await ctx.db.get(gameId);
     if (game === null) return [];
-    await assertMember(ctx, game.roomId, userId);
+    if (!(await isMember(ctx, game.roomId, userId))) return [];
     const room = await ctx.db.get(game.roomId);
     if (room === null) return [];
     const isHost = room.hostUserId === userId;

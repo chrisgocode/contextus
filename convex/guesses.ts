@@ -7,7 +7,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireUser } from "./auth_helpers";
-import { assertMember, upsertHistory } from "./games";
+import { assertMember, isMember, upsertHistory } from "./games";
 import type { Doc, Id } from "./_generated/dataModel";
 
 const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
@@ -187,7 +187,9 @@ export const listForGame = query({
     const userId = await requireUser(ctx);
     const game = await ctx.db.get(gameId);
     if (game === null) return { sorted: [], latest: null };
-    await assertMember(ctx, game.roomId, userId);
+    if (!(await isMember(ctx, game.roomId, userId))) {
+      return { sorted: [], latest: null };
+    }
     const sortedRaw = await ctx.db
       .query("gameGuesses")
       .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))

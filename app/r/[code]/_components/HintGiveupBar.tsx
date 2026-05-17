@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
+import * as Sentry from "@sentry/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -37,6 +38,9 @@ export function HintGiveupBar({
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
+      Sentry.captureException(e, {
+        tags: { surface: `${isHost ? "host" : "request"}.${kind}` },
+      });
     } finally {
       setBusy(null);
     }
