@@ -6,21 +6,15 @@ import {
 	internalAction,
 	internalQuery,
 } from "./_generated/server";
-import { requireUser } from "./auth_helpers";
+import { requireHostByGame, requireUser } from "./access";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
 
 export const _hintPreflight = internalQuery({
-	args: { gameId: v.id("games"), hostUserId: v.id("users") },
-	handler: async (ctx, { gameId, hostUserId }) => {
-		const game = await ctx.db.get(gameId);
-		if (game === null) throw new ConvexError("Game not found");
+	args: { gameId: v.id("games") },
+	handler: async (ctx, { gameId }) => {
+		const { game } = await requireHostByGame(ctx, { gameId });
 		if (game.status !== "in_progress") {
 			throw new ConvexError("Game is no longer in progress");
-		}
-		const room = await ctx.db.get(game.roomId);
-		if (room === null) throw new ConvexError("Room not found");
-		if (room.hostUserId !== hostUserId) {
-			throw new ConvexError("Only host can apply hints");
 		}
 		const closest = await ctx.db
 			.query("gameGuesses")
@@ -42,13 +36,12 @@ export const _hintPreflight = internalQuery({
 export const _execute = internalAction({
 	args: {
 		gameId: v.id("games"),
-		hostUserId: v.id("users"),
 		requesterUserId: v.id("users"),
 		requestId: v.optional(v.id("pendingRequests")),
 	},
 	handler: async (
 		ctx,
-		{ gameId, hostUserId, requesterUserId, requestId },
+		{ gameId, requesterUserId, requestId },
 	): Promise<{ lemma: string; distance: number }> => {
 		const pre: {
 			contextoGameId: number;
@@ -56,7 +49,6 @@ export const _execute = internalAction({
 			guessedLemmas: string[];
 		} = await ctx.runQuery(internal.hints._hintPreflight, {
 			gameId,
-			hostUserId,
 		});
 		const guessedSet = new Set(pre.guessedLemmas);
 
@@ -70,13 +62,13 @@ export const _execute = internalAction({
 			);
 			if (!guessedSet.has(tip.lemma)) {
 				const result: { status: "recorded" | "duplicate"; won: boolean } =
-					await ctx.runMutation(internal.guesses._recordGuess, {
+					await ctx.runMutation(internal.gameTransitions.applyGuess, {
 						gameId,
 						userId: requesterUserId,
 						lemma: tip.lemma,
 						distance: tip.distance,
 						source: "hint",
-						approveRequestId: requestId,
+						closeRequestId: requestId,
 					});
 				if (result.status === "recorded") {
 					return { lemma: tip.lemma, distance: tip.distance };
@@ -106,7 +98,6 @@ export const hostHint = action({
 		const hostUserId: Id<"users"> = await requireUser(ctx);
 		return await ctx.runAction(internal.hints._execute, {
 			gameId,
-			hostUserId,
 			requesterUserId: hostUserId,
 		});
 	},

@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { requireUser } from "./auth_helpers";
+import { requireHostByRoom, requireUser } from "./access";
 import { generateRoomCode } from "./lib/code";
 
 const MAX_CODE_RETRIES = 10;
@@ -98,12 +98,7 @@ export const leave = mutation({
 export const endRoom = mutation({
 	args: { roomId: v.id("rooms") },
 	handler: async (ctx, { roomId }) => {
-		const userId = await requireUser(ctx);
-		const room = await ctx.db.get(roomId);
-		if (room === null) throw new ConvexError("Room not found");
-		if (room.hostUserId !== userId) {
-			throw new ConvexError("Only host can end the room");
-		}
+		await requireHostByRoom(ctx, { roomId });
 		await ctx.db.patch(roomId, { status: "ended" });
 		return null;
 	},

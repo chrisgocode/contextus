@@ -94,9 +94,8 @@ test("_execute internal action direct invocation works for host path", async () 
 	const t = setupTest();
 	mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
 	const { host, gameId } = await startedGame(t);
-	const result = await t.action(internal.hints._execute, {
+	const result = await asUser(t, host).action(internal.hints._execute, {
 		gameId,
-		hostUserId: host,
 		requesterUserId: host,
 	});
 	expect(result.lemma).toBe("pomelo");

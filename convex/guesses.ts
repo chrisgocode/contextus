@@ -1,14 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import {
-	action,
-	internalMutation,
-	internalQuery,
-	query,
-} from "./_generated/server";
-import { requireUser } from "./auth_helpers";
-import { assertMember, isMember, upsertHistory } from "./games";
+import { action, internalQuery, query } from "./_generated/server";
+import { requireMemberByGame, requireUser, tryMemberByGame } from "./access";
 
 const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
 
@@ -17,14 +11,12 @@ function normalizeWord(input: string): string {
 }
 
 export const _preflight = internalQuery({
-	args: { gameId: v.id("games"), userId: v.id("users"), lemma: v.string() },
-	handler: async (ctx, { gameId, userId, lemma }) => {
-		const game = await ctx.db.get(gameId);
-		if (game === null) throw new ConvexError("Game not found");
+	args: { gameId: v.id("games"), lemma: v.string() },
+	handler: async (ctx, { gameId, lemma }) => {
+		const { game } = await requireMemberByGame(ctx, { gameId });
 		if (game.status !== "in_progress") {
 			throw new ConvexError("Game is no longer in progress");
 		}
-		await assertMember(ctx, game.roomId, userId);
 		const cached = await ctx.db
 			.query("wordDistances")
 			.withIndex("by_game_lemma", (q) =>
@@ -39,80 +31,6 @@ export const _preflight = internalQuery({
 	},
 });
 
-export const _recordGuess = internalMutation({
-	args: {
-		gameId: v.id("games"),
-		userId: v.id("users"),
-		lemma: v.string(),
-		distance: v.number(),
-		source: v.union(v.literal("guess"), v.literal("hint")),
-		approveRequestId: v.optional(v.id("pendingRequests")),
-	},
-	handler: async (
-		ctx,
-		{ gameId, userId, lemma, distance, source, approveRequestId },
-	) => {
-		const game = await ctx.db.get(gameId);
-		if (game === null) throw new ConvexError("Game not found");
-		if (game.status !== "in_progress") {
-			throw new ConvexError("Game is no longer in progress");
-		}
-
-		// cache upsert
-		const cached = await ctx.db
-			.query("wordDistances")
-			.withIndex("by_game_lemma", (q) =>
-				q.eq("contextoGameId", game.contextoGameId).eq("lemma", lemma),
-			)
-			.unique();
-		if (cached === null) {
-			await ctx.db.insert("wordDistances", {
-				contextoGameId: game.contextoGameId,
-				lemma,
-				distance,
-			});
-		}
-
-		// dedup
-		const existingGuess = await ctx.db
-			.query("gameGuesses")
-			.withIndex("by_game_lemma", (q) =>
-				q.eq("gameId", gameId).eq("lemma", lemma),
-			)
-			.unique();
-		if (existingGuess !== null) {
-			return { status: "duplicate" as const, won: false };
-		}
-
-		const now = Date.now();
-		await ctx.db.insert("gameGuesses", {
-			gameId,
-			userId,
-			lemma,
-			distance,
-			source,
-			createdAt: now,
-		});
-
-		let won = false;
-		if (distance === 0 && source === "guess") {
-			await ctx.db.patch(gameId, {
-				status: "won",
-				winnerUserId: userId,
-				answerLemma: lemma,
-				endedAt: now,
-			});
-			won = true;
-		}
-		await ctx.db.patch(game.roomId, { lastActivityAt: now });
-		await upsertHistory(ctx, userId, game.contextoGameId);
-		if (approveRequestId !== undefined) {
-			await ctx.db.patch(approveRequestId, { status: "approved" });
-		}
-		return { status: "recorded" as const, won };
-	},
-});
-
 export const submit = action({
 	args: { gameId: v.id("games"), word: v.string() },
 	handler: async (ctx, { gameId, word }) => {
@@ -123,7 +41,6 @@ export const submit = action({
 		const pre: { contextoGameId: number; cached: number | null } =
 			await ctx.runQuery(internal.guesses._preflight, {
 				gameId,
-				userId,
 				lemma,
 			});
 
@@ -143,13 +60,9 @@ export const submit = action({
 			canonicalLemma = result.lemma;
 		}
 
-		// If the API normalized to a different lemma, dedup is enforced against the
-		// canonical lemma in _recordGuess; cache is keyed by what the user typed
-		// (lemma) since we already looked that up above. To keep cache useful for
-		// the canonical lemma too, store under both keys when they differ.
 		if (canonicalLemma !== lemma) {
 			const result: { status: "recorded" | "duplicate"; won: boolean } =
-				await ctx.runMutation(internal.guesses._recordGuess, {
+				await ctx.runMutation(internal.gameTransitions.applyGuess, {
 					gameId,
 					userId,
 					lemma: canonicalLemma,
@@ -168,7 +81,7 @@ export const submit = action({
 			return { lemma: canonicalLemma, distance, won: result.won };
 		}
 		const result: { status: "recorded" | "duplicate"; won: boolean } =
-			await ctx.runMutation(internal.guesses._recordGuess, {
+			await ctx.runMutation(internal.gameTransitions.applyGuess, {
 				gameId,
 				userId,
 				lemma,
@@ -191,12 +104,8 @@ export const submit = action({
 export const listForGame = query({
 	args: { gameId: v.id("games") },
 	handler: async (ctx, { gameId }) => {
-		const userId = await requireUser(ctx);
-		const game = await ctx.db.get(gameId);
-		if (game === null) return { sorted: [], latest: null };
-		if (!(await isMember(ctx, game.roomId, userId))) {
-			return { sorted: [], latest: null };
-		}
+		const access = await tryMemberByGame(ctx, { gameId });
+		if (access === null) return { sorted: [], latest: null };
 		const sortedRaw = await ctx.db
 			.query("gameGuesses")
 			.withIndex("by_game_distance", (q) => q.eq("gameId", gameId))

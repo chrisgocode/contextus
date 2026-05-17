@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { ConvexError } from "convex/values";
-import { requireUser } from "../convex/auth_helpers";
+import { requireUser } from "../convex/access";
 import { asUser, seedUser, setupTest } from "./helpers";
 
 test("requireUser throws when unauthenticated", async () => {

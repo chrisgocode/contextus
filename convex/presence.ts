@@ -4,8 +4,7 @@ import { components } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireUser } from "./auth_helpers";
-import { isMember } from "./games";
+import { tryMemberByRoom } from "./access";
 
 export const presence = new Presence(components.presence);
 
@@ -17,14 +16,14 @@ export const heartbeat = mutation({
 		interval: v.number(),
 	},
 	handler: async (ctx, { roomId, sessionId, interval }) => {
-		const authedUserId = await requireUser(ctx);
 		const normalized = ctx.db.normalizeId("rooms", roomId);
 		if (normalized === null) throw new Error("Invalid room id");
-		if (!(await isMember(ctx, normalized, authedUserId))) return null;
+		const access = await tryMemberByRoom(ctx, { roomId: normalized });
+		if (access === null) return null;
 		return await presence.heartbeat(
 			ctx,
 			normalized,
-			authedUserId,
+			access.user._id,
 			sessionId,
 			interval,
 		);
