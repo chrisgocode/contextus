@@ -10,10 +10,8 @@ import { reportClientError } from "@/lib/report-error";
 
 export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
 	const pending = useQuery(api.requests.listPending, { gameId });
-	const approveHint = useAction(api.hints.approve);
-	const denyHint = useMutation(api.hints.deny);
-	const approveGiveup = useAction(api.giveup.approve);
-	const denyGiveup = useMutation(api.giveup.deny);
+	const approve = useAction(api.requests.approve);
+	const deny = useMutation(api.requests.deny);
 	const [busy, setBusy] = useState<Id<"pendingRequests"> | null>(null);
 
 	if (pending === undefined) return null;
@@ -62,9 +60,7 @@ export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
 								onClick={async () => {
 									setBusy(p._id);
 									try {
-										if (p.type === "hint")
-											await approveHint({ requestId: p._id });
-										else await approveGiveup({ requestId: p._id });
+										await approve({ requestId: p._id });
 									} catch (err) {
 										reportClientError(err, {
 											userMessage: "Could not approve request.",
@@ -85,8 +81,7 @@ export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
 								onClick={async () => {
 									setBusy(p._id);
 									try {
-										if (p.type === "hint") await denyHint({ requestId: p._id });
-										else await denyGiveup({ requestId: p._id });
+										await deny({ requestId: p._id });
 									} catch (err) {
 										reportClientError(err, {
 											userMessage: "Could not deny request.",

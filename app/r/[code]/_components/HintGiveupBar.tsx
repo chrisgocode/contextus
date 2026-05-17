@@ -14,8 +14,7 @@ export function HintGiveupBar({
 	gameId: Id<"games">;
 	isHost: boolean;
 }) {
-	const requestHint = useMutation(api.hints.request);
-	const requestGiveup = useMutation(api.giveup.request);
+	const createRequest = useMutation(api.requests.create);
 	const hostHint = useAction(api.hints.hostHint);
 	const hostGiveup = useAction(api.giveup.hostGiveup);
 	const pending = useQuery(api.requests.listPending, { gameId });
@@ -33,8 +32,7 @@ export function HintGiveupBar({
 				if (kind === "hint") await hostHint({ gameId });
 				else await hostGiveup({ gameId });
 			} else {
-				if (kind === "hint") await requestHint({ gameId });
-				else await requestGiveup({ gameId });
+				await createRequest({ gameId, type: kind });
 			}
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Failed");

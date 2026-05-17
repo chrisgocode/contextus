@@ -46,8 +46,12 @@ export const _recordGuess = internalMutation({
 		lemma: v.string(),
 		distance: v.number(),
 		source: v.union(v.literal("guess"), v.literal("hint")),
+		approveRequestId: v.optional(v.id("pendingRequests")),
 	},
-	handler: async (ctx, { gameId, userId, lemma, distance, source }) => {
+	handler: async (
+		ctx,
+		{ gameId, userId, lemma, distance, source, approveRequestId },
+	) => {
 		const game = await ctx.db.get(gameId);
 		if (game === null) throw new ConvexError("Game not found");
 		if (game.status !== "in_progress") {
@@ -102,6 +106,9 @@ export const _recordGuess = internalMutation({
 		}
 		await ctx.db.patch(game.roomId, { lastActivityAt: now });
 		await upsertHistory(ctx, userId, game.contextoGameId);
+		if (approveRequestId !== undefined) {
+			await ctx.db.patch(approveRequestId, { status: "approved" });
+		}
 		return { status: "recorded" as const, won };
 	},
 });
