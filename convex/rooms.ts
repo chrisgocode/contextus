@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import { requireUser } from "./auth_helpers";
 import { generateRoomCode } from "./lib/code";
@@ -117,6 +118,7 @@ export const getByCode = query({
       .withIndex("by_code", (q) => q.eq("code", normalized))
       .unique();
     if (room === null) return null;
+    const viewerId = await getAuthUserId(ctx);
     const members = await ctx.db
       .query("roomMembers")
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
@@ -135,7 +137,12 @@ export const getByCode = query({
       }),
     );
     memberDocs.sort((a, b) => a.joinedAt - b.joinedAt);
-    return { room, members: memberDocs };
+    return {
+      room,
+      members: memberDocs,
+      viewerUserId: viewerId,
+      isViewerHost: viewerId !== null && viewerId === room.hostUserId,
+    };
   },
 });
 

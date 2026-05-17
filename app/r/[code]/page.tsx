@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { GameSetupCalendar } from "./_components/GameSetupCalendar";
+import { GuessInput } from "./_components/GuessInput";
+import { GuessList } from "./_components/GuessList";
+import { EndGameBanner } from "./_components/EndGameBanner";
+import { HintGiveupBar } from "./_components/HintGiveupBar";
+import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
 
 export default function RoomPage({
   params,
@@ -28,6 +30,19 @@ export default function RoomPage({
   const endRoom = useMutation(api.rooms.endRoom);
   const [copied, setCopied] = useState(false);
 
+  const activeGame = useQuery(
+    api.games.getActive,
+    data !== undefined && data !== null
+      ? { roomId: data.room._id }
+      : "skip",
+  );
+  const lastFinished = useQuery(
+    api.games.listFinished,
+    data !== undefined && data !== null && activeGame === null
+      ? { roomId: data.room._id }
+      : "skip",
+  );
+
   if (isLoading) return <Centered>Loading…</Centered>;
   if (!isAuthenticated) {
     router.replace("/signin");
@@ -42,22 +57,20 @@ export default function RoomPage({
       </Centered>
     );
 
-  const { room, members } = data;
-  // viewer = whichever member matches authed identity; we don't have userId on client,
-  // so derive isHost lazily: members[].isHost flagged the host. The viewer's row will
-  // also be marked isHost if they are the host — we look it up via auth user id later.
-  // For now: provide both buttons; host gating is enforced server-side.
+  const { room, members, isViewerHost } = data;
+  const recent =
+    lastFinished && lastFinished.length > 0 ? lastFinished[0] : null;
 
   return (
     <main className="mx-auto max-w-3xl p-6 flex flex-col gap-6">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-sm text-muted-foreground">Room</p>
           <h1 className="font-mono text-3xl font-bold tracking-widest">
             {room.code}
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             onClick={() => {
@@ -77,19 +90,17 @@ export default function RoomPage({
           >
             Leave
           </Button>
-          <Button
-            variant="destructive"
-            onClick={async () => {
-              try {
+          {isViewerHost && (
+            <Button
+              variant="destructive"
+              onClick={async () => {
                 await endRoom({ roomId: room._id });
                 router.push("/");
-              } catch {
-                /* host-only enforced server-side */
-              }
-            }}
-          >
-            End room (host)
-          </Button>
+              }}
+            >
+              End room
+            </Button>
+          )}
         </div>
       </header>
 
@@ -118,9 +129,33 @@ export default function RoomPage({
         </ul>
       </section>
 
-      <section className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-        Game UI coming in slice 3.
-      </section>
+      {activeGame === undefined ? (
+        <p className="text-center text-muted-foreground">Loading game…</p>
+      ) : activeGame === null ? (
+        <>
+          {recent && (recent.status === "won" || recent.status === "given_up") && (
+            <EndGameBanner
+              status={recent.status}
+              answerLemma={recent.answerLemma}
+              winnerName={null}
+              winnerImage={null}
+            />
+          )}
+          <GameSetupCalendar roomId={room._id} isHost={isViewerHost} />
+        </>
+      ) : (
+        <>
+          <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <p className="text-sm text-muted-foreground">
+              Game #{activeGame.contextoGameId}
+            </p>
+            <HintGiveupBar gameId={activeGame._id} isHost={isViewerHost} />
+          </div>
+          <GuessInput gameId={activeGame._id} />
+          {isViewerHost && <PendingRequestsSidebar gameId={activeGame._id} />}
+          <GuessList gameId={activeGame._id} />
+        </>
+      )}
     </main>
   );
 }
