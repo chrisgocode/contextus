@@ -9,10 +9,11 @@ import { internal } from "./_generated/api";
 import { requireUser } from "./auth_helpers";
 import { assertMember } from "./games";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 
 async function loadGameAndRoom(
-  ctx: { db: any },
+  ctx: Pick<MutationCtx, "db">,
   gameId: Id<"games">,
 ) {
   const game = await ctx.db.get(gameId);
@@ -121,11 +122,7 @@ export const _hintPreflight = internalQuery({
 });
 
 async function executeHint(
-  ctx: {
-    runQuery: any;
-    runAction: any;
-    runMutation: any;
-  },
+  ctx: Pick<ActionCtx, "runQuery" | "runAction" | "runMutation">,
   args: {
     gameId: Id<"games">;
     hostUserId: Id<"users">;
@@ -151,14 +148,23 @@ async function executeHint(
       { contextoGameId: pre.contextoGameId, distance: target },
     );
     if (!guessedSet.has(tip.lemma)) {
-      await ctx.runMutation(internal.guesses._recordGuess, {
-        gameId: args.gameId,
-        userId: args.requesterUserId,
-        lemma: tip.lemma,
-        distance: tip.distance,
-        source: "hint",
-      });
-      return { lemma: tip.lemma, distance: tip.distance };
+      const result: { status: "recorded" | "duplicate"; won: boolean } =
+        await ctx.runMutation(internal.guesses._recordGuess, {
+          gameId: args.gameId,
+          userId: args.requesterUserId,
+          lemma: tip.lemma,
+          distance: tip.distance,
+          source: "hint",
+        });
+      if (result.status === "recorded") {
+        return { lemma: tip.lemma, distance: tip.distance };
+      }
+      guessedSet.add(tip.lemma);
+      if (!walking) {
+        throw new ConvexError("Hint lemma already guessed");
+      }
+      target += 1;
+      continue;
     }
     if (!walking) {
       throw new ConvexError("Hint lemma already guessed");
@@ -172,9 +178,12 @@ export const approve = action({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
     const hostUserId = await requireUser(ctx);
-    const req: any = await ctx.runQuery(internal.hints._readRequest, {
-      requestId,
-    });
+    const req: Doc<"pendingRequests"> | null = await ctx.runQuery(
+      internal.hints._readRequest,
+      {
+        requestId,
+      },
+    );
     if (req === null || req.type !== "hint" || req.status !== "pending") {
       throw new ConvexError("Request not found or already handled");
     }

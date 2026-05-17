@@ -10,10 +10,7 @@ afterEach(() => {
 async function startedGame(t: ReturnType<typeof setupTest>) {
   const host = await seedUser(t, { name: "Host" });
   const other = await seedUser(t, { name: "Other" });
-  const { roomId, code } = await asUser(t, host).mutation(
-    api.rooms.create,
-    {},
-  );
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
   await asUser(t, other).mutation(api.rooms.join, { code });
   const { gameId } = await asUser(t, host).mutation(api.games.start, {
     roomId,
@@ -58,14 +55,22 @@ test("submit: success returns distance and writes guess + cache", async () => {
   expect(cache?.distance).toBe(42591);
 });
 
-test("submit: duplicate lemma in same game rejected", async () => {
+test("submit: duplicate lemma in same game returns already guessed result", async () => {
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
-  await expect(
-    asUser(t, other).action(api.guesses.submit, { gameId, word: "hello" }),
-  ).rejects.toThrow();
+  const res = await asUser(t, other).action(api.guesses.submit, {
+    gameId,
+    word: "hello",
+  });
+  expect(res).toEqual({
+    lemma: "hello",
+    distance: 42591,
+    won: false,
+    alreadyGuessed: true,
+    message: "The word was already guessed.",
+  });
 });
 
 test("submit: second player hits cache, no second fetch call", async () => {
@@ -74,10 +79,12 @@ test("submit: second player hits cache, no second fetch call", async () => {
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  // dedup rejects the duplicate, but a different word also caches
-  await expect(
-    asUser(t, other).action(api.guesses.submit, { gameId, word: "hello" }),
-  ).rejects.toThrow();
+  // dedup returns without fetching because the distance is cached.
+  const res = await asUser(t, other).action(api.guesses.submit, {
+    gameId,
+    word: "hello",
+  });
+  expect(res.alreadyGuessed).toBe(true);
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 

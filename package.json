@@ -2,6 +2,7 @@
   "name": "contextus",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "convex dev --start 'next dev'",
     "predev": "convex init && node setup.mjs --once",

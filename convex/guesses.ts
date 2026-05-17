@@ -10,6 +10,8 @@ import { requireUser } from "./auth_helpers";
 import { assertMember, upsertHistory } from "./games";
 import type { Doc, Id } from "./_generated/dataModel";
 
+const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
+
 function normalizeWord(input: string): string {
   return input.trim().toLowerCase();
 }
@@ -70,10 +72,12 @@ export const _recordGuess = internalMutation({
     // dedup
     const existingGuess = await ctx.db
       .query("gameGuesses")
-      .withIndex("by_game_lemma", (q) => q.eq("gameId", gameId).eq("lemma", lemma))
+      .withIndex("by_game_lemma", (q) =>
+        q.eq("gameId", gameId).eq("lemma", lemma),
+      )
       .unique();
     if (existingGuess !== null) {
-      throw new ConvexError("That word has already been guessed");
+      return { status: "duplicate" as const, won: false };
     }
 
     const now = Date.now();
@@ -98,7 +102,7 @@ export const _recordGuess = internalMutation({
     }
     await ctx.db.patch(game.roomId, { lastActivityAt: now });
     await upsertHistory(ctx, userId, game.contextoGameId);
-    return { won };
+    return { status: "recorded" as const, won };
   },
 });
 
@@ -137,22 +141,42 @@ export const submit = action({
     // (lemma) since we already looked that up above. To keep cache useful for
     // the canonical lemma too, store under both keys when they differ.
     if (canonicalLemma !== lemma) {
-      const result: { won: boolean } = await ctx.runMutation(
-        internal.guesses._recordGuess,
-        {
+      const result: { status: "recorded" | "duplicate"; won: boolean } =
+        await ctx.runMutation(internal.guesses._recordGuess, {
           gameId,
           userId,
           lemma: canonicalLemma,
           distance,
           source: "guess",
-        },
-      );
+        });
+      if (result.status === "duplicate") {
+        return {
+          lemma: canonicalLemma,
+          distance,
+          won: false,
+          alreadyGuessed: true,
+          message: ALREADY_GUESSED_MESSAGE,
+        };
+      }
       return { lemma: canonicalLemma, distance, won: result.won };
     }
-    const result: { won: boolean } = await ctx.runMutation(
-      internal.guesses._recordGuess,
-      { gameId, userId, lemma, distance, source: "guess" },
-    );
+    const result: { status: "recorded" | "duplicate"; won: boolean } =
+      await ctx.runMutation(internal.guesses._recordGuess, {
+        gameId,
+        userId,
+        lemma,
+        distance,
+        source: "guess",
+      });
+    if (result.status === "duplicate") {
+      return {
+        lemma,
+        distance,
+        won: false,
+        alreadyGuessed: true,
+        message: ALREADY_GUESSED_MESSAGE,
+      };
+    }
     return { lemma, distance, won: result.won };
   },
 });
@@ -196,4 +220,3 @@ export const listForGame = query({
     };
   },
 });
-

@@ -2,11 +2,20 @@
 
 import { useState } from "react";
 import { useAction } from "convex/react";
+import { ConvexError } from "convex/values";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Id } from "@/convex/_generated/dataModel";
+
+function guessErrorMessage(err: unknown): string {
+  if (err instanceof ConvexError && typeof err.data === "string") {
+    return err.data;
+  }
+  if (err instanceof Error) return err.message;
+  return "Failed to submit guess";
+}
 
 export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
   const submit = useAction(api.guesses.submit);
@@ -23,12 +32,14 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
         setBusy(true);
         try {
           const res = await submit({ gameId, word });
+          if ("alreadyGuessed" in res && res.alreadyGuessed) {
+            setError(res.message);
+            return;
+          }
           setWord("");
           if (res.won) toast.success(`You got it: ${res.lemma}!`);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : "Failed";
-          setError(msg);
-          toast.error(msg);
+          setError(guessErrorMessage(err));
         } finally {
           setBusy(false);
         }
@@ -38,15 +49,24 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
         <Input
           placeholder="Type a word…"
           value={word}
-          onChange={(e) => setWord(e.target.value)}
+          onChange={(e) => {
+            setWord(e.target.value);
+            setError(null);
+          }}
           disabled={busy}
+          aria-invalid={error !== null}
+          aria-describedby={error ? "guess-error" : undefined}
           autoFocus
         />
         <Button type="submit" disabled={busy || !word.trim()}>
           {busy ? "…" : "Guess"}
         </Button>
       </div>
-      {error && <p className="text-sm text-rose-400">{error}</p>}
+      {error && (
+        <p id="guess-error" role="alert" className="text-md pt-2 font-bold text-rose-400">
+          {error}
+        </p>
+      )}
     </form>
   );
 }
