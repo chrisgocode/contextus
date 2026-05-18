@@ -18,7 +18,7 @@ type ByGame = { gameId: Id<"games"> };
 type ByRoom = { roomId: Id<"rooms"> };
 
 export type RoomAccess = {
-  user: Doc<"users">;
+  userId: Id<"users">;
   room: Doc<"rooms">;
 };
 
@@ -59,15 +59,6 @@ async function isMember(
   return m !== null;
 }
 
-async function loadUser(
-  ctx: DbCtx,
-  userId: Id<"users">,
-): Promise<Doc<"users">> {
-  const user = await ctx.db.get(userId);
-  if (user === null) throw new ConvexError("User not found");
-  return user;
-}
-
 export async function requireMemberByGame(
   ctx: DbCtx,
   args: ByGame,
@@ -79,7 +70,7 @@ export async function requireMemberByGame(
   if (!(await isMember(ctx, room._id, userId))) {
     throw new ConvexError("Not a member of this room");
   }
-  return { user: await loadUser(ctx, userId), room, game };
+  return { userId, room, game };
 }
 
 export async function tryMemberByGame(
@@ -89,7 +80,7 @@ export async function tryMemberByGame(
   const { userId, game, room } = await loadByGame(ctx, args);
   if (userId === null || game === null || room === null) return null;
   if (!(await isMember(ctx, room._id, userId))) return null;
-  return { user: await loadUser(ctx, userId), room, game };
+  return { userId, room, game };
 }
 
 export async function requireMemberByRoom(
@@ -102,7 +93,7 @@ export async function requireMemberByRoom(
   if (!(await isMember(ctx, room._id, userId))) {
     throw new ConvexError("Not a member of this room");
   }
-  return { user: await loadUser(ctx, userId), room };
+  return { userId, room };
 }
 
 export async function tryMemberByRoom(
@@ -112,7 +103,7 @@ export async function tryMemberByRoom(
   const { userId, room } = await loadByRoom(ctx, args);
   if (userId === null || room === null) return null;
   if (!(await isMember(ctx, room._id, userId))) return null;
-  return { user: await loadUser(ctx, userId), room };
+  return { userId, room };
 }
 
 export async function requireHostByGame(
@@ -124,7 +115,7 @@ export async function requireHostByGame(
   if (game === null) throw new ConvexError("Game not found");
   if (room === null) throw new ConvexError("Room not found");
   if (room.hostUserId !== userId) throw new ConvexError("Host only");
-  return { user: await loadUser(ctx, userId), room, game };
+  return { userId, room, game };
 }
 
 export async function tryHostByGame(
@@ -134,7 +125,7 @@ export async function tryHostByGame(
   const { userId, game, room } = await loadByGame(ctx, args);
   if (userId === null || game === null || room === null) return null;
   if (room.hostUserId !== userId) return null;
-  return { user: await loadUser(ctx, userId), room, game };
+  return { userId, room, game };
 }
 
 export async function requireHostByRoom(
@@ -145,7 +136,7 @@ export async function requireHostByRoom(
   if (userId === null) throw new ConvexError("Not authenticated");
   if (room === null) throw new ConvexError("Room not found");
   if (room.hostUserId !== userId) throw new ConvexError("Host only");
-  return { user: await loadUser(ctx, userId), room };
+  return { userId, room };
 }
 
 export async function tryHostByRoom(
@@ -155,5 +146,5 @@ export async function tryHostByRoom(
   const { userId, room } = await loadByRoom(ctx, args);
   if (userId === null || room === null) return null;
   if (room.hostUserId !== userId) return null;
-  return { user: await loadUser(ctx, userId), room };
+  return { userId, room };
 }

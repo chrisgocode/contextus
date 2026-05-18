@@ -21,8 +21,7 @@ export const listPending = query({
 	handler: async (ctx, { gameId }) => {
 		const access = await tryMemberByGame(ctx, { gameId });
 		if (access === null) return [];
-		const { user, room } = access;
-		const userId = user._id;
+		const { userId, room } = access;
 		const isHost = room.hostUserId === userId;
 		const rowsRaw = await ctx.db
 			.query("pendingRequests")
@@ -50,8 +49,7 @@ export const listPending = query({
 export const create = mutation({
 	args: { gameId: v.id("games"), type: REQUEST_TYPE },
 	handler: async (ctx, { gameId, type }) => {
-		const { user, room, game } = await requireMemberByGame(ctx, { gameId });
-		const userId = user._id;
+		const { userId, room, game } = await requireMemberByGame(ctx, { gameId });
 		if (game.status !== "in_progress") {
 			throw new ConvexError("Game is no longer in progress");
 		}

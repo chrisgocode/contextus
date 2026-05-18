@@ -53,12 +53,12 @@ async function seedRoomWithGame(): Promise<Setup> {
 }
 
 describe("requireMemberByGame", () => {
-  test("returns {user, room, game} for member", async () => {
+  test("returns {userId, room, game} for member", async () => {
     const s = await seedRoomWithGame();
     const result = await asUser(s.t, s.member).run((ctx) =>
       requireMemberByGame(ctx, { gameId: s.gameId }),
     );
-    expect(result.user._id).toBe(s.member);
+    expect(result.userId).toBe(s.member);
     expect(result.room._id).toBe(s.roomId);
     expect(result.game._id).toBe(s.gameId);
   });
@@ -127,12 +127,12 @@ describe("tryMemberByGame", () => {
 });
 
 describe("requireMemberByRoom", () => {
-  test("returns {user, room} for member", async () => {
+  test("returns {userId, room} for member", async () => {
     const s = await seedRoomWithGame();
     const r = await asUser(s.t, s.member).run((ctx) =>
       requireMemberByRoom(ctx, { roomId: s.roomId }),
     );
-    expect(r.user._id).toBe(s.member);
+    expect(r.userId).toBe(s.member);
     expect(r.room._id).toBe(s.roomId);
   });
 
@@ -166,7 +166,7 @@ describe("requireHostByGame", () => {
     const r = await asUser(s.t, s.host).run((ctx) =>
       requireHostByGame(ctx, { gameId: s.gameId }),
     );
-    expect(r.user._id).toBe(s.host);
+    expect(r.userId).toBe(s.host);
     expect(r.game._id).toBe(s.gameId);
   });
 
@@ -195,7 +195,7 @@ describe("tryHostByGame", () => {
     const yes = await asUser(s.t, s.host).run((ctx) =>
       tryHostByGame(ctx, { gameId: s.gameId }),
     );
-    expect(yes?.user._id).toBe(s.host);
+    expect(yes?.userId).toBe(s.host);
     const no = await asUser(s.t, s.member).run((ctx) =>
       tryHostByGame(ctx, { gameId: s.gameId }),
     );
@@ -209,7 +209,7 @@ describe("requireHostByRoom", () => {
     const r = await asUser(s.t, s.host).run((ctx) =>
       requireHostByRoom(ctx, { roomId: s.roomId }),
     );
-    expect(r.user._id).toBe(s.host);
+    expect(r.userId).toBe(s.host);
   });
 
   test("throws for non-host member", async () => {
@@ -228,7 +228,7 @@ describe("tryHostByRoom", () => {
     const yes = await asUser(s.t, s.host).run((ctx) =>
       tryHostByRoom(ctx, { roomId: s.roomId }),
     );
-    expect(yes?.user._id).toBe(s.host);
+    expect(yes?.userId).toBe(s.host);
     const no = await asUser(s.t, s.outsider).run((ctx) =>
       tryHostByRoom(ctx, { roomId: s.roomId }),
     );

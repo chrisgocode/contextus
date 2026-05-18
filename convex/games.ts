@@ -13,7 +13,7 @@ import {
 export const start = mutation({
   args: { roomId: v.id("rooms"), contextoGameId: v.number() },
   handler: async (ctx, { roomId, contextoGameId }) => {
-    const { user, room } = await requireHostByRoom(ctx, { roomId });
+    const { userId, room } = await requireHostByRoom(ctx, { roomId });
     if (room.status !== "active") {
       throw new ConvexError("Room not found");
     }
@@ -36,7 +36,7 @@ export const start = mutation({
       status: "in_progress",
       startedAt: now,
     });
-    await upsertHistory(ctx, user._id, contextoGameId);
+    await upsertHistory(ctx, userId, contextoGameId);
     await ctx.db.patch(roomId, { lastActivityAt: now });
     return { gameId };
   },

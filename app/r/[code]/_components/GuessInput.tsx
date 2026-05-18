@@ -2,7 +2,7 @@
 
 import { useAction } from "convex/react";
 import { ConvexError } from "convex/values";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
 	const [word, setWord] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const inputRef = useRef<HTMLInputElement>(null);
 	return (
 		<form
 			className="flex flex-col gap-2"
@@ -42,11 +43,13 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
 					setError(guessErrorMessage(err));
 				} finally {
 					setBusy(false);
+					requestAnimationFrame(() => inputRef.current?.focus());
 				}
 			}}
 		>
 			<div className="flex gap-2">
 				<Input
+					ref={inputRef}
 					placeholder="Type a word…"
 					value={word}
 					onChange={(e) => {

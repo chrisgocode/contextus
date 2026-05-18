@@ -23,7 +23,7 @@ export const heartbeat = mutation({
 		return await presence.heartbeat(
 			ctx,
 			normalized,
-			access.user._id,
+			access.userId,
 			sessionId,
 			interval,
 		);
