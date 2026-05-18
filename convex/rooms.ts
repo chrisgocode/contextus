@@ -4,6 +4,7 @@ import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireHostByRoom, requireUser } from "./access";
 import { generateRoomCode } from "./lib/code";
+import { upsertRoomActivity } from "./lib/roomActivity";
 
 const MAX_CODE_RETRIES = 10;
 
@@ -33,13 +34,13 @@ export const create = mutation({
 			code,
 			hostUserId: userId,
 			status: "active",
-			lastActivityAt: now,
 		});
 		await ctx.db.insert("roomMembers", {
 			roomId,
 			userId,
 			joinedAt: now,
 		});
+		await upsertRoomActivity(ctx, roomId, now);
 		return { code, roomId };
 	},
 });
@@ -69,7 +70,7 @@ export const join = mutation({
 				joinedAt: Date.now(),
 			});
 		}
-		await ctx.db.patch(room._id, { lastActivityAt: Date.now() });
+		await upsertRoomActivity(ctx, room._id, Date.now());
 		return { roomId: room._id };
 	},
 });
@@ -89,7 +90,7 @@ export const leave = mutation({
 		}
 		const room = await ctx.db.get(roomId);
 		if (room !== null && room.status === "active") {
-			await ctx.db.patch(roomId, { lastActivityAt: Date.now() });
+			await upsertRoomActivity(ctx, roomId, Date.now());
 		}
 		return null;
 	},
@@ -155,7 +156,19 @@ export const listMine = query({
 		const rooms = fetched.filter(
 			(r): r is Doc<"rooms"> => r !== null && r.status === "active",
 		);
-		rooms.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
-		return rooms.slice(0, 10);
+		const activities = await Promise.all(
+			rooms.map((r) =>
+				ctx.db
+					.query("roomActivity")
+					.withIndex("by_room", (q) => q.eq("roomId", r._id))
+					.unique(),
+			),
+		);
+		const withActivity = rooms.map((r, i) => ({
+			room: r,
+			lastActivityAt: activities[i]?.lastActivityAt ?? 0,
+		}));
+		withActivity.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+		return withActivity.slice(0, 10).map((w) => w.room);
 	},
 });

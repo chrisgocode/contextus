@@ -28,6 +28,28 @@ test("submit: rejects unknown word", async () => {
   ).rejects.toThrow();
 });
 
+test("submit: updates roomActivity", async () => {
+  const t = setupTest();
+  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  const { host, roomId, gameId } = await startedGame(t);
+  const before = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique(),
+  );
+  await new Promise((r) => setTimeout(r, 5));
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
+  const after = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique(),
+  );
+  expect(after).not.toBeNull();
+  expect(after!.lastActivityAt).toBeGreaterThan(before!.lastActivityAt);
+});
+
 test("submit: success returns distance and writes guess + cache", async () => {
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });

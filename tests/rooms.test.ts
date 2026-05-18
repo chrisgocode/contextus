@@ -25,6 +25,46 @@ test("create returns a valid code and inserts host as member", async () => {
   expect(members[0].userId).toBe(userId);
 });
 
+test("create inserts a matching roomActivity row", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  const { roomId } = await asUser(t, userId).mutation(api.rooms.create, {});
+  const activity = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique(),
+  );
+  expect(activity).not.toBeNull();
+  expect(activity!.lastActivityAt).toBeGreaterThan(0);
+});
+
+test("join updates roomActivity", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const joiner = await seedUser(t);
+  const { roomId, code } = await asUser(t, host).mutation(
+    api.rooms.create,
+    {},
+  );
+  const before = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique(),
+  );
+  await new Promise((r) => setTimeout(r, 5));
+  await asUser(t, joiner).mutation(api.rooms.join, { code });
+  const after = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique(),
+  );
+  expect(after).not.toBeNull();
+  expect(after!.lastActivityAt).toBeGreaterThan(before!.lastActivityAt);
+});
+
 test("join is idempotent", async () => {
   const t = setupTest();
   const host = await seedUser(t);

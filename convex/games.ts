@@ -9,6 +9,7 @@ import {
   tryMemberByGame,
   tryMemberByRoom,
 } from "./access";
+import { upsertRoomActivity } from "./lib/roomActivity";
 
 export const start = mutation({
   args: { roomId: v.id("rooms"), contextoGameId: v.number() },
@@ -37,7 +38,7 @@ export const start = mutation({
       startedAt: now,
     });
     await upsertHistory(ctx, userId, contextoGameId);
-    await ctx.db.patch(roomId, { lastActivityAt: now });
+    await upsertRoomActivity(ctx, roomId, now);
     return { gameId };
   },
 });

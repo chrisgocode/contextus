@@ -114,7 +114,12 @@ export const listForGame = query({
 		const latestRaw =
 			sortedRaw.length === 0
 				? null
-				: sortedRaw.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+				: sortedRaw.reduce((a, b) => {
+						if (a.createdAt !== b.createdAt) {
+							return a.createdAt > b.createdAt ? a : b;
+						}
+						return a._creationTime > b._creationTime ? a : b;
+					});
 
 		const userIds = Array.from(new Set(sortedRaw.map((g) => g.userId)));
 		const userDocs = await Promise.all(userIds.map((uid) => ctx.db.get(uid)));

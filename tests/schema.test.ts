@@ -10,6 +10,9 @@ test("schema accepts all table shapes", async () => {
       code: "ABCDEF",
       hostUserId: userId,
       status: "active",
+    });
+    await ctx.db.insert("roomActivity", {
+      roomId,
       lastActivityAt: Date.now(),
     });
     await ctx.db.insert("roomMembers", {

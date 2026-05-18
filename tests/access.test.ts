@@ -33,7 +33,6 @@ async function seedRoomWithGame(): Promise<Setup> {
       code: "ABC123",
       hostUserId: host,
       status: "active",
-      lastActivityAt: now,
     });
     await ctx.db.insert("roomMembers", { roomId, userId: host, joinedAt: now });
     await ctx.db.insert("roomMembers", {

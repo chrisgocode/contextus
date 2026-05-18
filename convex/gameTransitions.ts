@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { upsertHistory } from "./games";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
+import { upsertRoomActivity } from "./lib/roomActivity";
 
 export const applyGuess = internalMutation({
 	args: {
@@ -61,9 +62,7 @@ export const applyGuess = internalMutation({
 		if (decision.gamePatch !== null) {
 			await ctx.db.patch(gameId, decision.gamePatch);
 		}
-		await ctx.db.patch(game.roomId, {
-			lastActivityAt: decision.lastActivityAt,
-		});
+		await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
 		await upsertHistory(
 			ctx,
 			decision.upsertHistoryForUserId,
@@ -93,9 +92,7 @@ export const applyGiveup = internalMutation({
 			throw new ConvexError("Game is no longer in progress");
 		}
 		await ctx.db.patch(gameId, decision.gamePatch);
-		await ctx.db.patch(game.roomId, {
-			lastActivityAt: decision.lastActivityAt,
-		});
+		await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
 		if (decision.closeRequestId !== null) {
 			await ctx.db.patch(decision.closeRequestId, { status: "approved" });
 		}

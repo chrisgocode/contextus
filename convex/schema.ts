@@ -9,10 +9,16 @@ export default defineSchema({
 		code: v.string(),
 		hostUserId: v.id("users"),
 		status: v.union(v.literal("active"), v.literal("ended")),
-		lastActivityAt: v.number(),
 	})
 		.index("by_code", ["code"])
-		.index("by_status_lastActivity", ["status", "lastActivityAt"]),
+		.index("by_status", ["status"]),
+
+	roomActivity: defineTable({
+		roomId: v.id("rooms"),
+		lastActivityAt: v.number(),
+	})
+		.index("by_room", ["roomId"])
+		.index("by_lastActivity", ["lastActivityAt"]),
 
 	roomMembers: defineTable({
 		roomId: v.id("rooms"),

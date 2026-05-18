@@ -14,18 +14,24 @@ export const _listActiveRoomsWithMembers = internalQuery({
 	handler: async (ctx) => {
 		const rooms = await ctx.db
 			.query("rooms")
-			.withIndex("by_status_lastActivity", (q) => q.eq("status", "active"))
+			.withIndex("by_status", (q) => q.eq("status", "active"))
 			.collect();
 		return await Promise.all(
 			rooms.map(async (r) => {
-				const members = await ctx.db
-					.query("roomMembers")
-					.withIndex("by_room", (q) => q.eq("roomId", r._id))
-					.collect();
+				const [members, activity] = await Promise.all([
+					ctx.db
+						.query("roomMembers")
+						.withIndex("by_room", (q) => q.eq("roomId", r._id))
+						.collect(),
+					ctx.db
+						.query("roomActivity")
+						.withIndex("by_room", (q) => q.eq("roomId", r._id))
+						.unique(),
+				]);
 				return {
 					_id: r._id,
 					hostUserId: r.hostUserId,
-					lastActivityAt: r.lastActivityAt,
+					lastActivityAt: activity?.lastActivityAt ?? 0,
 					members: members.map((m) => ({
 						userId: m.userId,
 						joinedAt: m.joinedAt,
@@ -47,6 +53,28 @@ export const _endRoom = internalMutation({
 	args: { roomId: v.id("rooms") },
 	handler: async (ctx, { roomId }) => {
 		await ctx.db.patch(roomId, { status: "ended" });
+	},
+});
+
+export const _backfillRoomActivity = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rooms = await ctx.db.query("rooms").collect();
+		let inserted = 0;
+		for (const r of rooms) {
+			const existing = await ctx.db
+				.query("roomActivity")
+				.withIndex("by_room", (q) => q.eq("roomId", r._id))
+				.unique();
+			if (existing === null) {
+				await ctx.db.insert("roomActivity", {
+					roomId: r._id,
+					lastActivityAt: r._creationTime,
+				});
+				inserted += 1;
+			}
+		}
+		return { inserted, scanned: rooms.length };
 	},
 });
 
