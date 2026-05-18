@@ -13,7 +13,5 @@ export function usePresenceSet(
     roomId,
     viewerUserId,
   );
-  return new Set(
-    (state ?? []).filter((p) => p.online).map((p) => p.userId),
-  );
+  return new Set((state ?? []).filter((p) => p.online).map((p) => p.userId));
 }
