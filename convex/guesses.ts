@@ -111,19 +111,17 @@ export const listForGame = query({
 			.withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
 			.order("asc")
 			.take(500);
-		const latestRaw = await ctx.db
-			.query("gameGuesses")
-			.withIndex("by_game_created", (q) => q.eq("gameId", gameId))
-			.order("desc")
-			.first();
+		const latestRaw =
+			sortedRaw.length === 0
+				? null
+				: sortedRaw.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
 
-		const userIds = new Set<Id<"users">>();
-		for (const g of sortedRaw) userIds.add(g.userId);
+		const userIds = Array.from(new Set(sortedRaw.map((g) => g.userId)));
+		const userDocs = await Promise.all(userIds.map((uid) => ctx.db.get(uid)));
 		const userMap = new Map<Id<"users">, Doc<"users">>();
-		for (const uid of userIds) {
-			const u = await ctx.db.get(uid);
-			if (u !== null) userMap.set(uid, u);
-		}
+		userDocs.forEach((u, i) => {
+			if (u !== null) userMap.set(userIds[i], u);
+		});
 		const hydrate = (g: Doc<"gameGuesses">) => {
 			const u = userMap.get(g.userId);
 			return {

@@ -149,11 +149,12 @@ export const listMine = query({
 			.query("roomMembers")
 			.withIndex("by_user", (q) => q.eq("userId", userId))
 			.collect();
-		const rooms: Doc<"rooms">[] = [];
-		for (const m of memberships) {
-			const room = await ctx.db.get(m.roomId);
-			if (room !== null && room.status === "active") rooms.push(room);
-		}
+		const fetched = await Promise.all(
+			memberships.map((m) => ctx.db.get(m.roomId)),
+		);
+		const rooms = fetched.filter(
+			(r): r is Doc<"rooms"> => r !== null && r.status === "active",
+		);
 		rooms.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 		return rooms.slice(0, 10);
 	},

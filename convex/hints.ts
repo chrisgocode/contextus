@@ -21,14 +21,9 @@ export const _hintPreflight = internalQuery({
 			.withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
 			.order("asc")
 			.first();
-		const allGuessed = await ctx.db
-			.query("gameGuesses")
-			.withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
-			.collect();
 		return {
 			contextoGameId: game.contextoGameId,
 			best: closest?.distance ?? null,
-			guessedLemmas: allGuessed.map((g) => g.lemma),
 		};
 	},
 });
@@ -46,11 +41,9 @@ export const _execute = internalAction({
 		const pre: {
 			contextoGameId: number;
 			best: number | null;
-			guessedLemmas: string[];
 		} = await ctx.runQuery(internal.hints._hintPreflight, {
 			gameId,
 		});
-		const guessedSet = new Set(pre.guessedLemmas);
 
 		let target = initialHintTarget(pre.best);
 		const walking = pre.best === 1;
@@ -60,25 +53,17 @@ export const _execute = internalAction({
 				internal.contexto.fetchTip,
 				{ contextoGameId: pre.contextoGameId, distance: target },
 			);
-			if (!guessedSet.has(tip.lemma)) {
-				const result: { status: "recorded" | "duplicate"; won: boolean } =
-					await ctx.runMutation(internal.gameTransitions.applyGuess, {
-						gameId,
-						userId: requesterUserId,
-						lemma: tip.lemma,
-						distance: tip.distance,
-						source: "hint",
-						closeRequestId: requestId,
-					});
-				if (result.status === "recorded") {
-					return { lemma: tip.lemma, distance: tip.distance };
-				}
-				guessedSet.add(tip.lemma);
-				if (!walking) {
-					throw new ConvexError("Hint lemma already guessed");
-				}
-				target += 1;
-				continue;
+			const result: { status: "recorded" | "duplicate"; won: boolean } =
+				await ctx.runMutation(internal.gameTransitions.applyGuess, {
+					gameId,
+					userId: requesterUserId,
+					lemma: tip.lemma,
+					distance: tip.distance,
+					source: "hint",
+					closeRequestId: requestId,
+				});
+			if (result.status === "recorded") {
+				return { lemma: tip.lemma, distance: tip.distance };
 			}
 			if (!walking) {
 				throw new ConvexError("Hint lemma already guessed");
