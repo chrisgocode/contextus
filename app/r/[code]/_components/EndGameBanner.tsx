@@ -73,7 +73,7 @@ export function EndGameBanner({
 
 function BucketRow({ color, count }: { color: string; count: number }) {
   if (count === 0) return null;
-  const blocks = Math.max(1, Math.ceil(count / 5));
+  const blocks = Math.min(3, Math.max(1, Math.ceil(count / 5)));
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-0.5">
