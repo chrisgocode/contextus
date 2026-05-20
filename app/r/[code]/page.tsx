@@ -220,7 +220,7 @@ function RoomLoaded({
         </div>
 
         <aside className="flex flex-col gap-4">
-          <section className="rounded-lg border p-4">
+          <section className="border p-4">
             <h2 className="font-semibold mb-3">Members</h2>
             <ul className="flex flex-col gap-2">
               {members.map((m) => {

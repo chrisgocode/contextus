@@ -17,7 +17,7 @@ export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
   if (pending === undefined) return null;
   if (pending.length === 0) {
     return (
-      <section className="rounded-lg border p-4">
+      <section className="border p-4">
         <h2 className="font-semibold mb-2">Requests</h2>
         <p className="text-sm text-muted-foreground">No pending requests.</p>
       </section>
@@ -25,7 +25,7 @@ export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
   }
 
   return (
-    <section className="rounded-lg border p-4">
+    <section className="border p-4">
       <h2 className="font-semibold mb-3">Requests</h2>
       <ul className="flex flex-col gap-3">
         {pending.map((p) => (
