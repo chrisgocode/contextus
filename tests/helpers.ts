@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { register as registerPresence } from "@convex-dev/presence/test";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
 import schema from "../convex/schema";
@@ -6,7 +7,9 @@ import type { Id } from "../convex/_generated/dataModel";
 
 export function setupTest() {
   const modules = import.meta.glob("../convex/**/!(*.test).*s");
-  return convexTest(schema, modules);
+  const t = convexTest(schema, modules);
+  registerPresence(t);
+  return t;
 }
 
 export async function seedUser(

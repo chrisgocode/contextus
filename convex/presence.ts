@@ -48,7 +48,7 @@ export async function onlineUserIdsForRoom(
 	ctx: Pick<ActionCtx, "runQuery">,
 	roomId: Id<"rooms">,
 ): Promise<Set<Id<"users">>> {
-	const list = await presence.listRoom(ctx, roomId);
+	const list = await presence.listRoom(ctx, roomId, true);
 	const out = new Set<Id<"users">>();
 	for (const entry of list) {
 		out.add(entry.userId as Id<"users">);

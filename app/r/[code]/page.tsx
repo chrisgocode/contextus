@@ -175,7 +175,7 @@ function RoomLoaded({
           </h1>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={onCopy}>
+          <Button variant="outline" onClick={onCopy} className="min-w-28">
             {copied ? "Copied!" : "Copy code"}
           </Button>
           <Button variant="outline" onClick={onLeave}>
