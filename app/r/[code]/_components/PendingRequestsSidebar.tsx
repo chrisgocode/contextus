@@ -1,6 +1,5 @@
-"use client";
-
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -8,8 +7,15 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { reportClientError } from "@/lib/report-error";
 
-export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
-  const pending = useQuery(api.requests.listPending, { gameId });
+type PendingRequests = FunctionReturnType<typeof api.requests.listPending>;
+
+export function PendingRequestsSidebar({
+  pending,
+  onApproveSuccess,
+}: {
+  pending: PendingRequests | undefined;
+  onApproveSuccess?: () => void;
+}) {
   const approve = useAction(api.requests.approve);
   const deny = useMutation(api.requests.deny);
   const [busy, setBusy] = useState<Id<"pendingRequests"> | null>(null);
@@ -61,6 +67,7 @@ export function PendingRequestsSidebar({ gameId }: { gameId: Id<"games"> }) {
                   setBusy(p._id);
                   try {
                     await approve({ requestId: p._id });
+                    onApproveSuccess?.();
                   } catch (err) {
                     reportClientError(err, {
                       userMessage: "Could not approve request.",

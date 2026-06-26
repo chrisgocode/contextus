@@ -12,8 +12,10 @@ import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
+import { HostRequestScrollHint } from "./_components/HostRequestScrollHint";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
+import { useElementInViewport } from "./_components/useElementInViewport";
 import { usePresenceSet } from "./_components/usePresenceSet";
 
 export default function RoomPage({
@@ -164,6 +166,32 @@ function RoomLoaded({
   const recent =
     lastFinished && lastFinished.length > 0 ? lastFinished[0] : null;
   const onlineSet = usePresenceSet(room._id, viewerUserId ?? "anon");
+  const pendingRequests = useQuery(
+    api.requests.listPending,
+    activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
+  );
+  const [requestsElement, setRequestsElement] =
+    useState<HTMLDivElement | null>(null);
+  const returnScrollYRef = useRef<number | null>(null);
+  const requestsVisible = useElementInViewport(requestsElement, 0.1);
+  const pendingRequestCount = pendingRequests?.length ?? 0;
+
+  function scrollToRequests() {
+    returnScrollYRef.current = window.scrollY;
+    requestsElement?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function scrollBackAfterApproval() {
+    const top = returnScrollYRef.current;
+    if (top === null) return;
+    returnScrollYRef.current = null;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top, behavior: "smooth" });
+    });
+  }
 
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
@@ -261,10 +289,25 @@ function RoomLoaded({
           </section>
 
           {activeGame && isViewerHost && (
-            <PendingRequestsSidebar gameId={activeGame._id} />
+            <div ref={setRequestsElement}>
+              <PendingRequestsSidebar
+                pending={pendingRequests}
+                onApproveSuccess={scrollBackAfterApproval}
+              />
+            </div>
           )}
         </aside>
       </div>
+
+      {activeGame &&
+        isViewerHost &&
+        pendingRequestCount > 0 &&
+        !requestsVisible && (
+          <HostRequestScrollHint
+            count={pendingRequestCount}
+            onClick={scrollToRequests}
+          />
+        )}
     </main>
   );
 }
