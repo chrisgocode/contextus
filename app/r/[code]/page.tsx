@@ -195,23 +195,39 @@ function RoomLoaded({
 
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
-      <header className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
+        <div className="min-w-0">
           <p className="text-sm text-muted-foreground">Room</p>
-          <h1 className="font-mono text-3xl font-bold tracking-widest">
+          <h1 className="truncate font-mono text-3xl font-bold tracking-widest">
             {room.code}
           </h1>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={onCopy} className="min-w-28">
-            {copied ? "Copied!" : "Copy code"}
+        <div className="flex flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
+          <Button
+            variant="outline"
+            onClick={onCopy}
+            className="shrink-0 px-2 sm:min-w-28 sm:px-2.5"
+          >
+            <span className="sm:hidden">{copied ? "Copied" : "Copy"}</span>
+            <span className="hidden sm:inline">
+              {copied ? "Copied!" : "Copy code"}
+            </span>
           </Button>
-          <Button variant="outline" onClick={onLeave}>
+          <Button
+            variant="outline"
+            onClick={onLeave}
+            className="shrink-0 px-2 sm:px-2.5"
+          >
             Leave
           </Button>
           {isViewerHost && (
-            <Button variant="destructive" onClick={onEnd}>
-              End room
+            <Button
+              variant="destructive"
+              onClick={onEnd}
+              className="shrink-0 px-2 sm:px-2.5"
+            >
+              <span className="sm:hidden">End</span>
+              <span className="hidden sm:inline">End room</span>
             </Button>
           )}
         </div>
