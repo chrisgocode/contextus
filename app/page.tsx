@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
 import * as Sentry from "@sentry/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -15,7 +14,6 @@ import { HomeSkeleton } from "./r/[code]/_components/RoomSkeleton";
 export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
-  const { signOut } = useAuthActions();
 
   if (isLoading) return <HomeSkeleton />;
   if (!isAuthenticated) {
@@ -41,21 +39,8 @@ export default function Home() {
     <main className="mx-auto max-w-2xl p-8 flex flex-col gap-8">
       <header className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Contextus</h1>
-        <Button
-          variant="outline"
-          onClick={async () => {
-            try {
-              await signOut();
-              router.push("/signin");
-            } catch (err) {
-              reportClientError(err, {
-                userMessage: "Sign-out failed.",
-                context: "auth.signout",
-              });
-            }
-          }}
-        >
-          Sign out
+        <Button variant="outline" onClick={() => router.push("/profile")}>
+          Profile
         </Button>
       </header>
       <CreateRoom />

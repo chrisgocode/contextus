@@ -25,9 +25,12 @@ import type * as lib_dates from "../lib/dates.js";
 import type * as lib_gameTransitions from "../lib/gameTransitions.js";
 import type * as lib_hint from "../lib/hint.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
+import type * as lib_usernames from "../lib/usernames.js";
+import type * as lib_words from "../lib/words.js";
 import type * as presence from "../presence.js";
 import type * as requests from "../requests.js";
 import type * as rooms from "../rooms.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -53,9 +56,12 @@ declare const fullApi: ApiFromModules<{
   "lib/gameTransitions": typeof lib_gameTransitions;
   "lib/hint": typeof lib_hint;
   "lib/roomActivity": typeof lib_roomActivity;
+  "lib/usernames": typeof lib_usernames;
+  "lib/words": typeof lib_words;
   presence: typeof presence;
   requests: typeof requests;
   rooms: typeof rooms;
+  users: typeof users;
 }>;
 
 /**
