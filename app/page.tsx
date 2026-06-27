@@ -14,8 +14,9 @@ import { HomeSkeleton } from "./r/[code]/_components/RoomSkeleton";
 export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
+  const currentUser = useQuery(api.users.getUser, isAuthenticated ? {} : "skip");
 
-  if (isLoading) return <HomeSkeleton />;
+  if (isLoading || (isAuthenticated && currentUser === undefined)) return <HomeSkeleton />;
   if (!isAuthenticated) {
     return (
       <Centered>
@@ -39,7 +40,13 @@ export default function Home() {
     <main className="mx-auto max-w-2xl p-8 flex flex-col gap-8">
       <header className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Contextus</h1>
-        <Button variant="outline" onClick={() => router.push("/profile")}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (currentUser?.username) router.push(`/user/${currentUser.username}`);
+          }}
+          disabled={!currentUser?.username}
+        >
           Profile
         </Button>
       </header>

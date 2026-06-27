@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import {
 	type ChangeEvent,
@@ -57,19 +57,16 @@ export function ProfileSkeleton() {
 }
 
 export function ProfileClient({
-	viewedUserId,
+	username,
 }: {
-	viewedUserId: Id<"users"> | null;
+	username: string;
 }) {
 	const router = useRouter();
-	const { isLoading, isAuthenticated } = useConvexAuth();
-	const userArgs = isAuthenticated
-		? viewedUserId === null
-			? {}
-			: { userId: viewedUserId }
-		: "skip";
-	const profile = useQuery(api.users.getUser, userArgs);
-	const activityGraph = useQuery(api.users.getActivityGraph, userArgs);
+	const profile = useQuery(api.users.getByUsername, { username });
+	const activityGraph = useQuery(api.users.getActivityGraph, { username });
+	const achievementState = useQuery(api.achievements.listForProfile, {
+		username,
+	});
 	const generateUploadUrl = useMutation(
 		api.users.generateProfileImageUploadUrl,
 	);
@@ -91,8 +88,13 @@ export function ProfileClient({
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
-		if (!isLoading && !isAuthenticated) router.replace("/signin");
-	}, [isLoading, isAuthenticated, router]);
+		if (profile === undefined || profile === null || profile.username === null) {
+			return;
+		}
+		if (profile.username !== username) {
+			router.replace(`/user/${profile.username}`);
+		}
+	}, [profile, router, username]);
 
 	useEffect(() => {
 		if (selectedAvatarPreview === null) return;
@@ -100,15 +102,14 @@ export function ProfileClient({
 	}, [selectedAvatarPreview]);
 
 	if (
-		isLoading ||
-		!isAuthenticated ||
 		profile === undefined ||
-		activityGraph === undefined
+		activityGraph === undefined ||
+		achievementState === undefined
 	) {
 		return <ProfileSkeleton />;
 	}
 
-	if (profile === null || activityGraph === null) {
+	if (profile === null || activityGraph === null || achievementState === null) {
 		return <p className="text-muted-foreground">Profile not found.</p>;
 	}
 
@@ -198,12 +199,16 @@ export function ProfileClient({
 				username: trimmedUsername,
 				...(avatarStorageId === undefined ? {} : { avatarStorageId }),
 			});
+			const nextUsername = trimmedUsername.toLowerCase();
 			setIsEditing(false);
 			setSelectedAvatarFile(null);
 			setSelectedAvatarPreview((previous) => {
 				if (previous !== null) URL.revokeObjectURL(previous);
 				return null;
 			});
+			if (nextUsername !== loadedProfile.username) {
+				router.replace(`/user/${nextUsername}`);
+			}
 		} catch (caught) {
 			setError(
 				caught instanceof Error ? caught.message : "Could not update profile.",
@@ -225,7 +230,7 @@ export function ProfileClient({
 						onChange={handleAvatarChange}
 					/>
 					<Avatar
-						className="h-20 w-20 cursor-pointer"
+						className={`h-20 w-20 ${canEdit ? "cursor-pointer" : ""}`}
 						onClick={handleAvatarClick}
 					>
 						{avatarSrc && <AvatarImage src={avatarSrc} alt={displayName} />}
@@ -316,7 +321,7 @@ export function ProfileClient({
 				</div>
 			</section>
 
-			<Achievements />
+			<Achievements achievementState={achievementState} />
 		</>
 	);
 }

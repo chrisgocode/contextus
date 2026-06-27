@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { requireUser } from "./access";
 import {
 	assertUsernameAvailable,
@@ -21,6 +23,16 @@ function utcDateKey(timestamp: number): string {
 	return new Date(timestamp).toISOString().slice(0, 10);
 }
 
+async function getUserByUsername(
+	ctx: Pick<QueryCtx, "db">,
+	username: string,
+) {
+	return await ctx.db
+		.query("users")
+		.withIndex("by_username", (q) => q.eq("username", username.toLowerCase()))
+		.unique();
+}
+
 export const getUser = query({
 	args: { userId: v.optional(v.id("users")) },
 	handler: async (ctx, { userId }) => {
@@ -35,11 +47,35 @@ export const getUser = query({
 		return {
 			_id: user._id,
 			name: user.name ?? null,
-			email: user.email ?? null,
+			email: requestedUserId === currentUserId ? (user.email ?? null) : null,
 			username: user.username ?? null,
 			displayUsername: user.displayUsername ?? null,
 			image: uploadedAvatarUrl ?? user.image ?? null,
 			isCurrentUser: requestedUserId === currentUserId,
+		};
+	},
+});
+
+export const getByUsername = query({
+	args: { username: v.string() },
+	handler: async (ctx, { username }) => {
+		const user = await getUserByUsername(ctx, username.trim());
+		if (user === null) return null;
+
+		const currentUserId = await getAuthUserId(ctx);
+		const isCurrentUser = currentUserId === user._id;
+		const uploadedAvatarUrl = user.avatarStorageId
+			? await ctx.storage.getUrl(user.avatarStorageId)
+			: null;
+
+		return {
+			_id: user._id,
+			name: user.name ?? null,
+			username: user.username ?? null,
+			displayUsername: user.displayUsername ?? null,
+			image: uploadedAvatarUrl ?? user.image ?? null,
+			isCurrentUser,
+			email: isCurrentUser ? (user.email ?? null) : null,
 		};
 	},
 });
@@ -119,10 +155,16 @@ export const backfillMissingUsernames = mutation({
 });
 
 export const getActivityGraph = query({
-	args: { userId: v.optional(v.id("users")) },
-	handler: async (ctx, { userId }) => {
-		const currentUserId = await requireUser(ctx);
-		const requestedUserId = userId ?? currentUserId;
+	args: {
+		userId: v.optional(v.id("users")),
+		username: v.optional(v.string()),
+	},
+	handler: async (ctx, { userId, username }) => {
+		const requestedUserId =
+			username === undefined
+				? userId ?? (await requireUser(ctx))
+				: (await getUserByUsername(ctx, username.trim()))?._id;
+		if (requestedUserId === undefined) return null;
 		const user = await ctx.db.get(requestedUserId);
 		if (user === null) return null;
 

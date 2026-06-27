@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
-export default function ProfileLayout({
+export default function UserProfileLayout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;

@@ -58,7 +58,12 @@ test("submit: success returns distance and writes guess + cache", async () => {
     gameId,
     word: "hello",
   });
-  expect(res).toEqual({ lemma: "hello", distance: 42591, won: false });
+  expect(res).toEqual({
+    lemma: "hello",
+    distance: 42591,
+    won: false,
+    unlockedAchievementIds: ["youll_get_there"],
+  });
   const rows = await t.run(async (ctx) =>
     ctx.db
       .query("gameGuesses")
@@ -92,6 +97,7 @@ test("submit: duplicate lemma in same game returns already guessed result", asyn
     won: false,
     alreadyGuessed: true,
     message: "The word was already guessed.",
+    unlockedAchievementIds: [],
   });
 });
 
