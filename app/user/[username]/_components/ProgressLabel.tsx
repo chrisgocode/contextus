@@ -11,8 +11,7 @@ const ProgressLabel = ({ value, className, ...props }: ProgressLabelProps) => {
 			<Progress value={value} className={className ?? "h-4"} {...props} />
 			<div
 				aria-hidden="true"
-				className="pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center font-medium text-primary-foreground text-xs"
-				style={{ width: `${value}%` }}
+				className="pointer-events-none absolute inset-0 flex items-center justify-center font-medium text-primary-foreground text-xs"
 			>
 				{value}%
 			</div>

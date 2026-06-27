@@ -43,7 +43,7 @@ export function ActivityGraph({ days }: { days: Activity[] }) {
 		<TooltipProvider>
 			<div className="py-4">
 				<div className="mb-3 flex items-center justify-between gap-4">
-					<span className="text-muted-foreground">Activity</span>
+					<span className="font-semibold text-lg">Activity</span>
 				</div>
 				<ContributionGraph className="w-full text-xs" data={data} fontSize={12}>
 					<ContributionGraphCalendar>

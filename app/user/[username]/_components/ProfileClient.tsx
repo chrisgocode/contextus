@@ -56,11 +56,7 @@ export function ProfileSkeleton() {
 	);
 }
 
-export function ProfileClient({
-	username,
-}: {
-	username: string;
-}) {
+export function ProfileClient({ username }: { username: string }) {
 	const router = useRouter();
 	const profile = useQuery(api.users.getByUsername, { username });
 	const activityGraph = useQuery(api.users.getActivityGraph, { username });
@@ -88,7 +84,11 @@ export function ProfileClient({
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
-		if (profile === undefined || profile === null || profile.username === null) {
+		if (
+			profile === undefined ||
+			profile === null ||
+			profile.username === null
+		) {
 			return;
 		}
 		if (profile.username !== username) {
@@ -319,9 +319,8 @@ export function ProfileClient({
 				<div className="mt-4 divide-y border-y text-sm">
 					<ActivityGraph days={activityGraph.days} />
 				</div>
+				<Achievements achievementState={achievementState} />
 			</section>
-
-			<Achievements achievementState={achievementState} />
 		</>
 	);
 }
