@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as achievements from "../achievements.js";
 import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as contexto from "../contexto.js";
@@ -19,6 +20,8 @@ import type * as giveup from "../giveup.js";
 import type * as guesses from "../guesses.js";
 import type * as hints from "../hints.js";
 import type * as http from "../http.js";
+import type * as lib_achievementRules from "../lib/achievementRules.js";
+import type * as lib_achievements from "../lib/achievements.js";
 import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_code from "../lib/code.js";
 import type * as lib_dates from "../lib/dates.js";
@@ -40,6 +43,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  achievements: typeof achievements;
   auth: typeof auth;
   cleanup: typeof cleanup;
   contexto: typeof contexto;
@@ -50,6 +54,8 @@ declare const fullApi: ApiFromModules<{
   guesses: typeof guesses;
   hints: typeof hints;
   http: typeof http;
+  "lib/achievementRules": typeof lib_achievementRules;
+  "lib/achievements": typeof lib_achievements;
   "lib/cleanup": typeof lib_cleanup;
   "lib/code": typeof lib_code;
   "lib/dates": typeof lib_dates;

@@ -51,6 +51,40 @@ test("schema accepts all table shapes", async () => {
       userId,
       contextoGameId: 1336,
       firstPlayedAt: Date.now(),
+      firstAttemptAt: Date.now(),
+      firstAttemptDistance: 42591,
+      firstAttemptGameId: gameId,
+      firstSolvedAt: Date.now(),
+      firstSolvedGameId: gameId,
+    });
+    await ctx.db.insert("userAchievements", {
+      userId,
+      achievementId: "youll_get_there",
+      unlockedAt: Date.now(),
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId,
+      achievementId: "it_happens",
+      current: 1,
+      target: 250,
+      hidden: false,
+      updatedAt: Date.now(),
+    });
+    await ctx.db.insert("userAchievementStats", {
+      userId,
+      redGuesses: 1,
+      yellowGuesses: 0,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
+    await ctx.db.insert("gamePlayerStats", {
+      gameId,
+      userId,
+      realGuessCount: 1,
+      bestDistance: 42591,
+      lastDistance: 42591,
+      noBacktrackingSoFar: true,
+      updatedAt: Date.now(),
     });
   });
 
@@ -62,6 +96,10 @@ test("schema accepts all table shapes", async () => {
     wordDistances: (await ctx.db.query("wordDistances").collect()).length,
     pending: (await ctx.db.query("pendingRequests").collect()).length,
     history: (await ctx.db.query("userGameHistory").collect()).length,
+    achievements: (await ctx.db.query("userAchievements").collect()).length,
+    progress: (await ctx.db.query("userAchievementProgress").collect()).length,
+    stats: (await ctx.db.query("userAchievementStats").collect()).length,
+    gamePlayerStats: (await ctx.db.query("gamePlayerStats").collect()).length,
   }));
 
   expect(counts).toEqual({
@@ -72,5 +110,9 @@ test("schema accepts all table shapes", async () => {
     wordDistances: 1,
     pending: 1,
     history: 1,
+    achievements: 1,
+    progress: 1,
+    stats: 1,
+    gamePlayerStats: 1,
   });
 });

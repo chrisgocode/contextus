@@ -169,7 +169,7 @@ export const achievements = [
 		id: "dictionary_incarnate",
 		category: "diamond",
 		name: "Dictionary Incarnate",
-		description: "Solve 500 puzzles.",
+		description: "Solve 250 puzzles.",
 	},
 	{
 		id: "skill_issue",
@@ -178,7 +178,7 @@ export const achievements = [
 		description: "Guess in the red 5000 times.",
 	},
 	{
-		id: "lukewarm",
+		id: "close_enough",
 		category: "diamond",
 		name: "Close Enough",
 		description: "Guess in the yellow 2500 times.",

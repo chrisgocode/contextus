@@ -154,8 +154,53 @@ export default defineSchema({
 		userId: v.id("users"),
 		contextoGameId: v.number(),
 		firstPlayedAt: v.number(),
+		firstAttemptAt: v.optional(v.number()),
+		firstAttemptDistance: v.optional(v.number()),
+		firstAttemptGameId: v.optional(v.id("games")),
+		firstSolvedAt: v.optional(v.number()),
+		firstSolvedGameId: v.optional(v.id("games")),
 	})
 		.index("by_user_game", ["userId", "contextoGameId"])
 		.index("by_user", ["userId"])
 		.index("by_user_and_firstPlayedAt", ["userId", "firstPlayedAt"]),
+
+	userAchievements: defineTable({
+		userId: v.id("users"),
+		achievementId: v.string(),
+		unlockedAt: v.number(),
+	})
+		.index("by_user_achievement", ["userId", "achievementId"])
+		.index("by_user", ["userId"]),
+
+	userAchievementProgress: defineTable({
+		userId: v.id("users"),
+		achievementId: v.string(),
+		current: v.number(),
+		target: v.number(),
+		hidden: v.boolean(),
+		updatedAt: v.number(),
+	})
+		.index("by_user_achievement", ["userId", "achievementId"])
+		.index("by_user", ["userId"]),
+
+	userAchievementStats: defineTable({
+		userId: v.id("users"),
+		redGuesses: v.number(),
+		yellowGuesses: v.number(),
+		greenGuesses: v.number(),
+		uniqueSolves: v.number(),
+	})
+		.index("by_user", ["userId"]),
+
+	gamePlayerStats: defineTable({
+		gameId: v.id("games"),
+		userId: v.id("users"),
+		realGuessCount: v.number(),
+		bestDistance: v.number(),
+		lastDistance: v.number(),
+		noBacktrackingSoFar: v.boolean(),
+		updatedAt: v.number(),
+	})
+		.index("by_game_user", ["gameId", "userId"])
+		.index("by_game", ["gameId"]),
 });

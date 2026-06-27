@@ -4,7 +4,6 @@ import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import {
   requireHostByRoom,
-  requireMemberByGame,
   requireUser,
   tryMemberByGame,
   tryMemberByRoom,
@@ -127,4 +126,3 @@ export const _recordHistory = internalMutation({
     await upsertHistory(ctx, userId, contextoGameId);
   },
 });
-

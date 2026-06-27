@@ -8,7 +8,7 @@ import {
 	type AchievementCategory,
 	achievementGroups,
 	achievements,
-} from "./achievementConstants";
+} from "./achievement-constants";
 
 const unlockedAchievementCount = 0;
 

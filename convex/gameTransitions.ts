@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation } from "./_generated/server";
+import { recordAcceptedGuessForAchievements } from "./achievements";
 import { upsertHistory } from "./games";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { upsertRoomActivity } from "./lib/roomActivity";
@@ -68,6 +69,15 @@ export const applyGuess = internalMutation({
 			decision.upsertHistoryForUserId,
 			game.contextoGameId,
 		);
+		await recordAcceptedGuessForAchievements(ctx, {
+			gameId,
+			contextoGameId: game.contextoGameId,
+			userId,
+			distance,
+			source,
+			won: decision.won,
+			now: decision.lastActivityAt,
+		});
 		if (decision.closeRequestId !== null) {
 			await ctx.db.patch(decision.closeRequestId, { status: "approved" });
 		}

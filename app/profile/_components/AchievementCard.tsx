@@ -4,7 +4,7 @@ import Image, { type StaticImageData } from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
-import type { Achievement } from "./achievementConstants";
+import type { Achievement } from "./achievement-constants";
 import ProgressLabel from "./ProgressLabel";
 
 export function AchievementCard({

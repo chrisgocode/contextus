@@ -16,8 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ActivityGraph } from "./ActivityGraph";
 import { Achievements } from "./Achievements";
+import { ActivityGraph } from "./ActivityGraph";
 
 export function ProfileSkeleton() {
 	return (
