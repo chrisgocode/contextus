@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">8-bit bronze trophy</title>
+  <desc id="desc">A small pixel art bronze trophy with handles and a base.</desc>
+  <rect width="128" height="128" fill="none"/>
+  <g shape-rendering="crispEdges">
+    <rect x="40" y="16" width="48" height="8" fill="#c87935"/>
+    <rect x="32" y="24" width="64" height="8" fill="#9f5728"/>
+    <rect x="40" y="32" width="48" height="40" fill="#c87935"/>
+    <rect x="48" y="32" width="8" height="40" fill="#e7a96a"/>
+    <rect x="80" y="32" width="8" height="32" fill="#6f321c"/>
+    <rect x="56" y="72" width="16" height="16" fill="#9f5728"/>
+    <rect x="64" y="72" width="8" height="16" fill="#6f321c"/>
+    <rect x="48" y="88" width="32" height="8" fill="#c87935"/>
+    <rect x="40" y="96" width="48" height="8" fill="#9f5728"/>
+    <rect x="32" y="104" width="64" height="8" fill="#6f321c"/>
+    <rect x="16" y="32" width="24" height="8" fill="#9f5728"/>
+    <rect x="16" y="48" width="8" height="8" fill="#9f5728"/>
+    <rect x="24" y="56" width="8" height="8" fill="#9f5728"/>
+    <rect x="32" y="64" width="8" height="8" fill="#6f321c"/>
+    <rect x="16" y="40" width="8" height="8" fill="#e7a96a"/>
+    <rect x="88" y="32" width="24" height="8" fill="#9f5728"/>
+    <rect x="104" y="48" width="8" height="8" fill="#9f5728"/>
+    <rect x="96" y="56" width="8" height="8" fill="#9f5728"/>
+    <rect x="88" y="64" width="8" height="8" fill="#6f321c"/>
+    <rect x="104" y="40" width="8" height="8" fill="#e7a96a"/>
+    <rect x="56" y="40" width="16" height="8" fill="#ffd4a3"/>
+    <rect x="72" y="48" width="8" height="8" fill="#ffd4a3"/>
+  </g>
+</svg>

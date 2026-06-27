@@ -14,13 +14,21 @@ export function setupTest() {
 
 export async function seedUser(
   t: ReturnType<typeof setupTest>,
-  attrs: { name?: string; email?: string; image?: string } = {},
+  attrs: {
+    name?: string;
+    email?: string;
+    image?: string;
+    username?: string;
+    displayUsername?: string;
+  } = {},
 ): Promise<Id<"users">> {
   return await t.run(async (ctx) => {
     return await ctx.db.insert("users", {
       name: attrs.name ?? "Test User",
       email: attrs.email ?? `u${Math.random().toString(36).slice(2)}@test.dev`,
       image: attrs.image,
+      username: attrs.username,
+      displayUsername: attrs.displayUsername,
     });
   });
 }
