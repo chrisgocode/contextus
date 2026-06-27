@@ -9,37 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import { reportClientError } from "@/lib/report-error";
-import { HomeSkeleton } from "./r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const currentUser = useQuery(api.users.getUser, isAuthenticated ? {} : "skip");
 
-  if (isLoading || (isAuthenticated && currentUser === undefined)) return <HomeSkeleton />;
-  if (!isAuthenticated) {
-    return (
-      <Centered>
-        <h1 className="text-4xl font-bold tracking-tight">Contextus</h1>
-        <p className="max-w-md text-muted-foreground">
-          Co-op Contexto with friends. Create a room, share the code, guess
-          together.
-        </p>
-        <Button
-          className="mt-2"
-          size="lg"
-          onClick={() => router.push("/signin")}
-        >
-          Sign in to play
-        </Button>
-      </Centered>
-    );
-  }
-
-  return (
-    <main className="mx-auto max-w-2xl p-8 flex flex-col gap-8">
-      <header className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Contextus</h1>
+  const header = (
+    <header className="flex items-center justify-between">
+      <h1 className="text-2xl font-bold">Contextus</h1>
+      {isAuthenticated ? (
         <Button
           variant="outline"
           onClick={() => {
@@ -49,21 +28,66 @@ export default function Home() {
         >
           Profile
         </Button>
-      </header>
+      ) : null}
+    </header>
+  );
+
+  if (isLoading || (isAuthenticated && currentUser === undefined)) {
+    return (
+      <>
+        {header}
+        <HomeContentSkeleton />
+      </>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        {header}
+        <Centered>
+          <p className="max-w-md text-muted-foreground">
+            Co-op Contexto with friends. Create a room, share the code, guess
+            together.
+          </p>
+          <Button
+            className="mt-2"
+            size="lg"
+            onClick={() => router.push("/signin")}
+          >
+            Sign in to play
+          </Button>
+        </Centered>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {header}
       <CreateRoom />
       <JoinRoom />
       <MyRooms />
-    </main>
+    </>
   );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
+    <section className="flex min-h-[calc(100vh-8rem)] items-center justify-center">
       <div className="flex flex-col items-center gap-2 text-center">
         {children}
       </div>
-    </main>
+    </section>
+  );
+}
+
+function HomeContentSkeleton() {
+  return (
+    <>
+      <div className="h-32 w-full rounded-lg border" />
+      <div className="h-28 w-full rounded-lg border" />
+    </>
   );
 }
 
