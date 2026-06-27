@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ActivityGraph } from "./ActivityGraph";
+import { Achievements } from "./Achievements";
 
 export function ProfileSkeleton() {
 	return (
@@ -314,6 +315,8 @@ export function ProfileClient({
 					<ActivityGraph days={activityGraph.days} />
 				</div>
 			</section>
+
+			<Achievements />
 		</>
 	);
 }

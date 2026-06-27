@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">8-bit obsidian trophy</title>
+  <desc id="desc">A small pixel art obsidian trophy with handles, purple highlights, and a base.</desc>
+  <rect width="128" height="128" fill="none"/>
+  <g shape-rendering="crispEdges">
+    <rect x="40" y="16" width="48" height="8" fill="#22152f"/>
+    <rect x="32" y="24" width="64" height="8" fill="#120b1f"/>
+    <rect x="40" y="32" width="48" height="40" fill="#22152f"/>
+    <rect x="48" y="32" width="8" height="40" fill="#5b3a82"/>
+    <rect x="80" y="32" width="8" height="32" fill="#08050f"/>
+    <rect x="56" y="72" width="16" height="16" fill="#120b1f"/>
+    <rect x="64" y="72" width="8" height="16" fill="#08050f"/>
+    <rect x="48" y="88" width="32" height="8" fill="#22152f"/>
+    <rect x="40" y="96" width="48" height="8" fill="#120b1f"/>
+    <rect x="32" y="104" width="64" height="8" fill="#08050f"/>
+    <rect x="16" y="32" width="24" height="8" fill="#120b1f"/>
+    <rect x="16" y="48" width="8" height="8" fill="#120b1f"/>
+    <rect x="24" y="56" width="8" height="8" fill="#120b1f"/>
+    <rect x="32" y="64" width="8" height="8" fill="#08050f"/>
+    <rect x="16" y="40" width="8" height="8" fill="#5b3a82"/>
+    <rect x="88" y="32" width="24" height="8" fill="#120b1f"/>
+    <rect x="104" y="48" width="8" height="8" fill="#120b1f"/>
+    <rect x="96" y="56" width="8" height="8" fill="#120b1f"/>
+    <rect x="88" y="64" width="8" height="8" fill="#08050f"/>
+    <rect x="104" y="40" width="8" height="8" fill="#5b3a82"/>
+    <rect x="56" y="40" width="16" height="8" fill="#8b5fd1"/>
+    <rect x="72" y="48" width="8" height="8" fill="#8b5fd1"/>
+    <rect x="48" y="56" width="8" height="8" fill="#392555"/>
+    <rect x="72" y="32" width="8" height="8" fill="#392555"/>
+  </g>
+</svg>
