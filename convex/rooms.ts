@@ -1,17 +1,36 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
-import { requireHostByRoom, requireRegisteredUser, requireUser } from "./access";
+import { type MutationCtx, mutation, query } from "./_generated/server";
+import { requireHostByRoom, requireUser } from "./access";
 import { generateRoomCode } from "./lib/code";
 import { upsertRoomActivity } from "./lib/roomActivity";
 
 const MAX_CODE_RETRIES = 10;
+const MAX_GUEST_ACTIVE_ROOMS = 3;
+
+async function requireGuestRoomSlot(
+	ctx: Pick<MutationCtx, "db">,
+	userId: Awaited<ReturnType<typeof requireUser>>,
+) {
+	const user = await ctx.db.get(userId);
+	if (user?.isAnonymous !== true) return;
+	const activeMemberships = await ctx.db
+		.query("roomMembers")
+		.withIndex("by_user_and_active", (q) =>
+			q.eq("userId", userId).eq("active", true),
+		)
+		.take(MAX_GUEST_ACTIVE_ROOMS);
+	if (activeMemberships.length >= MAX_GUEST_ACTIVE_ROOMS) {
+		throw new ConvexError("Guest room limit reached");
+	}
+}
 
 export const create = mutation({
 	args: {},
 	handler: async (ctx) => {
-		const userId = await requireRegisteredUser(ctx);
+		const userId = await requireUser(ctx);
+		await requireGuestRoomSlot(ctx, userId);
 		const now = Date.now();
 
 		let code: string | null = null;
@@ -39,6 +58,7 @@ export const create = mutation({
 			roomId,
 			userId,
 			joinedAt: now,
+			active: true,
 		});
 		await upsertRoomActivity(ctx, roomId, now);
 		return { code, roomId };
@@ -64,10 +84,12 @@ export const join = mutation({
 			)
 			.unique();
 		if (existing === null) {
+			await requireGuestRoomSlot(ctx, userId);
 			await ctx.db.insert("roomMembers", {
 				roomId: room._id,
 				userId,
 				joinedAt: Date.now(),
+				active: true,
 			});
 		}
 		await upsertRoomActivity(ctx, room._id, Date.now());
@@ -101,6 +123,13 @@ export const endRoom = mutation({
 	handler: async (ctx, { roomId }) => {
 		await requireHostByRoom(ctx, { roomId });
 		await ctx.db.patch(roomId, { status: "ended" });
+		const members = await ctx.db
+			.query("roomMembers")
+			.withIndex("by_room", (q) => q.eq("roomId", roomId))
+			.collect();
+		for (const member of members) {
+			await ctx.db.patch(member._id, { active: false });
+		}
 		return null;
 	},
 });
@@ -115,10 +144,22 @@ export const getByCode = query({
 			.unique();
 		if (room === null) return null;
 		const viewerId = await getAuthUserId(ctx);
-		const members = await ctx.db
-			.query("roomMembers")
-			.withIndex("by_room", (q) => q.eq("roomId", room._id))
-			.collect();
+		const viewerMembership =
+			viewerId === null
+				? null
+				: await ctx.db
+						.query("roomMembers")
+						.withIndex("by_room_user", (q) =>
+							q.eq("roomId", room._id).eq("userId", viewerId),
+						)
+						.unique();
+		const members =
+			viewerMembership === null
+				? []
+				: await ctx.db
+						.query("roomMembers")
+						.withIndex("by_room", (q) => q.eq("roomId", room._id))
+						.collect();
 		const memberDocs = await Promise.all(
 			members.map(async (m) => {
 				const user = await ctx.db.get(m.userId);
@@ -126,7 +167,6 @@ export const getByCode = query({
 					userId: m.userId,
 					name: user?.name ?? user?.displayUsername ?? null,
 					image: user?.image ?? null,
-					email: user?.email ?? null,
 					joinedAt: m.joinedAt,
 					isHost: m.userId === room.hostUserId,
 				};

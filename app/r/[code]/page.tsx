@@ -7,6 +7,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
+import { getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
@@ -34,7 +35,9 @@ export default function RoomPage({
   const join = useMutation(api.rooms.join);
   const { signIn } = useAuthActions();
   const [copied, setCopied] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
+  const leavingRef = useRef(false);
 
   const isMember = data?.viewerUserId
     ? data.members.some((m) => m.userId === data.viewerUserId)
@@ -62,23 +65,34 @@ export default function RoomPage({
   useEffect(() => {
     if (
       data &&
+      isAuthenticated &&
       data.room.status === "active" &&
       !isMember &&
+      joinError === null &&
+      !leavingRef.current &&
       !joiningRef.current
     ) {
       joiningRef.current = true;
       join({ code: upper })
         .catch((err) => {
-          reportClientError(err, {
-            userMessage: "Could not join room.",
-            context: "room.autojoin",
-          });
+          const isRoomLimit =
+            getErrorData(err) === "Guest room limit reached";
+          const message = isRoomLimit
+            ? "Guest room limit reached"
+            : "Could not join room. Try again.";
+          setJoinError(message);
+          if (!isRoomLimit) {
+            reportClientError(err, {
+              userMessage: message,
+              context: "room.autojoin",
+            });
+          }
         })
         .finally(() => {
           joiningRef.current = false;
         });
     }
-  }, [data, isMember, join, upper]);
+  }, [data, isAuthenticated, isMember, join, joinError, upper]);
 
   if (isLoading) return <RoomSkeleton />;
   if (data === undefined) return <RoomSkeleton />;
@@ -98,14 +112,50 @@ export default function RoomPage({
             await signIn("anonymous");
             await join({ code: upper });
           } catch (err) {
-            reportClientError(err, {
-              userMessage: "Could not join as guest.",
-              context: "room.guestJoin",
-            });
+            if (getErrorData(err) === "Guest room limit reached") {
+              setJoinError("Guest room limit reached");
+            } else {
+              reportClientError(err, {
+                userMessage: "Could not join as guest. Try again.",
+                context: "room.guestJoin",
+              });
+            }
           }
         }}
-        onSignIn={() => router.push("/signin")}
+        onSignIn={() =>
+          router.push(`/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`)
+        }
       />
+    );
+  }
+  if (!isMember && joinError === "Guest room limit reached") {
+    return (
+      <Centered>
+        <p>Create an account to host or join more active rooms.</p>
+        <Button
+          onClick={() =>
+            router.push(
+              `/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`,
+            )
+          }
+        >
+          Create account
+        </Button>
+        <Button variant="outline" onClick={() => router.push("/")}>
+          Cancel
+        </Button>
+      </Centered>
+    );
+  }
+  if (!isMember && joinError !== null) {
+    return (
+      <Centered>
+        <p>Could not join room. Try again.</p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+        <Button variant="outline" onClick={() => router.push("/")}>
+          Home
+        </Button>
+      </Centered>
     );
   }
   if (!isMember) return <RoomSkeleton />;
@@ -116,10 +166,12 @@ export default function RoomPage({
       activeGame={activeGame}
       lastFinished={lastFinished}
       onLeave={async () => {
+        leavingRef.current = true;
         try {
           await leave({ roomId: data.room._id });
           router.push("/");
         } catch (err) {
+          leavingRef.current = false;
           reportClientError(err, {
             userMessage: "Could not leave room.",
             context: "room.leave",
@@ -224,8 +276,9 @@ function RoomLoaded({
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
   );
-  const [requestsElement, setRequestsElement] =
-    useState<HTMLDivElement | null>(null);
+  const [requestsElement, setRequestsElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const returnScrollYRef = useRef<number | null>(null);
   const requestsVisible = useElementInViewport(requestsElement, 0.1);
   const pendingRequestCount = pendingRequests?.length ?? 0;

@@ -26,6 +26,7 @@ import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_code from "../lib/code.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_gameTransitions from "../lib/gameTransitions.js";
+import type * as lib_guestEngagement from "../lib/guestEngagement.js";
 import type * as lib_guestMerge from "../lib/guestMerge.js";
 import type * as lib_hint from "../lib/hint.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   "lib/code": typeof lib_code;
   "lib/dates": typeof lib_dates;
   "lib/gameTransitions": typeof lib_gameTransitions;
+  "lib/guestEngagement": typeof lib_guestEngagement;
   "lib/guestMerge": typeof lib_guestMerge;
   "lib/hint": typeof lib_hint;
   "lib/roomActivity": typeof lib_roomActivity;

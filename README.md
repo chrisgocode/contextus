@@ -1,6 +1,6 @@
 # Contextus
 
-Co-op multiplayer [Contexto](https://contexto.me) using the public Contexto API. Next.js + Convex + Convex Auth (Google) + shadcn.
+Co-op multiplayer [Contexto](https://contexto.me) using the public Contexto API. Guests can create or join up to three active rooms without an account, then convert with Google to keep their progress. Built with Next.js, Convex, Convex Auth, and shadcn.
 
 ## Run locally
 
@@ -37,7 +37,7 @@ Tests use `convex-test` + `vitest` + `@edge-runtime/vm`. The Contexto API is moc
 - `convex/hints.ts` — request/approve flow; algorithm in `lib/hint.ts`
 - `convex/giveup.ts` — request/approve flow
 - `convex/presence.ts` — wraps `@convex-dev/presence`; UI uses `usePresence` hook
-- `convex/cleanup.ts` + `convex/crons.ts` — every 5 minutes: migrate host if offline, end idle (30 min) rooms
+- `convex/cleanup.ts` + `convex/crons.ts` — migrate offline hosts, end idle rooms, and anonymize expired guest accounts
 - `app/r/[code]/page.tsx` — state machine: lobby → in-progress → ended
 
 ## Deploy

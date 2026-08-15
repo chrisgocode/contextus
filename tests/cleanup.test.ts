@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "../convex/_generated/api";
-import {
-  IDLE_TIMEOUT_MS,
-  decideRoomCleanup,
-} from "../convex/lib/cleanup";
+import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../convex/lib/cleanup";
 import type { Id } from "../convex/_generated/dataModel";
 import { asUser, seedUser, setupTest } from "./helpers";
 
@@ -78,10 +75,7 @@ describe("cleanup.tick", () => {
   test("ends idle room when all members are offline (disconnected presence)", async () => {
     const t = setupTest();
     const hostUser = await seedUser(t, { name: "Host" });
-    const { roomId } = await asUser(t, hostUser).mutation(
-      api.rooms.create,
-      {},
-    );
+    const { roomId } = await asUser(t, hostUser).mutation(api.rooms.create, {});
 
     // Host comes online, then disconnects (presence record kept as offline).
     const beat = await asUser(t, hostUser).mutation(api.presence.heartbeat, {
@@ -115,4 +109,56 @@ describe("cleanup.tick", () => {
     });
     expect(status).toBe("ended");
   });
+});
+
+test("expired guest cleanup removes private progress and keeps anonymized guesses", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, {
+    isAnonymous: true,
+    username: "temporaryguest",
+    displayUsername: "TemporaryGuest",
+    guestExpiresAt: Date.now() - 1,
+  });
+  const host = await seedUser(t);
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.insert("gameGuesses", {
+      gameId,
+      userId: guest,
+      lemma: "kept",
+      distance: 100,
+      source: "guess",
+      createdAt: 1,
+    });
+    await ctx.db.insert("userGameHistory", {
+      userId: guest,
+      contextoGameId: 1336,
+      firstPlayedAt: 1,
+    });
+  });
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
+
+  const result = await t.run(async (ctx) => ({
+    user: await ctx.db.get(guest),
+    history: await ctx.db
+      .query("userGameHistory")
+      .withIndex("by_user", (q) => q.eq("userId", guest))
+      .collect(),
+    guesses: await ctx.db
+      .query("gameGuesses")
+      .withIndex("by_user", (q) => q.eq("userId", guest))
+      .collect(),
+  }));
+  expect(result.user).toMatchObject({
+    name: "Former Guest",
+    isAnonymous: false,
+  });
+  expect(result.user?.username).toBeUndefined();
+  expect(result.history).toEqual([]);
+  expect(result.guesses).toHaveLength(1);
 });

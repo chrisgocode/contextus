@@ -112,6 +112,50 @@ test("submit: anonymous room member can guess", async () => {
   expect(rows.map((r) => r.userId)).toEqual([guest]);
 });
 
+test("guest account prompt is due after every third completed game", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const { roomId } = await asUser(t, guest).mutation(api.rooms.create, {});
+  mockContextoFetch({
+    guesses: Object.fromEntries(
+      Array.from({ length: 6 }, (_, i) => [i + 1, { winner: 0 }]),
+    ),
+  });
+
+  for (let contextoGameId = 1; contextoGameId <= 3; contextoGameId++) {
+    const { gameId } = await asUser(t, guest).mutation(api.games.start, {
+      roomId,
+      contextoGameId,
+    });
+    await asUser(t, guest).action(api.guesses.submit, {
+      gameId,
+      word: "winner",
+    });
+  }
+
+  await expect(
+    asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
+  ).resolves.toMatchObject({ completedGames: 3, messageIndex: 0 });
+  await asUser(t, guest).mutation(api.users.dismissGuestAccountPrompt, {});
+  await expect(
+    asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
+  ).resolves.toBeNull();
+
+  for (let contextoGameId = 4; contextoGameId <= 6; contextoGameId++) {
+    const { gameId } = await asUser(t, guest).mutation(api.games.start, {
+      roomId,
+      contextoGameId,
+    });
+    await asUser(t, guest).action(api.guesses.submit, {
+      gameId,
+      word: "winner",
+    });
+  }
+  await expect(
+    asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
+  ).resolves.toMatchObject({ completedGames: 6, messageIndex: 1 });
+});
+
 test("submit: duplicate lemma in same game returns already guessed result", async () => {
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
