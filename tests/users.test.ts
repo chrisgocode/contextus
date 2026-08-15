@@ -113,6 +113,22 @@ test("updateProfile updates the authenticated user's profile", async () => {
 	});
 });
 
+test("updateProfile rejects anonymous users", async () => {
+	const t = setupTest();
+	const guest = await seedUser(t, {
+		isAnonymous: true,
+		username: "guestname",
+		displayUsername: "GuestName",
+	});
+
+	await expect(
+		asUser(t, guest).mutation(api.users.updateProfile, {
+			name: "Updated Guest",
+			username: "UpdatedGuest",
+		}),
+	).rejects.toThrow("Registered account required");
+});
+
 test("updateProfile rejects invalid and duplicate usernames", async () => {
 	const t = setupTest();
 	const user = await seedUser(t, {

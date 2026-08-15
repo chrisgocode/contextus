@@ -14,28 +14,46 @@ export function setupTest() {
 
 export async function seedUser(
   t: ReturnType<typeof setupTest>,
-  attrs: {
-    name?: string;
-    email?: string;
-    image?: string;
-    username?: string;
-    displayUsername?: string;
-  } = {},
+	attrs: {
+		name?: string;
+		email?: string;
+		image?: string;
+		username?: string;
+		displayUsername?: string;
+		isAnonymous?: boolean;
+	} = {},
 ): Promise<Id<"users">> {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("users", {
-      name: attrs.name ?? "Test User",
-      email: attrs.email ?? `u${Math.random().toString(36).slice(2)}@test.dev`,
-      image: attrs.image,
-      username: attrs.username,
-      displayUsername: attrs.displayUsername,
-    });
-  });
+	return await t.run(async (ctx) => {
+		return await ctx.db.insert("users", {
+			name: attrs.name ?? "Test User",
+			email: attrs.email ?? `u${Math.random().toString(36).slice(2)}@test.dev`,
+			image: attrs.image,
+			username: attrs.username,
+			displayUsername: attrs.displayUsername,
+			isAnonymous: attrs.isAnonymous,
+		});
+	});
 }
 
 export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
   return t.withIdentity({
     subject: `${userId}|test-session-${userId}`,
+    issuer: "test",
+  });
+}
+
+export async function asUserWithSession(
+  t: ReturnType<typeof setupTest>,
+  userId: Id<"users">,
+) {
+  const sessionId = await t.run(async (ctx) => {
+    return await ctx.db.insert("authSessions", {
+      userId,
+      expirationTime: Date.now() + 60_000,
+    });
+  });
+  return t.withIdentity({
+    subject: `${userId}|${sessionId}`,
     issuer: "test",
   });
 }

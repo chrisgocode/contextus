@@ -68,7 +68,7 @@ export const getById = query({
     }
     return {
       ...game,
-      winnerName: winner?.name ?? null,
+      winnerName: winner?.name ?? winner?.displayUsername ?? null,
       winnerImage: winner?.image ?? null,
     };
   },

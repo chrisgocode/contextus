@@ -82,6 +82,36 @@ test("submit: success returns distance and writes guess + cache", async () => {
   expect(cache?.distance).toBe(42591);
 });
 
+test("submit: anonymous room member can guess", async () => {
+  const t = setupTest();
+  mockContextoFetch({ guesses: { 1336: { guestword: 1234 } } });
+  const host = await seedUser(t, { name: "Host" });
+  const guest = await seedUser(t, {
+    name: "Guest",
+    isAnonymous: true,
+  });
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, guest).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+
+  const res = await asUser(t, guest).action(api.guesses.submit, {
+    gameId,
+    word: "guestword",
+  });
+
+  expect(res).toMatchObject({ lemma: "guestword", distance: 1234 });
+  const rows = await t.run(async (ctx) =>
+    ctx.db
+      .query("gameGuesses")
+      .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
+      .collect(),
+  );
+  expect(rows.map((r) => r.userId)).toEqual([guest]);
+});
+
 test("submit: duplicate lemma in same game returns already guessed result", async () => {
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });

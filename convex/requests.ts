@@ -37,7 +37,7 @@ export const listPending = query({
 				const u = await ctx.db.get(r.requesterUserId);
 				return {
 					...r,
-					requesterName: u?.name ?? null,
+					requesterName: u?.name ?? u?.displayUsername ?? null,
 					requesterImage: u?.image ?? null,
 				};
 			}),

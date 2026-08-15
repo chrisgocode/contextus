@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { requireHostByRoom, requireUser } from "./access";
+import { requireHostByRoom, requireRegisteredUser, requireUser } from "./access";
 import { generateRoomCode } from "./lib/code";
 import { upsertRoomActivity } from "./lib/roomActivity";
 
@@ -11,7 +11,7 @@ const MAX_CODE_RETRIES = 10;
 export const create = mutation({
 	args: {},
 	handler: async (ctx) => {
-		const userId = await requireUser(ctx);
+		const userId = await requireRegisteredUser(ctx);
 		const now = Date.now();
 
 		let code: string | null = null;
@@ -124,7 +124,7 @@ export const getByCode = query({
 				const user = await ctx.db.get(m.userId);
 				return {
 					userId: m.userId,
-					name: user?.name ?? null,
+					name: user?.name ?? user?.displayUsername ?? null,
 					image: user?.image ?? null,
 					email: user?.email ?? null,
 					joinedAt: m.joinedAt,

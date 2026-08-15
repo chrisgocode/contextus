@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { requireUser } from "./access";
+import { requireRegisteredUser, requireUser } from "./access";
 import {
 	assertUsernameAvailable,
 	ensureUserHasUsername,
@@ -51,6 +51,7 @@ export const getUser = query({
 			username: user.username ?? null,
 			displayUsername: user.displayUsername ?? null,
 			image: uploadedAvatarUrl ?? user.image ?? null,
+			isAnonymous: user.isAnonymous === true,
 			isCurrentUser: requestedUserId === currentUserId,
 		};
 	},
@@ -74,6 +75,7 @@ export const getByUsername = query({
 			username: user.username ?? null,
 			displayUsername: user.displayUsername ?? null,
 			image: uploadedAvatarUrl ?? user.image ?? null,
+			isAnonymous: user.isAnonymous === true,
 			isCurrentUser,
 			email: isCurrentUser ? (user.email ?? null) : null,
 		};
@@ -83,7 +85,7 @@ export const getByUsername = query({
 export const generateProfileImageUploadUrl = mutation({
 	args: {},
 	handler: async (ctx) => {
-		await requireUser(ctx);
+		await requireRegisteredUser(ctx);
 		return await ctx.storage.generateUploadUrl();
 	},
 });
@@ -95,7 +97,7 @@ export const updateProfile = mutation({
 		avatarStorageId: v.optional(v.id("_storage")),
 	},
 	handler: async (ctx, args) => {
-		const currentUserId = await requireUser(ctx);
+		const currentUserId = await requireRegisteredUser(ctx);
 		const name = args.name.trim();
 		if (name.length === 0) {
 			throw new ConvexError("Name is required.");

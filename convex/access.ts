@@ -14,6 +14,20 @@ export async function requireUser(ctx: AnyCtx): Promise<Id<"users">> {
   return userId;
 }
 
+export async function requireRegisteredUser(
+  ctx: DbCtx,
+): Promise<Id<"users">> {
+  const userId = await getAuthUserId(ctx);
+  if (userId === null) {
+    throw new ConvexError("Not authenticated");
+  }
+  const user = await ctx.db.get(userId);
+  if (user === null || user.isAnonymous === true) {
+    throw new ConvexError("Registered account required");
+  }
+  return userId;
+}
+
 type ByGame = { gameId: Id<"games"> };
 type ByRoom = { roomId: Id<"rooms"> };
 
@@ -112,6 +126,10 @@ export async function requireHostByGame(
 ): Promise<GameAccess> {
   const { userId, game, room } = await loadByGame(ctx, args);
   if (userId === null) throw new ConvexError("Not authenticated");
+  const user = await ctx.db.get(userId);
+  if (user === null || user.isAnonymous === true) {
+    throw new ConvexError("Registered account required");
+  }
   if (game === null) throw new ConvexError("Game not found");
   if (room === null) throw new ConvexError("Room not found");
   if (room.hostUserId !== userId) throw new ConvexError("Host only");
@@ -134,6 +152,10 @@ export async function requireHostByRoom(
 ): Promise<RoomAccess> {
   const { userId, room } = await loadByRoom(ctx, args);
   if (userId === null) throw new ConvexError("Not authenticated");
+  const user = await ctx.db.get(userId);
+  if (user === null || user.isAnonymous === true) {
+    throw new ConvexError("Registered account required");
+  }
   if (room === null) throw new ConvexError("Room not found");
   if (room.hostUserId !== userId) throw new ConvexError("Host only");
   return { userId, room };

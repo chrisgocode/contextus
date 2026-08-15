@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState } from "react";
@@ -27,13 +28,11 @@ export default function RoomPage({
   const upper = code.toUpperCase();
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const data = useQuery(
-    api.rooms.getByCode,
-    isAuthenticated ? { code: upper } : "skip",
-  );
+  const data = useQuery(api.rooms.getByCode, { code: upper });
   const leave = useMutation(api.rooms.leave);
   const endRoom = useMutation(api.rooms.endRoom);
   const join = useMutation(api.rooms.join);
+  const { signIn } = useAuthActions();
   const [copied, setCopied] = useState(false);
   const joiningRef = useRef(false);
 
@@ -53,10 +52,6 @@ export default function RoomPage({
       ? { roomId: data.room._id }
       : "skip",
   );
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/signin");
-  }, [isLoading, isAuthenticated, router]);
 
   useEffect(() => {
     if (data && data.room.status === "ended") {
@@ -86,7 +81,6 @@ export default function RoomPage({
   }, [data, isMember, join, upper]);
 
   if (isLoading) return <RoomSkeleton />;
-  if (!isAuthenticated) return <RoomSkeleton />;
   if (data === undefined) return <RoomSkeleton />;
   if (data === null)
     return (
@@ -95,6 +89,25 @@ export default function RoomPage({
         <Button onClick={() => router.push("/")}>Home</Button>
       </Centered>
     );
+  if (!isAuthenticated) {
+    return (
+      <GuestJoinPrompt
+        code={data.room.code}
+        onGuest={async () => {
+          try {
+            await signIn("anonymous");
+            await join({ code: upper });
+          } catch (err) {
+            reportClientError(err, {
+              userMessage: "Could not join as guest.",
+              context: "room.guestJoin",
+            });
+          }
+        }}
+        onSignIn={() => router.push("/signin")}
+      />
+    );
+  }
   if (!isMember) return <RoomSkeleton />;
 
   return (
@@ -140,6 +153,47 @@ export default function RoomPage({
           });
       }}
     />
+  );
+}
+
+function GuestJoinPrompt({
+  code,
+  onGuest,
+  onSignIn,
+}: {
+  code: string;
+  onGuest: () => Promise<void>;
+  onSignIn: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">Room</p>
+        <h1 className="font-mono text-4xl font-bold tracking-widest">{code}</h1>
+        <p className="text-muted-foreground">
+          Join as a guest to play now, or sign in if you want to host later.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onGuest();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Joining…" : "Join as guest"}
+        </Button>
+        <Button variant="outline" onClick={onSignIn}>
+          Sign in
+        </Button>
+      </div>
+    </main>
   );
 }
 

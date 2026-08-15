@@ -7,6 +7,29 @@ test("create requires auth", async () => {
   await expect(t.mutation(api.rooms.create, {})).rejects.toThrow();
 });
 
+test("anonymous users can join but cannot create rooms", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const { code, roomId } = await asUser(t, host).mutation(
+    api.rooms.create,
+    {},
+  );
+
+  await expect(asUser(t, guest).mutation(api.rooms.create, {})).rejects.toThrow(
+    "Registered account required",
+  );
+  await asUser(t, guest).mutation(api.rooms.join, { code });
+
+  const members = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomMembers")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .collect(),
+  );
+  expect(members.map((m) => m.userId).sort()).toEqual([guest, host].sort());
+});
+
 test("create returns a valid code and inserts host as member", async () => {
   const t = setupTest();
   const userId = await seedUser(t);

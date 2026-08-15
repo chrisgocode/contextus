@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthActions } from "@convex-dev/auth/react";
 import * as Sentry from "@sentry/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -14,11 +15,12 @@ export default function Home() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const currentUser = useQuery(api.users.getUser, isAuthenticated ? {} : "skip");
+  const isRegistered = isAuthenticated && currentUser?.isAnonymous === false;
 
   const header = (
     <header className="flex items-center justify-between">
       <h1 className="text-2xl font-bold">Contextus</h1>
-      {isAuthenticated ? (
+      {isRegistered ? (
         <Button
           variant="outline"
           onClick={() => {
@@ -41,44 +43,35 @@ export default function Home() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <>
-        {header}
-        <Centered>
-          <p className="max-w-md text-muted-foreground">
-            Co-op Contexto with friends. Create a room, share the code, guess
-            together.
-          </p>
-          <Button
-            className="mt-2"
-            size="lg"
-            onClick={() => router.push("/signin")}
-          >
-            Sign in to play
-          </Button>
-        </Centered>
-      </>
-    );
-  }
-
   return (
     <>
       {header}
-      <CreateRoom />
-      <JoinRoom />
-      <MyRooms />
+      <section className="flex flex-col gap-3">
+        <p className="max-w-xl text-muted-foreground">
+          Co-op Contexto with friends. Join a room code and guess together.
+        </p>
+        {!isRegistered && (
+          <p className="text-sm text-muted-foreground">
+            Guests can play in rooms. Sign in when you want to host.
+          </p>
+        )}
+      </section>
+      <JoinRoom isAuthenticated={isAuthenticated} />
+      {isRegistered ? (
+        <>
+          <CreateRoom />
+          <MyRooms />
+        </>
+      ) : (
+        <section className="rounded-lg border p-6 flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Host a room</h2>
+          <p className="text-sm text-muted-foreground">
+            Create an account to start your own room.
+          </p>
+          <Button onClick={() => router.push("/signin")}>Sign in to host</Button>
+        </section>
+      )}
     </>
-  );
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="flex min-h-[calc(100vh-8rem)] items-center justify-center">
-      <div className="flex flex-col items-center gap-2 text-center">
-        {children}
-      </div>
-    </section>
   );
 }
 
@@ -124,8 +117,9 @@ function CreateRoom() {
   );
 }
 
-function JoinRoom() {
+function JoinRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
   const router = useRouter();
+  const { signIn } = useAuthActions();
   const join = useMutation(api.rooms.join);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +134,12 @@ function JoinRoom() {
           setError(null);
           setBusy(true);
           try {
-            await join({ code });
-            router.push(`/r/${code.toUpperCase().trim()}`);
+            const normalized = code.toUpperCase().trim();
+            if (!isAuthenticated) {
+              await signIn("anonymous");
+            }
+            await join({ code: normalized });
+            router.push(`/r/${normalized}`);
           } catch (err) {
             setError(err instanceof ConvexError ? err.message : "Failed");
             Sentry.captureException(err, {
@@ -161,7 +159,7 @@ function JoinRoom() {
           className="uppercase"
         />
         <Button type="submit" disabled={busy || code.length === 0}>
-          Join
+          {busy ? "Joining…" : isAuthenticated ? "Join" : "Join as guest"}
         </Button>
       </form>
       {error && <p className="text-sm text-rose-400">{error}</p>}
