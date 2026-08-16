@@ -4,6 +4,13 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+	Avatar,
+	AvatarFallback,
+	AvatarGroup,
+	AvatarGroupCount,
+	AvatarImage,
+} from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
@@ -59,13 +66,10 @@ export default function Home() {
 					</p>
 				)}
 			</section>
+			{isAuthenticated && <MyRooms />}
+			{isRegistered && <RecentGroups />}
 			<CreateRoom isAuthenticated={isAuthenticated} />
 			<JoinRoom isAuthenticated={isAuthenticated} />
-			{isAuthenticated && (
-				<>
-					<MyRooms />
-				</>
-			)}
 		</>
 	);
 }
@@ -208,18 +212,111 @@ function MyRooms() {
 	return (
 		<section className="rounded-lg border p-6 flex flex-col gap-3">
 			<h2 className="text-lg font-semibold">Your active rooms</h2>
-			<ul className="flex flex-col gap-2">
+			<ul className="flex flex-col gap-3">
 				{rooms.map((r) => (
-					<li key={r._id}>
-						<a
-							href={`/r/${r.code}`}
-							className="font-mono text-lg underline-offset-4 hover:underline"
-						>
+					<li
+						key={r._id}
+						className="flex items-center justify-between gap-3 border-l-2 border-primary/70 pl-3"
+					>
+						<span className="font-mono text-base tracking-widest">
 							{r.code}
-						</a>
+						</span>
+						<Button asChild className="h-11 min-w-24">
+							<a href={`/r/${r.code}`}>Join</a>
+						</Button>
 					</li>
 				))}
 			</ul>
+		</section>
+	);
+}
+
+function RecentGroups() {
+	const router = useRouter();
+	const groups = useQuery(api.rooms.listRecentGroups, {});
+	const playAgain = useMutation(api.rooms.playAgain);
+	const [busyRoomId, setBusyRoomId] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	if (groups === undefined || groups.length === 0) return null;
+
+	return (
+		<section className="flex flex-col gap-4 border-y py-5">
+			<div className="flex flex-col gap-1">
+				<h2 className="text-lg font-semibold">Play again</h2>
+				<p className="text-sm text-muted-foreground">
+					Start another session with people you have played with before.
+				</p>
+			</div>
+			<ul className="flex flex-col divide-y border-y">
+				{groups.map((group) => {
+					const visibleMembers = group.members.slice(0, 3);
+					const remaining = group.members.length - visibleMembers.length;
+					return (
+						<li
+							key={group.roomId}
+							className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center"
+						>
+							<div className="flex min-w-0 flex-1 items-center gap-3">
+								<AvatarGroup className="shrink-0">
+									{visibleMembers.map((member) => (
+										<Avatar key={member.userId} size="lg">
+											{member.image && (
+												<AvatarImage src={member.image} alt="" />
+											)}
+											<AvatarFallback>
+												{member.name.slice(0, 1).toUpperCase()}
+											</AvatarFallback>
+										</Avatar>
+									))}
+									{remaining > 0 && (
+										<AvatarGroupCount>+{remaining}</AvatarGroupCount>
+									)}
+								</AvatarGroup>
+								<div className="min-w-0">
+									<p className="truncate text-sm font-semibold">
+										{group.members.map((member) => member.name).join(" + ")}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										Last played{" "}
+										{new Date(group.lastActivityAt).toLocaleDateString(
+											undefined,
+											{
+												month: "short",
+												day: "numeric",
+											},
+										)}
+									</p>
+								</div>
+							</div>
+							<Button
+								className="h-11 w-full sm:w-auto sm:min-w-36"
+								disabled={busyRoomId !== null}
+								onClick={async () => {
+									setError(null);
+									setBusyRoomId(group.roomId);
+									try {
+										const { code } = await playAgain({ roomId: group.roomId });
+										router.push(`/r/${code}`);
+									} catch (caught) {
+										const message = "Could not start this room. Try again.";
+										setError(message);
+										reportClientError(caught, {
+											userMessage: message,
+											context: "room.playAgain",
+										});
+									} finally {
+										setBusyRoomId(null);
+									}
+								}}
+							>
+								{busyRoomId === group.roomId ? "Starting…" : "Play Contextus"}
+							</Button>
+						</li>
+					);
+				})}
+			</ul>
+			{error && <p className="text-sm text-destructive">{error}</p>}
 		</section>
 	);
 }

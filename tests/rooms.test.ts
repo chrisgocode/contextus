@@ -255,3 +255,133 @@ test("listMine returns active rooms for user, newest activity first", async () =
   const rooms = await u.query(api.rooms.listMine, {});
   expect(rooms.map((r) => r.code)).toEqual([r1.code, r2.code]);
 });
+
+test("listRecentGroups returns a registered user's ended room", async () => {
+  const t = setupTest();
+  const host = await seedUser(t, { name: "Chris", isAnonymous: false });
+  const partner = await seedUser(t, { name: "Jane", isAnonymous: false });
+  const { code, roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, partner).mutation(api.rooms.join, { code });
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
+
+  const groups = await asUser(t, host).query(api.rooms.listRecentGroups, {});
+
+  expect(groups).toEqual([
+    expect.objectContaining({
+      roomId,
+      members: [
+        expect.objectContaining({ userId: host, name: "Chris" }),
+        expect.objectContaining({ userId: partner, name: "Jane" }),
+      ],
+    }),
+  ]);
+});
+
+test("listRecentGroups returns the three newest unique participant sets", async () => {
+  const t = setupTest();
+  const chris = await seedUser(t, { name: "Chris", isAnonymous: false });
+  const jane = await seedUser(t, { name: "Jane", isAnonymous: false });
+  const alex = await seedUser(t, { name: "Alex", isAnonymous: false });
+  const bob = await seedUser(t, { name: "Bob", isAnonymous: false });
+  const dana = await seedUser(t, { name: "Dana", isAnonymous: false });
+
+  async function endedRoomWith(partner: typeof jane) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const room = await asUser(t, chris).mutation(api.rooms.create, {});
+    await asUser(t, partner).mutation(api.rooms.join, { code: room.code });
+    await asUser(t, chris).mutation(api.rooms.endRoom, { roomId: room.roomId });
+    return room;
+  }
+
+  await endedRoomWith(alex);
+  const withBob = await endedRoomWith(bob);
+  const withDana = await endedRoomWith(dana);
+  await endedRoomWith(jane);
+  const newestWithJane = await endedRoomWith(jane);
+
+  const groups = await asUser(t, chris).query(api.rooms.listRecentGroups, {});
+
+  expect(groups.map((group) => group.roomId)).toEqual([
+    newestWithJane.roomId,
+    withDana.roomId,
+    withBob.roomId,
+  ]);
+});
+
+test("a registered member can reactivate a group with a fresh room code", async () => {
+  const t = setupTest();
+  const chris = await seedUser(t, { name: "Chris", isAnonymous: false });
+  const jane = await seedUser(t, { name: "Jane", isAnonymous: false });
+  const original = await asUser(t, chris).mutation(api.rooms.create, {});
+  await asUser(t, jane).mutation(api.rooms.join, { code: original.code });
+  await asUser(t, chris).mutation(api.rooms.endRoom, {
+    roomId: original.roomId,
+  });
+
+  const replayed = await asUser(t, jane).mutation(api.rooms.playAgain, {
+    roomId: original.roomId,
+  });
+
+  expect(replayed.roomId).toBe(original.roomId);
+  expect(replayed.code).not.toBe(original.code);
+  await expect(
+    asUser(t, jane).query(api.rooms.getByCode, { code: original.code }),
+  ).resolves.toBeNull();
+  const room = await asUser(t, jane).query(api.rooms.getByCode, {
+    code: replayed.code,
+  });
+  expect(room?.room.status).toBe("active");
+  expect(room?.isViewerHost).toBe(true);
+  await expect(
+    asUser(t, chris).query(api.rooms.listMine, {}),
+  ).resolves.toContainEqual(expect.objectContaining({ _id: original.roomId }));
+});
+
+test("playAgain preserves an unfinished game", async () => {
+  const t = setupTest();
+  const host = await seedUser(t, { isAnonymous: false });
+  const partner = await seedUser(t, { isAnonymous: false });
+  const room = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, partner).mutation(api.rooms.join, { code: room.code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId: room.roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId: room.roomId });
+
+  await asUser(t, partner).mutation(api.rooms.playAgain, {
+    roomId: room.roomId,
+  });
+
+  const active = await asUser(t, partner).query(api.games.getActive, {
+    roomId: room.roomId,
+  });
+  expect(active?._id).toBe(gameId);
+});
+
+test("rooms involving guests are not reusable groups", async () => {
+  const t = setupTest();
+  const host = await seedUser(t, { isAnonymous: false });
+  const guest = await seedUser(t, { isAnonymous: true });
+  const room = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, guest).mutation(api.rooms.join, { code: room.code });
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId: room.roomId });
+
+  await expect(
+    asUser(t, host).query(api.rooms.listRecentGroups, {}),
+  ).resolves.toEqual([]);
+  await expect(
+    asUser(t, host).mutation(api.rooms.playAgain, { roomId: room.roomId }),
+  ).rejects.toThrow("Registered accounts required");
+});
+
+test("a solo room is not a reusable group", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, { isAnonymous: false });
+  const room = await asUser(t, user).mutation(api.rooms.create, {});
+  await asUser(t, user).mutation(api.rooms.endRoom, { roomId: room.roomId });
+
+  const groups = await asUser(t, user).query(api.rooms.listRecentGroups, {});
+
+  expect(groups).toEqual([]);
+});
