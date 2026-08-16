@@ -5,6 +5,7 @@ import {
   type BrowserContextOptions,
   type Page,
 } from "@playwright/test";
+import { e2eAccountEmail, REGISTERED_USERS_PER_WORKER } from "./accounts";
 
 type RegisteredUser = {
   email: string;
@@ -25,7 +26,7 @@ export const test = base.extend<Fixtures>({
     await provide(async (options = {}) => {
       const password = process.env.E2E_PASSWORD;
       if (!password) throw new Error("Missing E2E_PASSWORD");
-      if (accountIndex > 1) {
+      if (accountIndex >= REGISTERED_USERS_PER_WORKER) {
         throw new Error("Each test supports at most two registered users");
       }
 
@@ -34,10 +35,7 @@ export const test = base.extend<Fixtures>({
         ...options,
       });
       contexts.push(context);
-      const namespace = (process.env.E2E_ACCOUNT_NAMESPACE ?? "local")
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-");
-      const email = `contextus-e2e-${namespace}-w${testInfo.parallelIndex}-u${accountIndex++}@example.com`;
+      const email = e2eAccountEmail(testInfo.parallelIndex, accountIndex++);
       const authenticate = (flow: "signIn" | "signUp") =>
         context.request.post("/api/auth", {
           data: {

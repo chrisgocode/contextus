@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as contexto from "../contexto.js";
 import type * as crons from "../crons.js";
+import type * as e2eCleanup from "../e2eCleanup.js";
 import type * as gameTransitions from "../gameTransitions.js";
 import type * as games from "../games.js";
 import type * as giveup from "../giveup.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   cleanup: typeof cleanup;
   contexto: typeof contexto;
   crons: typeof crons;
+  e2eCleanup: typeof e2eCleanup;
   gameTransitions: typeof gameTransitions;
   games: typeof games;
   giveup: typeof giveup;
