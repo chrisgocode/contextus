@@ -2,6 +2,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 
 export const GUEST_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+export const E2E_GUEST_LIFETIME_MS = 60 * 60 * 1000;
 
 export async function recordGuestGameCompletion(
 	ctx: MutationCtx,
