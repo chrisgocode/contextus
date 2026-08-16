@@ -6,11 +6,12 @@ test("two registered players complete a cooperative game", async ({
   const host = await createRegisteredUser();
   const partner = await createRegisteredUser();
 
-  await test.step("join the same room", async () => {
-    await createRoom(host.page);
+  const roomUrl = await test.step("join the same room", async () => {
+    const url = await createRoom(host.page);
 
     await partner.page.goto(host.page.url());
     await expect(roomMemberItems(host.page)).toHaveCount(2);
+    return url;
   });
 
   await test.step("start a game and share guesses live", async () => {
@@ -34,6 +35,19 @@ test("two registered players complete a cooperative game", async ({
         .getByRole("alert")
         .filter({ hasText: "The word was already guessed." }),
     ).toHaveText("The word was already guessed.");
+  });
+
+  await test.step("leave and resume the active puzzle", async () => {
+    await partner.page.getByRole("button", { name: "Leave" }).click();
+    await expect(partner.page).toHaveURL("/");
+    await expect(roomMemberItems(host.page)).toHaveCount(1);
+
+    await partner.page.goto(roomUrl);
+    await expect(partner.page.getByPlaceholder("Type a word…")).toBeVisible();
+    await expect(partner.page.getByText("house", { exact: true })).toHaveCount(
+      2,
+    );
+    await expect(roomMemberItems(host.page)).toHaveCount(2);
   });
 
   await test.step("deny one request and approve game completion", async () => {
