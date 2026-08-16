@@ -4,6 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
 	Avatar,
 	AvatarFallback,
@@ -16,10 +17,12 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import { getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
+import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
 	const { isLoading, isAuthenticated } = useConvexAuth();
 	const router = useRouter();
+	const [openingRoom, setOpeningRoom] = useState(false);
 	const currentUser = useQuery(
 		api.users.getUser,
 		isAuthenticated ? {} : "skip",
@@ -43,10 +46,23 @@ export default function Home() {
 			) : null}
 		</header>
 	);
+	const loadingOverlay =
+		openingRoom &&
+		createPortal(
+			<div
+				role="status"
+				aria-label="Opening room"
+				className="fixed inset-0 z-50 overflow-auto bg-background"
+			>
+				<RoomSkeleton />
+			</div>,
+			document.body,
+		);
 
 	if (isLoading || (isAuthenticated && currentUser === undefined)) {
 		return (
 			<>
+				{loadingOverlay}
 				{header}
 				<HomeContentSkeleton />
 			</>
@@ -55,21 +71,30 @@ export default function Home() {
 
 	return (
 		<>
-			{header}
-			<section className="flex flex-col gap-3">
-				<p className="max-w-xl text-muted-foreground">
-					Co-op Contexto with friends. Join a room code and guess together.
-				</p>
-				{!isRegistered && (
-					<p className="text-sm text-muted-foreground">
-						No account needed—create or join a room and start playing.
+			{loadingOverlay}
+			<div inert={openingRoom} className="contents">
+				{header}
+				<section className="flex flex-col gap-3">
+					<p className="max-w-xl text-muted-foreground">
+						Co-op Contexto with friends. Join a room code and guess together.
 					</p>
-				)}
-			</section>
-			{isAuthenticated && <MyRooms />}
-			{isRegistered && <RecentGroups />}
-			<CreateRoom isAuthenticated={isAuthenticated} />
-			<JoinRoom isAuthenticated={isAuthenticated} />
+					{!isRegistered && (
+						<p className="text-sm text-muted-foreground">
+							No account needed—create or join a room and start playing.
+						</p>
+					)}
+				</section>
+				{isAuthenticated && <MyRooms />}
+				{isRegistered && <RecentGroups />}
+				<CreateRoom
+					isAuthenticated={isAuthenticated}
+					onOpeningChange={setOpeningRoom}
+				/>
+				<JoinRoom
+					isAuthenticated={isAuthenticated}
+					onOpeningChange={setOpeningRoom}
+				/>
+			</div>
 		</>
 	);
 }
@@ -83,7 +108,13 @@ function HomeContentSkeleton() {
 	);
 }
 
-function CreateRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
+function CreateRoom({
+	isAuthenticated,
+	onOpeningChange,
+}: {
+	isAuthenticated: boolean;
+	onOpeningChange: (opening: boolean) => void;
+}) {
 	const router = useRouter();
 	const { signIn } = useAuthActions();
 	const create = useMutation(api.rooms.create);
@@ -100,11 +131,13 @@ function CreateRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
 				onClick={async () => {
 					setError(null);
 					setBusy(true);
+					onOpeningChange(true);
 					try {
 						if (!isAuthenticated) await signIn("anonymous");
 						const { code } = await create({});
 						router.push(`/r/${code}`);
 					} catch (err) {
+						onOpeningChange(false);
 						const isRoomLimit =
 							getErrorData(err) === "Guest room limit reached";
 						const message = isRoomLimit
@@ -138,7 +171,13 @@ function CreateRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
 	);
 }
 
-function JoinRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
+function JoinRoom({
+	isAuthenticated,
+	onOpeningChange,
+}: {
+	isAuthenticated: boolean;
+	onOpeningChange: (opening: boolean) => void;
+}) {
 	const router = useRouter();
 	const join = useMutation(api.rooms.join);
 	const [code, setCode] = useState("");
@@ -153,6 +192,7 @@ function JoinRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
 					e.preventDefault();
 					setError(null);
 					setBusy(true);
+					onOpeningChange(true);
 					try {
 						const normalized = code.toUpperCase().trim();
 						if (!isAuthenticated) {
@@ -162,6 +202,7 @@ function JoinRoom({ isAuthenticated }: { isAuthenticated: boolean }) {
 						await join({ code: normalized });
 						router.push(`/r/${normalized}`);
 					} catch (err) {
+						onOpeningChange(false);
 						const isRoomLimit =
 							getErrorData(err) === "Guest room limit reached";
 						const message = isRoomLimit
