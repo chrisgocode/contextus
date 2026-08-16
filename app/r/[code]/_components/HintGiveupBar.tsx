@@ -47,6 +47,7 @@ export function HintGiveupBar({
 			reportClientError(e, {
 				userMessage: message,
 				context: `${isHost ? "host" : "request"}.${kind}`,
+				showToast: false,
 			});
 		} finally {
 			setBusy(null);

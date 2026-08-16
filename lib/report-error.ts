@@ -7,10 +7,11 @@ export function reportClientError(
 		userMessage: string;
 		context?: string;
 		tags?: Record<string, string>;
+		showToast?: boolean;
 	},
 ): void {
 	Sentry.captureException(err, {
 		tags: { surface: opts.context ?? "unknown", ...opts.tags },
 	});
-	toast.error(opts.userMessage);
+	if (opts.showToast !== false) toast.error(opts.userMessage);
 }

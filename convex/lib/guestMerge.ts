@@ -27,18 +27,31 @@ export async function mergeCurrentGuestIntoUser(
 	]);
 	if (guest?.isAnonymous !== true || target === null) return null;
 
-	const [, , , , , overlappingSolves] = await Promise.all([
+	const overlappingSolvesPromise = mergeHistory(
+		ctx,
+		guestUserId,
+		targetUserId,
+	);
+	await Promise.all([
 		patchGuestHostedRooms(ctx, guestUserId, targetUserId),
 		mergeRoomMemberships(ctx, guestUserId, targetUserId),
 		patchGuestGuesses(ctx, guestUserId, targetUserId),
 		patchGuestRequests(ctx, guestUserId, targetUserId),
 		patchGuestWins(ctx, guestUserId, targetUserId),
-		mergeHistory(ctx, guestUserId, targetUserId),
+		overlappingSolvesPromise,
 		mergeAchievements(ctx, guestUserId, targetUserId),
 		mergeAchievementProgress(ctx, guestUserId, targetUserId),
 	]);
+	const mergeResults = {
+		overlappingSolves: await overlappingSolvesPromise,
+	};
 	await Promise.all([
-		mergeAchievementStats(ctx, guestUserId, targetUserId, overlappingSolves),
+		mergeAchievementStats(
+			ctx,
+			guestUserId,
+			targetUserId,
+			mergeResults.overlappingSolves,
+		),
 		mergeGamePlayerStats(ctx, guestUserId, targetUserId),
 	]);
 	await reconcileCounterAchievements(ctx, targetUserId);
@@ -277,7 +290,10 @@ async function mergeAchievementStats(
 		redGuesses: target.redGuesses + guest.redGuesses,
 		yellowGuesses: target.yellowGuesses + guest.yellowGuesses,
 		greenGuesses: target.greenGuesses + guest.greenGuesses,
-		uniqueSolves: target.uniqueSolves + guest.uniqueSolves - overlappingSolves,
+		uniqueSolves: Math.max(
+			0,
+			target.uniqueSolves + guest.uniqueSolves - overlappingSolves,
+		),
 	});
 	await ctx.db.delete(guest._id);
 }

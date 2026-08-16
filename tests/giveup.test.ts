@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../convex/_generated/api";
+import { api, internal } from "../convex/_generated/api";
 import { asUser, mockContextoFetch, seedUser, setupTest } from "./helpers";
 
 afterEach(() => {
@@ -71,4 +71,49 @@ test("given-up games count toward guest account prompts after a real guess", asy
   await expect(
     asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
   ).resolves.toMatchObject({ completedGames: 3 });
+});
+
+test("game completion credits participants beyond the first page", async () => {
+  const t = setupTest();
+  const participantIds = await t.run(async (ctx) => {
+    const hostId = await ctx.db.insert("users", { name: "Host" });
+    const roomId = await ctx.db.insert("rooms", {
+      code: "PAGING",
+      hostUserId: hostId,
+      status: "active",
+    });
+    const gameId = await ctx.db.insert("games", {
+      roomId,
+      contextoGameId: 1336,
+      status: "in_progress",
+      startedAt: Date.now(),
+    });
+    const ids = [];
+    for (let index = 0; index < 501; index++) {
+      const userId = await ctx.db.insert("users", { isAnonymous: true });
+      ids.push(userId);
+      await ctx.db.insert("gamePlayerStats", {
+        gameId,
+        userId,
+        realGuessCount: 1,
+        bestDistance: 100,
+        lastDistance: 100,
+        noBacktrackingSoFar: true,
+        updatedAt: Date.now(),
+      });
+    }
+    return { gameId, first: ids[0], last: ids.at(-1) };
+  });
+
+  await t.mutation(internal.gameTransitions.applyGiveup, {
+    gameId: participantIds.gameId,
+    answerLemma: "persimmon",
+  });
+
+  const credited = await t.run(async (ctx) => ({
+    first: await ctx.db.get(participantIds.first!),
+    last: await ctx.db.get(participantIds.last!),
+  }));
+  expect(credited.first?.guestCompletedGames).toBe(1);
+  expect(credited.last?.guestCompletedGames).toBe(1);
 });

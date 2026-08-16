@@ -70,6 +70,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
 						reportClientError(err, {
 							userMessage: message,
 							context: "guess.submit",
+							showToast: false,
 						});
 					} finally {
 						setBusy(false);

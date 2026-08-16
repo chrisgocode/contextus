@@ -82,6 +82,7 @@ export function GameSetupCalendar({
 						reportClientError(e, {
 							userMessage: message,
 							context: "game.start",
+							showToast: false,
 						});
 					} finally {
 						setBusy(false);

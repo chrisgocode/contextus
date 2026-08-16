@@ -100,9 +100,9 @@ function GuestAccountPrompt() {
   }, []);
   const dismiss = useCallback(async () => {
     clearTimer();
-    dialogRef.current?.close();
     try {
       await dismissPrompt({});
+      dialogRef.current?.close();
     } catch (error) {
       reportClientError(error, {
         userMessage: "Could not dismiss this message. Try again.",

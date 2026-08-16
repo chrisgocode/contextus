@@ -305,3 +305,38 @@ test("mergeCurrentGuestIntoUser counts overlapping puzzle solves once", async ()
     progress: { current: 5, target: 10 },
   });
 });
+
+test("mergeCurrentGuestIntoUser clamps inconsistent unique solve totals to zero", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (const userId of [guest, target]) {
+      await ctx.db.insert("userGameHistory", {
+        userId,
+        contextoGameId: 1,
+        firstPlayedAt: 1,
+        firstSolvedAt: 1,
+      });
+      await ctx.db.insert("userAchievementStats", {
+        userId,
+        redGuesses: 0,
+        yellowGuesses: 0,
+        greenGuesses: 0,
+        uniqueSolves: 0,
+      });
+    }
+  });
+  const guestSession = await asUserWithSession(t, guest);
+  await guestSession.run(async (ctx) => {
+    await mergeCurrentGuestIntoUser(ctx, target);
+  });
+
+  const stats = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievementStats")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .unique(),
+  );
+  expect(stats?.uniqueSolves).toBe(0);
+});

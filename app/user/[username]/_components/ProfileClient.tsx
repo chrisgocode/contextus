@@ -217,6 +217,7 @@ export function ProfileClient({ username }: { username: string }) {
 			reportClientError(caught, {
 				userMessage: message,
 				context: "profile.update",
+				showToast: false,
 			});
 		} finally {
 			setIsSaving(false);
