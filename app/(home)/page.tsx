@@ -216,12 +216,12 @@ function MyRooms() {
 				{rooms.map((r) => (
 					<li
 						key={r._id}
-						className="flex items-center justify-between gap-3 border-l-2 border-primary/70 pl-3"
+						className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
 					>
-						<span className="font-mono text-base tracking-widest">
+						<span className="border-l-2 border-primary/70 pl-3 font-mono text-base tracking-widest">
 							{r.code}
 						</span>
-						<Button asChild className="h-11 min-w-24">
+						<Button asChild className="h-11 w-full sm:w-auto sm:min-w-36">
 							<a href={`/r/${r.code}`}>Join</a>
 						</Button>
 					</li>
@@ -241,7 +241,7 @@ function RecentGroups() {
 	if (groups === undefined || groups.length === 0) return null;
 
 	return (
-		<section className="flex flex-col gap-4 border-y py-5">
+		<section className="rounded-lg border p-6 flex flex-col gap-4">
 			<div className="flex flex-col gap-1">
 				<h2 className="text-lg font-semibold">Play again</h2>
 				<p className="text-sm text-muted-foreground">
