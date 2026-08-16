@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   expect,
   test as base,
@@ -22,27 +21,36 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   createRegisteredUser: async ({ browser }, provide, testInfo) => {
     const contexts: BrowserContext[] = [];
+    let accountIndex = 0;
 
     await provide(async (options = {}) => {
       const password = process.env.E2E_PASSWORD;
       if (!password) throw new Error("Missing E2E_PASSWORD");
+      if (accountIndex > 1) {
+        throw new Error("Each test supports at most two registered users");
+      }
 
       const context = await browser.newContext({
         baseURL: testInfo.project.use.baseURL,
         ...options,
       });
       contexts.push(context);
-      // ponytail: test users persist in the dev deployment; add a guarded cleanup endpoint if CI volume makes that material.
-      const email = `contextus-e2e-${testInfo.parallelIndex}-${randomUUID()}@example.com`;
-      const response = await context.request.post("/api/auth", {
-        data: {
-          action: "auth:signIn",
-          args: {
-            provider: "password",
-            params: { flow: "signUp", email, password },
+      const namespace = (process.env.E2E_ACCOUNT_NAMESPACE ?? "local")
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-");
+      const email = `contextus-e2e-${namespace}-w${testInfo.parallelIndex}-u${accountIndex++}@example.com`;
+      const authenticate = (flow: "signIn" | "signUp") =>
+        context.request.post("/api/auth", {
+          data: {
+            action: "auth:signIn",
+            args: {
+              provider: "password",
+              params: { flow, email, password },
+            },
           },
-        },
-      });
+        });
+      let response = await authenticate("signIn");
+      if (!response.ok()) response = await authenticate("signUp");
       expect(response.ok(), await response.text()).toBeTruthy();
 
       return { context, email, page: await context.newPage() };
