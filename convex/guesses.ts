@@ -150,7 +150,7 @@ export const listForGame = query({
       const u = userMap.get(g.userId);
       return {
         ...g,
-        userName: u?.name ?? null,
+        userName: u?.name ?? u?.displayUsername ?? null,
         userImage: u?.image ?? null,
       };
     };

@@ -1,11 +1,13 @@
 "use client";
 
+import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
+import { getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
@@ -27,15 +29,15 @@ export default function RoomPage({
   const upper = code.toUpperCase();
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const data = useQuery(
-    api.rooms.getByCode,
-    isAuthenticated ? { code: upper } : "skip",
-  );
+  const data = useQuery(api.rooms.getByCode, { code: upper });
   const leave = useMutation(api.rooms.leave);
   const endRoom = useMutation(api.rooms.endRoom);
   const join = useMutation(api.rooms.join);
+  const { signIn } = useAuthActions();
   const [copied, setCopied] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
+  const leavingRef = useRef(false);
 
   const isMember = data?.viewerUserId
     ? data.members.some((m) => m.userId === data.viewerUserId)
@@ -55,10 +57,6 @@ export default function RoomPage({
   );
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/signin");
-  }, [isLoading, isAuthenticated, router]);
-
-  useEffect(() => {
     if (data && data.room.status === "ended") {
       router.replace("/");
     }
@@ -67,26 +65,36 @@ export default function RoomPage({
   useEffect(() => {
     if (
       data &&
+      isAuthenticated &&
       data.room.status === "active" &&
       !isMember &&
+      joinError === null &&
+      !leavingRef.current &&
       !joiningRef.current
     ) {
       joiningRef.current = true;
       join({ code: upper })
         .catch((err) => {
-          reportClientError(err, {
-            userMessage: "Could not join room.",
-            context: "room.autojoin",
-          });
+          const isRoomLimit =
+            getErrorData(err) === "Guest room limit reached";
+          const message = isRoomLimit
+            ? "Guest room limit reached"
+            : "Could not join room. Try again.";
+          setJoinError(message);
+          if (!isRoomLimit) {
+            reportClientError(err, {
+              userMessage: message,
+              context: "room.autojoin",
+            });
+          }
         })
         .finally(() => {
           joiningRef.current = false;
         });
     }
-  }, [data, isMember, join, upper]);
+  }, [data, isAuthenticated, isMember, join, joinError, upper]);
 
   if (isLoading) return <RoomSkeleton />;
-  if (!isAuthenticated) return <RoomSkeleton />;
   if (data === undefined) return <RoomSkeleton />;
   if (data === null)
     return (
@@ -95,6 +103,61 @@ export default function RoomPage({
         <Button onClick={() => router.push("/")}>Home</Button>
       </Centered>
     );
+  if (!isAuthenticated) {
+    return (
+      <GuestJoinPrompt
+        code={data.room.code}
+        onGuest={async () => {
+          try {
+            await signIn("anonymous");
+            await join({ code: upper });
+          } catch (err) {
+            if (getErrorData(err) === "Guest room limit reached") {
+              setJoinError("Guest room limit reached");
+            } else {
+              reportClientError(err, {
+                userMessage: "Could not join as guest. Try again.",
+                context: "room.guestJoin",
+              });
+            }
+          }
+        }}
+        onSignIn={() =>
+          router.push(`/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`)
+        }
+      />
+    );
+  }
+  if (!isMember && joinError === "Guest room limit reached") {
+    return (
+      <Centered>
+        <p>Create an account to host or join more active rooms.</p>
+        <Button
+          onClick={() =>
+            router.push(
+              `/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`,
+            )
+          }
+        >
+          Create account
+        </Button>
+        <Button variant="outline" onClick={() => router.push("/")}>
+          Cancel
+        </Button>
+      </Centered>
+    );
+  }
+  if (!isMember && joinError !== null) {
+    return (
+      <Centered>
+        <p>Could not join room. Try again.</p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+        <Button variant="outline" onClick={() => router.push("/")}>
+          Home
+        </Button>
+      </Centered>
+    );
+  }
   if (!isMember) return <RoomSkeleton />;
 
   return (
@@ -103,10 +166,12 @@ export default function RoomPage({
       activeGame={activeGame}
       lastFinished={lastFinished}
       onLeave={async () => {
+        leavingRef.current = true;
         try {
           await leave({ roomId: data.room._id });
           router.push("/");
         } catch (err) {
+          leavingRef.current = false;
           reportClientError(err, {
             userMessage: "Could not leave room.",
             context: "room.leave",
@@ -143,6 +208,47 @@ export default function RoomPage({
   );
 }
 
+function GuestJoinPrompt({
+  code,
+  onGuest,
+  onSignIn,
+}: {
+  code: string;
+  onGuest: () => Promise<void>;
+  onSignIn: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">Room</p>
+        <h1 className="font-mono text-4xl font-bold tracking-widest">{code}</h1>
+        <p className="text-muted-foreground">
+          Join as a guest to play now, or sign in if you want to host later.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onGuest();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Joining…" : "Join as guest"}
+        </Button>
+        <Button variant="outline" onClick={onSignIn}>
+          Sign in
+        </Button>
+      </div>
+    </main>
+  );
+}
+
 type RoomLoadedProps = {
   data: NonNullable<ReturnType<typeof useQuery<typeof api.rooms.getByCode>>>;
   activeGame: ReturnType<typeof useQuery<typeof api.games.getActive>>;
@@ -170,8 +276,9 @@ function RoomLoaded({
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
   );
-  const [requestsElement, setRequestsElement] =
-    useState<HTMLDivElement | null>(null);
+  const [requestsElement, setRequestsElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const returnScrollYRef = useRef<number | null>(null);
   const requestsVisible = useElementInViewport(requestsElement, 0.1);
   const pendingRequestCount = pendingRequests?.length ?? 0;

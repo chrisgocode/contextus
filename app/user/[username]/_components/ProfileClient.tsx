@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { reportClientError } from "@/lib/report-error";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
 
@@ -210,9 +211,14 @@ export function ProfileClient({ username }: { username: string }) {
 				router.replace(`/user/${nextUsername}`);
 			}
 		} catch (caught) {
-			setError(
-				caught instanceof Error ? caught.message : "Could not update profile.",
-			);
+			const message =
+				"Could not save profile. Check your details and try again.";
+			setError(message);
+			reportClientError(caught, {
+				userMessage: message,
+				context: "profile.update",
+				showToast: false,
+			});
 		} finally {
 			setIsSaving(false);
 		}
