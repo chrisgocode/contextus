@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev --start 'next dev'",
+    "dev:e2e": "convex dev --start 'next dev -p 3100'",
     "predev": "convex init && node setup.mjs --once",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ignore-pattern \"convex/_generated/**\"",
     "test": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.91",
@@ -37,6 +40,7 @@
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.2.2",
     "@edge-runtime/vm": "^5.0.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
