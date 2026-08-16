@@ -23,11 +23,4 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
-  projects: [
-    { name: "guest", testMatch: /\.guest\.spec\.ts/ },
-    {
-      name: "registered",
-      testMatch: /\.registered\.spec\.ts/,
-    },
-  ],
 });

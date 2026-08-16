@@ -7,7 +7,6 @@ import {
 } from "@playwright/test";
 
 type RegisteredUser = {
-  context: BrowserContext;
   email: string;
   page: Page;
 };
@@ -53,7 +52,7 @@ export const test = base.extend<Fixtures>({
       if (!response.ok()) response = await authenticate("signUp");
       expect(response.ok(), await response.text()).toBeTruthy();
 
-      return { context, email, page: await context.newPage() };
+      return { email, page: await context.newPage() };
     });
 
     for (const context of contexts) await context.close();

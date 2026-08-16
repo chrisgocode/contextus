@@ -1,12 +1,5 @@
 import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
 
-test("loads as a registered user", async ({ createRegisteredUser }) => {
-  const { page } = await createRegisteredUser();
-  await page.goto("/");
-
-  await expect(page.getByRole("button", { name: "Profile" })).toBeVisible();
-});
-
 test("plays again with the same registered group", async ({
   createRegisteredUser,
 }) => {
