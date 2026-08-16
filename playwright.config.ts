@@ -17,19 +17,16 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-		command: "bun run dev:e2e",
+    command: "bun run dev:e2e",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [
-    { name: "setup", testMatch: /auth\.setup\.ts/ },
     { name: "guest", testMatch: /\.guest\.spec\.ts/ },
     {
       name: "registered",
-      dependencies: ["setup"],
       testMatch: /\.registered\.spec\.ts/,
-      use: { storageState: "playwright/.auth/user.json" },
     },
   ],
 });
