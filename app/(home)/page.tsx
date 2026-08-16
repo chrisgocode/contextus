@@ -49,7 +49,11 @@ export default function Home() {
 	const loadingOverlay =
 		openingRoom &&
 		createPortal(
-			<div className="fixed inset-0 z-50 overflow-auto bg-background">
+			<div
+				role="status"
+				aria-label="Opening room"
+				className="fixed inset-0 z-50 overflow-auto bg-background"
+			>
 				<RoomSkeleton />
 			</div>,
 			document.body,
@@ -68,27 +72,29 @@ export default function Home() {
 	return (
 		<>
 			{loadingOverlay}
-			{header}
-			<section className="flex flex-col gap-3">
-				<p className="max-w-xl text-muted-foreground">
-					Co-op Contexto with friends. Join a room code and guess together.
-				</p>
-				{!isRegistered && (
-					<p className="text-sm text-muted-foreground">
-						No account needed—create or join a room and start playing.
+			<div inert={openingRoom} className="contents">
+				{header}
+				<section className="flex flex-col gap-3">
+					<p className="max-w-xl text-muted-foreground">
+						Co-op Contexto with friends. Join a room code and guess together.
 					</p>
-				)}
-			</section>
-			{isAuthenticated && <MyRooms />}
-			{isRegistered && <RecentGroups />}
-			<CreateRoom
-				isAuthenticated={isAuthenticated}
-				onOpeningChange={setOpeningRoom}
-			/>
-			<JoinRoom
-				isAuthenticated={isAuthenticated}
-				onOpeningChange={setOpeningRoom}
-			/>
+					{!isRegistered && (
+						<p className="text-sm text-muted-foreground">
+							No account needed—create or join a room and start playing.
+						</p>
+					)}
+				</section>
+				{isAuthenticated && <MyRooms />}
+				{isRegistered && <RecentGroups />}
+				<CreateRoom
+					isAuthenticated={isAuthenticated}
+					onOpeningChange={setOpeningRoom}
+				/>
+				<JoinRoom
+					isAuthenticated={isAuthenticated}
+					onOpeningChange={setOpeningRoom}
+				/>
+			</div>
 		</>
 	);
 }
