@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../convex/lib/cleanup";
 import type { Id } from "../convex/_generated/dataModel";
@@ -161,4 +161,77 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
   expect(result.user?.username).toBeUndefined();
   expect(result.history).toEqual([]);
   expect(result.guesses).toHaveLength(1);
+});
+
+test("E2E account cleanup removes its complete data graph", async () => {
+  vi.stubEnv("E2E_TEST", "1");
+  const t = setupTest();
+  const email = "contextus-e2e-local-w0-u0@example.com";
+  const userId = await seedUser(t, { email });
+  const otherUserId = await seedUser(t, { email: "person@example.com" });
+  await expect(
+    t.mutation(api.e2eCleanup.purgeAccount, { email: "person@example.com" }),
+  ).rejects.toThrow("E2E cleanup is unavailable");
+  const { roomId } = await asUser(t, userId).mutation(api.rooms.create, {});
+  const { gameId } = await asUser(t, userId).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1337,
+  });
+  await t.run(async (ctx) => {
+    const accountId = await ctx.db.insert("authAccounts", {
+      userId,
+      provider: "password",
+      providerAccountId: email,
+    });
+    await ctx.db.insert("authVerificationCodes", {
+      accountId,
+      provider: "password",
+      code: "test",
+      expirationTime: Date.now() + 60_000,
+    });
+    const sessionId = await ctx.db.insert("authSessions", {
+      userId,
+      expirationTime: Date.now() + 60_000,
+    });
+    await ctx.db.insert("authRefreshTokens", {
+      sessionId,
+      expirationTime: Date.now() + 60_000,
+    });
+    await ctx.db.insert("gameGuesses", {
+      gameId,
+      userId,
+      lemma: "test",
+      distance: 10,
+      source: "guess",
+      createdAt: Date.now(),
+    });
+    await ctx.db.insert("userGameHistory", {
+      userId,
+      contextoGameId: 1337,
+      firstPlayedAt: Date.now(),
+    });
+  });
+
+  await t.mutation(api.e2eCleanup.purgeAccount, { email });
+
+  const remaining = await t.run(async (ctx) => ({
+    user: await ctx.db.get(userId),
+    otherUser: await ctx.db.get(otherUserId),
+    room: await ctx.db.get(roomId),
+    game: await ctx.db.get(gameId),
+    authAccounts: await ctx.db.query("authAccounts").collect(),
+    authSessions: await ctx.db.query("authSessions").collect(),
+    guesses: await ctx.db.query("gameGuesses").collect(),
+    history: await ctx.db.query("userGameHistory").collect(),
+  }));
+  expect(remaining).toMatchObject({
+    user: null,
+    room: null,
+    game: null,
+    authAccounts: [],
+    authSessions: [],
+    guesses: [],
+    history: [],
+  });
+  expect(remaining.otherUser).not.toBeNull();
 });
