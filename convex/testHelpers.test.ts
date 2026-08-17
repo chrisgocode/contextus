@@ -2,11 +2,11 @@
 import { register as registerPresence } from "@convex-dev/presence/test";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
-import type { Id } from "../convex/_generated/dataModel";
-import schema from "../convex/schema";
+import type { Id } from "./_generated/dataModel";
+import schema from "./schema";
 
 export function setupTest() {
-  const modules = import.meta.glob("../convex/**/!(*.test).*s");
+  const modules = import.meta.glob("./**/!(*.test).*s");
   const t = convexTest(schema, modules);
   registerPresence(t);
   return t;
@@ -22,6 +22,8 @@ export async function seedUser(
     displayUsername?: string;
     isAnonymous?: boolean;
     guestExpiresAt?: number;
+    guestCompletedGames?: number;
+    guestPromptedGames?: number;
   } = {},
 ): Promise<Id<"users">> {
   return await t.run(async (ctx) => {
@@ -33,6 +35,8 @@ export async function seedUser(
       displayUsername: attrs.displayUsername,
       isAnonymous: attrs.isAnonymous,
       guestExpiresAt: attrs.guestExpiresAt,
+      guestCompletedGames: attrs.guestCompletedGames,
+      guestPromptedGames: attrs.guestPromptedGames,
     });
   });
 }

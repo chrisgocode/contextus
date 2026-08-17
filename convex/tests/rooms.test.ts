@@ -1,6 +1,10 @@
-import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { afterEach, expect, test, vi } from "vitest";
+import { api } from "../_generated/api";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 test("create requires auth", async () => {
   const t = setupTest();
@@ -116,6 +120,8 @@ test("create inserts a matching roomActivity row", async () => {
 });
 
 test("join updates roomActivity", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   const t = setupTest();
   const host = await seedUser(t);
   const joiner = await seedUser(t);
@@ -126,7 +132,7 @@ test("join updates roomActivity", async () => {
       .withIndex("by_room", (q) => q.eq("roomId", roomId))
       .unique(),
   );
-  await new Promise((r) => setTimeout(r, 5));
+  vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
   await asUser(t, joiner).mutation(api.rooms.join, { code });
   const after = await t.run(async (ctx) =>
     ctx.db
@@ -278,6 +284,9 @@ test("listRecentGroups returns a registered user's ended room", async () => {
 });
 
 test("listRecentGroups returns the three newest unique participant sets", async () => {
+  vi.useFakeTimers();
+  let now = Date.parse("2026-01-01T00:00:00.000Z");
+  vi.setSystemTime(now);
   const t = setupTest();
   const chris = await seedUser(t, { name: "Chris", isAnonymous: false });
   const jane = await seedUser(t, { name: "Jane", isAnonymous: false });
@@ -286,7 +295,7 @@ test("listRecentGroups returns the three newest unique participant sets", async 
   const dana = await seedUser(t, { name: "Dana", isAnonymous: false });
 
   async function endedRoomWith(partner: typeof jane) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    vi.setSystemTime((now += 1_000));
     const room = await asUser(t, chris).mutation(api.rooms.create, {});
     await asUser(t, partner).mutation(api.rooms.join, { code: room.code });
     await asUser(t, chris).mutation(api.rooms.endRoom, { roomId: room.roomId });

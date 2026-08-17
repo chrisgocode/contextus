@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { api } from "../_generated/api";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 test("heartbeat silently no-ops for ex-member after leaving room", async () => {
   const t = setupTest();

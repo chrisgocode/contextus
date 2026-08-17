@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 import { describe, expect, test } from "vitest";
-import type { Id } from "../convex/_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import {
   requireHostByGame,
   requireHostByRoom,
@@ -10,8 +10,8 @@ import {
   tryHostByRoom,
   tryMemberByGame,
   tryMemberByRoom,
-} from "../convex/access";
-import { asUser, seedUser, setupTest } from "./helpers";
+} from "../access";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 type Setup = {
   t: ReturnType<typeof setupTest>;

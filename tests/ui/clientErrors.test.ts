@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getErrorData } from "../lib/client-errors";
+import { getErrorData } from "../../lib/client-errors";
 
 describe("getErrorData", () => {
   it("reads structured error data without exposing the raw error message", () => {

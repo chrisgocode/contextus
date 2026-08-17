@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Doc, Id } from "../convex/_generated/dataModel";
-import { decideGiveup, decideGuess } from "../convex/lib/gameTransitions";
+import type { Doc, Id } from "../_generated/dataModel";
+import { decideGiveup, decideGuess } from "../lib/gameTransitions";
 
 const userA = "u_a" as unknown as Id<"users">;
 const userB = "u_b" as unknown as Id<"users">;

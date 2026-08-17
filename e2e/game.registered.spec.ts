@@ -61,6 +61,13 @@ test("two registered players complete a cooperative game", async ({
       partner.page.getByRole("button", { name: "Request hint" }),
     ).toBeEnabled();
 
+    await partner.page.getByRole("button", { name: "Request hint" }).click();
+    await expect(host.page.getByText(/wants a hint/)).toBeVisible();
+    await host.page.getByRole("button", { name: "Approve" }).click();
+    await expect(partner.page.getByText("hint", { exact: true })).toHaveCount(
+      2,
+    );
+
     await partner.page.getByRole("button", { name: "Request give up" }).click();
     await expect(host.page.getByText(/wants to give up/)).toBeVisible();
     await host.page.getByRole("button", { name: "Approve" }).click();

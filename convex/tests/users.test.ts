@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { api } from "../_generated/api";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -83,6 +83,26 @@ test("getUser omits email when reading another user", async () => {
   expect(profile?.email).toBeNull();
 });
 
+test("profile queries return null when the requested user does not exist", async () => {
+  const t = setupTest();
+  const viewer = await seedUser(t);
+  const deleted = await seedUser(t, {
+    username: "deleteduser",
+    displayUsername: "DeletedUser",
+  });
+  await t.run(async (ctx) => await ctx.db.delete(deleted));
+
+  await expect(
+    asUser(t, viewer).query(api.users.getUser, { userId: deleted }),
+  ).resolves.toBeNull();
+  await expect(
+    t.query(api.users.getByUsername, { username: "missinguser" }),
+  ).resolves.toBeNull();
+  await expect(
+    t.query(api.users.getActivityGraph, { username: "missinguser" }),
+  ).resolves.toBeNull();
+});
+
 test("updateProfile updates the authenticated user's profile", async () => {
   const t = setupTest();
   const user = await seedUser(t, {
@@ -155,6 +175,89 @@ test("updateProfile rejects invalid and duplicate usernames", async () => {
   ).rejects.toThrow("Username is already taken.");
 });
 
+test("updateProfile rejects blank names and missing avatar uploads", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "profileuser",
+    displayUsername: "ProfileUser",
+  });
+
+  await expect(
+    asUser(t, user).mutation(api.users.updateProfile, {
+      name: "   ",
+      username: "ProfileUser",
+    }),
+  ).rejects.toThrow("Name is required.");
+
+  const deletedAvatar = await t.run(async (ctx) => {
+    const id = await ctx.storage.store(new Blob(["avatar"]));
+    await ctx.storage.delete(id);
+    return id;
+  });
+  await expect(
+    asUser(t, user).mutation(api.users.updateProfile, {
+      name: "Profile User",
+      username: "ProfileUser",
+      avatarStorageId: deletedAvatar,
+    }),
+  ).rejects.toThrow("Uploaded profile image was not found.");
+});
+
+test("registered users can upload and read a profile image", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "avataruser",
+    displayUsername: "AvatarUser",
+  });
+  const avatarStorageId = await t.run(async (ctx) =>
+    ctx.storage.store(new Blob(["avatar"], { type: "image/png" })),
+  );
+
+  await expect(
+    asUser(t, user).mutation(api.users.generateProfileImageUploadUrl, {}),
+  ).resolves.toMatch(/^https?:\/\//);
+  await asUser(t, user).mutation(api.users.updateProfile, {
+    name: "Avatar User",
+    username: "AvatarUser",
+    avatarStorageId,
+  });
+
+  const profile = await asUser(t, user).query(api.users.getByUsername, {
+    username: "avataruser",
+  });
+  expect(profile?.image).toMatch(/^https?:\/\/.*\/api\/storage\//);
+});
+
+test("registered users never receive guest account prompts", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    isAnonymous: false,
+    guestCompletedGames: 3,
+  });
+
+  await expect(
+    asUser(t, user).query(api.users.getGuestAccountPrompt, {}),
+  ).resolves.toBeNull();
+  await expect(
+    asUser(t, user).mutation(api.users.dismissGuestAccountPrompt, {}),
+  ).resolves.toBeNull();
+});
+
+test("guest account prompts stay hidden before the first milestone", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, {
+    isAnonymous: true,
+    guestCompletedGames: 2,
+  });
+
+  await expect(
+    asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
+  ).resolves.toBeNull();
+  await asUser(t, guest).mutation(api.users.dismissGuestAccountPrompt, {});
+  const stored = await t.run(async (ctx) => ctx.db.get(guest));
+  expect(stored?.guestPromptedGames).toBeUndefined();
+});
+
 test("backfillMissingUsernames assigns generated usernames to existing users", async () => {
   const t = setupTest();
   const user = await seedUser(t, { username: undefined });
@@ -169,6 +272,20 @@ test("backfillMissingUsernames assigns generated usernames to existing users", a
   expect(updated?.username).toMatch(/^[a-z0-9]{3,20}$/);
   expect(updated?.displayUsername).toMatch(/^[A-Za-z0-9]{3,20}$/);
   expect(updated?.displayUsername).toHaveLength(updated?.username?.length ?? 0);
+});
+
+test("backfillMissingUsernames clamps the batch size and reports more work", async () => {
+  const t = setupTest();
+  const caller = await seedUser(t, { username: "caller" });
+  await seedUser(t, { username: undefined });
+  await seedUser(t, { username: undefined });
+
+  const first = await asUser(t, caller).mutation(
+    api.users.backfillMissingUsernames,
+    { batchSize: 0 },
+  );
+
+  expect(first).toEqual({ updated: 1, hasMore: true });
 });
 
 test("getActivityGraph aggregates user history by UTC day", async () => {
@@ -277,4 +394,24 @@ test("getActivityGraph can be read without authentication", async () => {
     count: 1,
     level: 1,
   });
+});
+
+test("getActivityGraph caps busy-day intensity at four", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-06-25T12:00:00.000Z"));
+  const t = setupTest();
+  const user = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (let contextoGameId = 1; contextoGameId <= 5; contextoGameId++) {
+      await ctx.db.insert("userGameHistory", {
+        userId: user,
+        contextoGameId,
+        firstPlayedAt: Date.UTC(2026, 5, 25, 12, contextoGameId),
+      });
+    }
+  });
+
+  const graph = await asUser(t, user).query(api.users.getActivityGraph, {});
+
+  expect(graph?.days.at(-1)).toMatchObject({ count: 5, level: 4 });
 });

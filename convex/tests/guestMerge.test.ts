@@ -1,7 +1,41 @@
 import { expect, test } from "vitest";
-import { mergeCurrentGuestIntoUser } from "../convex/lib/guestMerge";
-import { asUser, asUserWithSession, seedUser, setupTest } from "./helpers";
-import { api, internal } from "../convex/_generated/api";
+import { mergeCurrentGuestIntoUser } from "../lib/guestMerge";
+import {
+  asUser,
+  asUserWithSession,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
+import { api, internal } from "../_generated/api";
+
+test("mergeCurrentGuestIntoUser ignores sessions that cannot be merged", async () => {
+  const t = setupTest();
+  const registered = await seedUser(t, { isAnonymous: false });
+  const target = await seedUser(t);
+
+  await expect(
+    t.run(async (ctx) => mergeCurrentGuestIntoUser(ctx, target)),
+  ).resolves.toBeNull();
+  await expect(
+    (await asUserWithSession(t, target)).run(async (ctx) =>
+      mergeCurrentGuestIntoUser(ctx, target),
+    ),
+  ).resolves.toBeNull();
+  await expect(
+    (await asUserWithSession(t, registered)).run(async (ctx) =>
+      mergeCurrentGuestIntoUser(ctx, target),
+    ),
+  ).resolves.toBeNull();
+
+  const guest = await seedUser(t, { isAnonymous: true });
+  const missingTarget = await seedUser(t);
+  await t.run(async (ctx) => ctx.db.delete(missingTarget));
+  await expect(
+    (await asUserWithSession(t, guest)).run(async (ctx) =>
+      mergeCurrentGuestIntoUser(ctx, missingTarget),
+    ),
+  ).resolves.toBeNull();
+});
 
 test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered user", async () => {
   const t = setupTest();
@@ -339,4 +373,138 @@ test("mergeCurrentGuestIntoUser clamps inconsistent unique solve totals to zero"
       .unique(),
   );
   expect(stats?.uniqueSolves).toBe(0);
+});
+
+test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game stats", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t, {
+    username: "mergedplayer",
+    displayUsername: "MergedPlayer",
+  });
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  const guestOnlyGame = await t.run(async (ctx) =>
+    ctx.db.insert("games", {
+      roomId,
+      contextoGameId: 1,
+      status: "won",
+      startedAt: 1,
+      endedAt: 2,
+    }),
+  );
+  const sharedGame = await t.run(async (ctx) =>
+    ctx.db.insert("games", {
+      roomId,
+      contextoGameId: 2,
+      status: "won",
+      startedAt: 3,
+      endedAt: 4,
+    }),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userGameHistory", {
+      userId: guest,
+      contextoGameId: 1,
+      firstPlayedAt: 1,
+    });
+    await ctx.db.insert("userAchievements", {
+      userId: guest,
+      achievementId: "bullseye",
+      unlockedAt: 1,
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId: guest,
+      achievementId: "word_explorer",
+      current: 2,
+      target: 10,
+      hidden: false,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 1,
+      yellowGuesses: 2,
+      greenGuesses: 3,
+      uniqueSolves: 1,
+    });
+    await ctx.db.insert("gamePlayerStats", {
+      gameId: guestOnlyGame,
+      userId: guest,
+      realGuessCount: 2,
+      bestDistance: 10,
+      lastDistance: 10,
+      noBacktrackingSoFar: true,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("gamePlayerStats", {
+      gameId: sharedGame,
+      userId: guest,
+      realGuessCount: 3,
+      bestDistance: 20,
+      lastDistance: 20,
+      noBacktrackingSoFar: false,
+      updatedAt: 2,
+    });
+    await ctx.db.insert("gamePlayerStats", {
+      gameId: sharedGame,
+      userId: target,
+      realGuessCount: 4,
+      bestDistance: 30,
+      lastDistance: 30,
+      noBacktrackingSoFar: true,
+      updatedAt: 1,
+    });
+  });
+
+  await (
+    await asUserWithSession(t, guest)
+  ).run(async (ctx) => {
+    await mergeCurrentGuestIntoUser(ctx, target);
+  });
+
+  const result = await t.run(async (ctx) => ({
+    history: await ctx.db
+      .query("userGameHistory")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .collect(),
+    achievements: await ctx.db
+      .query("userAchievements")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .collect(),
+    stats: await ctx.db
+      .query("userAchievementStats")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .unique(),
+    playerStats: await ctx.db
+      .query("gamePlayerStats")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .collect(),
+  }));
+
+  expect(result.history).toHaveLength(1);
+  expect(result.achievements).toContainEqual(
+    expect.objectContaining({ achievementId: "bullseye" }),
+  );
+  expect(result.stats).toMatchObject({
+    redGuesses: 1,
+    yellowGuesses: 2,
+    greenGuesses: 3,
+    uniqueSolves: 1,
+  });
+  expect(result.playerStats).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        gameId: guestOnlyGame,
+        realGuessCount: 2,
+      }),
+      expect.objectContaining({
+        gameId: sharedGame,
+        realGuessCount: 7,
+        bestDistance: 20,
+        lastDistance: 20,
+        noBacktrackingSoFar: false,
+      }),
+    ]),
+  );
 });

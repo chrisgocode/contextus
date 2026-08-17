@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { reportClientError } from "../lib/report-error";
+import { reportClientError } from "../../lib/report-error";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));

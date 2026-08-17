@@ -3,7 +3,7 @@
 import Image, { type StaticImageData } from "next/image";
 import type { Achievement } from "@/app/_components/achievement-metadata";
 import { Badge } from "@/components/ui/badge";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import ProgressLabel from "./ProgressLabel";
 
@@ -27,6 +27,7 @@ export function AchievementCard({
   unlockedAt: number | null;
 }) {
   const progressId = `achievement-progress-${achievement.id}`;
+  const progressLabelId = `${progressId}-label`;
   const name = isMasked ? "Hidden Achievement" : achievement.name;
   const description = isMasked
     ? "Unlock this achievement to reveal its details."
@@ -87,12 +88,13 @@ export function AchievementCard({
 
         <div>
           <Field className="relative w-full">
-            <FieldLabel htmlFor={progressId} className="sr-only">
+            <span id={progressLabelId} className="sr-only">
               {achievement.name} progress {progressValue}%
-            </FieldLabel>
+            </span>
             <ProgressLabel
               id={progressId}
               value={progressValue}
+              aria-labelledby={progressLabelId}
               aria-valuetext={`${progressValue}% complete`}
             />
           </Field>

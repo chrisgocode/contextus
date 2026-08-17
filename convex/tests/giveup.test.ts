@@ -1,6 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api, internal } from "../convex/_generated/api";
-import { asUser, mockContextoFetch, seedUser, setupTest } from "./helpers";
+import { api, internal } from "../_generated/api";
+import {
+  asUser,
+  mockContextoFetch,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -48,6 +53,17 @@ test("hostGiveup shortcut works with no pending row", async () => {
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   const game = await t.run(async (ctx) => ctx.db.get(gameId));
   expect(game?.status).toBe("given_up");
+});
+
+test("hostGiveup rejects a game that has already ended", async () => {
+  const t = setupTest();
+  mockContextoFetch({ answers: { 1336: "persimmon" } });
+  const { host, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
+
+  await expect(
+    asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
+  ).rejects.toThrow("Game is no longer in progress");
 });
 
 test("given-up games count toward guest account prompts after a real guess", async () => {

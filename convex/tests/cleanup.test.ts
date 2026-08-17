@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
-import { api, internal } from "../convex/_generated/api";
-import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../convex/lib/cleanup";
-import type { Id } from "../convex/_generated/dataModel";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { api, internal } from "../_generated/api";
+import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../lib/cleanup";
+import type { Id } from "../_generated/dataModel";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 const host = "u_host" as unknown as Id<"users">;
 const other = "u_other" as unknown as Id<"users">;
@@ -109,6 +109,53 @@ describe("cleanup.tick", () => {
     });
     expect(status).toBe("ended");
   });
+});
+
+test("room activity backfill inserts only missing activity rows", async () => {
+  const t = setupTest();
+  const hostUser = await seedUser(t);
+  const { roomId } = await asUser(t, hostUser).mutation(api.rooms.create, {});
+  await t.run(async (ctx) => {
+    const activity = await ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique();
+    if (activity === null) throw new Error("missing room activity");
+    await ctx.db.delete(activity._id);
+  });
+
+  const before = await t.query(
+    internal.cleanup._listActiveRoomsWithMembers,
+    {},
+  );
+  expect(before).toContainEqual(
+    expect.objectContaining({ _id: roomId, lastActivityAt: 0 }),
+  );
+  await expect(
+    t.mutation(internal.cleanup._backfillRoomActivity, {}),
+  ).resolves.toEqual({ inserted: 1, scanned: 1 });
+  await expect(
+    t.mutation(internal.cleanup._backfillRoomActivity, {}),
+  ).resolves.toEqual({ inserted: 0, scanned: 1 });
+});
+
+test("merged guest cleanup ignores missing and registered users", async () => {
+  const t = setupTest();
+  const registered = await seedUser(t, { isAnonymous: false });
+  const missing = await seedUser(t, { isAnonymous: true });
+  await t.run(async (ctx) => ctx.db.delete(missing));
+
+  await expect(
+    t.mutation(internal.cleanup.removeMergedGuest, {
+      guestUserId: registered,
+    }),
+  ).resolves.toBeNull();
+  await expect(
+    t.mutation(internal.cleanup.removeMergedGuest, { guestUserId: missing }),
+  ).resolves.toBeNull();
+  await expect(
+    t.run(async (ctx) => ctx.db.get(registered)),
+  ).resolves.not.toBeNull();
 });
 
 test("expired guest cleanup removes private progress and keeps anonymized guesses", async () => {

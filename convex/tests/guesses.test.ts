@@ -1,8 +1,14 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, mockContextoFetch, seedUser, setupTest } from "./helpers";
+import { api } from "../_generated/api";
+import {
+  asUser,
+  mockContextoFetch,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -29,6 +35,8 @@ test("submit: rejects unknown word", async () => {
 });
 
 test("submit: updates roomActivity", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
   const { host, roomId, gameId } = await startedGame(t);
@@ -38,7 +46,7 @@ test("submit: updates roomActivity", async () => {
       .withIndex("by_room", (q) => q.eq("roomId", roomId))
       .unique(),
   );
-  await new Promise((r) => setTimeout(r, 5));
+  vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
   const after = await t.run(async (ctx) =>
     ctx.db

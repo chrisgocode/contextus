@@ -3,7 +3,7 @@ import {
   evaluateCounterRules,
   matchingEventRules,
   type EventRuleContext,
-} from "../convex/lib/achievementRules";
+} from "../lib/achievementRules";
 
 const baseContext: EventRuleContext = {
   distance: 2000,
