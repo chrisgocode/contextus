@@ -63,24 +63,24 @@ test("ending a room frees a guest room slot", async () => {
 });
 
 test("leaving a room frees a guest room slot", async () => {
-	const t = setupTest();
-	const host = await seedUser(t);
-	const guest = await seedUser(t, { isAnonymous: true });
-	const rooms = [];
-	for (let i = 0; i < 4; i++) {
-		rooms.push(await asUser(t, host).mutation(api.rooms.create, {}));
-	}
-	for (const room of rooms.slice(0, 3)) {
-		await asUser(t, guest).mutation(api.rooms.join, { code: room.code });
-	}
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const rooms = [];
+  for (let i = 0; i < 4; i++) {
+    rooms.push(await asUser(t, host).mutation(api.rooms.create, {}));
+  }
+  for (const room of rooms.slice(0, 3)) {
+    await asUser(t, guest).mutation(api.rooms.join, { code: room.code });
+  }
 
-	await asUser(t, guest).mutation(api.rooms.leave, {
-		roomId: rooms[0].roomId,
-	});
+  await asUser(t, guest).mutation(api.rooms.leave, {
+    roomId: rooms[0].roomId,
+  });
 
-	await expect(
-		asUser(t, guest).mutation(api.rooms.join, { code: rooms[3].code }),
-	).resolves.toEqual(expect.objectContaining({ roomId: rooms[3].roomId }));
+  await expect(
+    asUser(t, guest).mutation(api.rooms.join, { code: rooms[3].code }),
+  ).resolves.toEqual(expect.objectContaining({ roomId: rooms[3].roomId }));
 });
 
 test("create returns a valid code and inserts host as member", async () => {
@@ -232,7 +232,7 @@ test("public room previews do not expose member details", async () => {
 
   const result = await t.query(api.rooms.getByCode, { code });
 
-	expect(result?.members).toEqual([]);
+  expect(result?.members).toEqual([]);
 });
 
 test("getByCode null for unknown", async () => {

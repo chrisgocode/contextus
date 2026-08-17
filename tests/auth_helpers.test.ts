@@ -5,9 +5,7 @@ import { asUser, seedUser, setupTest } from "./helpers";
 
 test("requireUser throws when unauthenticated", async () => {
   const t = setupTest();
-  await expect(
-    t.run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toThrow();
+  await expect(t.run(async (ctx) => await requireUser(ctx))).rejects.toThrow();
 });
 
 test("requireUser returns userId when authenticated", async () => {

@@ -5,10 +5,7 @@ import { asUser, seedUser, setupTest } from "./helpers";
 async function createRoomWith(t: ReturnType<typeof setupTest>) {
   const host = await seedUser(t, { name: "Host" });
   const other = await seedUser(t, { name: "Other" });
-  const { roomId, code } = await asUser(t, host).mutation(
-    api.rooms.create,
-    {},
-  );
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
   await asUser(t, other).mutation(api.rooms.join, { code });
   return { host, other, roomId };
 }

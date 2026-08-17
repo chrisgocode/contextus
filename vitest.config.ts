@@ -7,10 +7,10 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     coverage: {
       enabled: true,
-      provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
-      include: ['app/**/*.{ts,tsx}', 'convex/**/*.ts'],
-      exclude: ['convex/_generated/**'],
-    }
+      provider: "v8",
+      reporter: ["text", "html", "lcov"],
+      include: ["app/**/*.{ts,tsx}", "convex/**/*.ts"],
+      exclude: ["convex/_generated/**"],
+    },
   },
 });

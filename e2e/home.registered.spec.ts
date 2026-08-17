@@ -17,7 +17,9 @@ test("makes Home inert while a room opens", async ({
   });
   await page.goto("/");
 
-  const createButton = page.locator("button").filter({ hasText: "Create room" });
+  const createButton = page
+    .locator("button")
+    .filter({ hasText: "Create room" });
   await createButton.focus();
   await page.keyboard.press("Enter");
 
