@@ -58,3 +58,15 @@ test("generateUniqueUsername produces well-formed usernames", async () => {
     }
   });
 });
+
+test("randomInt rejects out-of-range or non-integer max", () => {
+  for (const max of [0, -1, 1.5, Number.NaN, 2 ** 32 + 1, 2 ** 40]) {
+    expect(() => randomInt(max)).toThrow(RangeError);
+  }
+});
+
+test("randomInt accepts max of exactly 2 ** 32", () => {
+  const value = randomInt(2 ** 32);
+  expect(value).toBeGreaterThanOrEqual(0);
+  expect(value).toBeLessThan(2 ** 32);
+});
