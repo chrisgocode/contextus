@@ -35,7 +35,7 @@ export const getUser = query({
   handler: async (ctx, { userId }) => {
     const currentUserId = await requireUser(ctx);
     const requestedUserId = userId ?? currentUserId;
-    const user = await ctx.db.get(requestedUserId);
+    const user = await ctx.db.get("users", requestedUserId);
     if (user === null) return null;
     const uploadedAvatarUrl = user.avatarStorageId
       ? await ctx.storage.getUrl(user.avatarStorageId)
@@ -83,7 +83,7 @@ export const getGuestAccountPrompt = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
-    const user = await ctx.db.get(userId);
+    const user = await ctx.db.get("users", userId);
     if (user?.isAnonymous !== true) return null;
     const completedGames = user.guestCompletedGames ?? 0;
     const milestone = Math.floor(completedGames / 3) * 3;
@@ -101,11 +101,11 @@ export const dismissGuestAccountPrompt = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
-    const user = await ctx.db.get(userId);
+    const user = await ctx.db.get("users", userId);
     if (user?.isAnonymous !== true) return null;
     const milestone = Math.floor((user.guestCompletedGames ?? 0) / 3) * 3;
     if (milestone >= 3) {
-      await ctx.db.patch(userId, { guestPromptedGames: milestone });
+      await ctx.db.patch("users", userId, { guestPromptedGames: milestone });
     }
     return null;
   },
@@ -149,7 +149,7 @@ export const updateProfile = mutation({
       }
     }
 
-    await ctx.db.patch(currentUserId, {
+    await ctx.db.patch("users", currentUserId, {
       name,
       ...normalizedUsername,
       ...(args.avatarStorageId === undefined
@@ -196,7 +196,7 @@ export const getActivityGraph = query({
         ? (userId ?? (await requireUser(ctx)))
         : (await getUserByUsername(ctx, username.trim()))?._id;
     if (requestedUserId === undefined) return null;
-    const user = await ctx.db.get(requestedUserId);
+    const user = await ctx.db.get("users", requestedUserId);
     if (user === null) return null;
 
     const todayStart = startOfUtcDay(Date.now());

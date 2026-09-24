@@ -88,7 +88,9 @@ test("_execute attributes guess to requester and marks request approved atomical
   expect(rows).toHaveLength(1);
   expect(rows[0].source).toBe("hint");
   expect(rows[0].userId).toBe(other);
-  const reqRow = await t.run(async (ctx) => ctx.db.get(req!._id));
+  const reqRow = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", req!._id),
+  );
   expect(reqRow?.status).toBe("approved");
 });
 

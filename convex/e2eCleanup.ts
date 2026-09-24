@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { env, mutation, type MutationCtx } from "./_generated/server";
+import { deleteUserOwnedRows } from "./lib/userRows";
 
 const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u[01]@example\.com$/;
 
@@ -8,7 +9,7 @@ export const purgeAccount = mutation({
   args: { email: v.string() },
   returns: v.object({ deleted: v.boolean() }),
   handler: async (ctx, { email }) => {
-    if (process.env.E2E_TEST !== "1" || !E2E_EMAIL.test(email)) {
+    if (env.E2E_TEST !== "1" || !E2E_EMAIL.test(email)) {
       throw new ConvexError("E2E cleanup is unavailable");
     }
     const user = await ctx.db
@@ -21,7 +22,7 @@ export const purgeAccount = mutation({
     if (user.avatarStorageId !== undefined) {
       await ctx.storage.delete(user.avatarStorageId);
     }
-    await ctx.db.delete(user._id);
+    await ctx.db.delete("users", user._id);
     return { deleted: true };
   },
 });
@@ -39,37 +40,32 @@ async function deleteUserData(
     .collect();
   for (const room of hostedRooms) await deleteRoom(ctx, room._id);
 
-  for (const table of [
-    "roomMembers",
-    "gameGuesses",
-    "userGameHistory",
-    "userAchievements",
-    "userAchievementProgress",
-    "gamePlayerStats",
-  ] as const) {
-    const rows = await ctx.db
-      .query(table)
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-    for (const row of rows) await ctx.db.delete(row._id);
-  }
+  await deleteUserOwnedRows(ctx, userId);
+  const guesses = await ctx.db
+    .query("gameGuesses")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const row of guesses) await ctx.db.delete("gameGuesses", row._id);
   const stats = await ctx.db
     .query("userAchievementStats")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
-  if (stats !== null) await ctx.db.delete(stats._id);
+  if (stats !== null) await ctx.db.delete("userAchievementStats", stats._id);
 
   const requests = await ctx.db
     .query("pendingRequests")
-    .withIndex("by_requester", (q) => q.eq("requesterUserId", userId))
+    .withIndex("by_requester_game_type_status", (q) =>
+      q.eq("requesterUserId", userId),
+    )
     .collect();
-  for (const request of requests) await ctx.db.delete(request._id);
+  for (const request of requests)
+    await ctx.db.delete("pendingRequests", request._id);
   const wins = await ctx.db
     .query("games")
     .withIndex("by_winner_user", (q) => q.eq("winnerUserId", userId))
     .collect();
   for (const game of wins)
-    await ctx.db.patch(game._id, { winnerUserId: undefined });
+    await ctx.db.patch("games", game._id, { winnerUserId: undefined });
 
   const accounts = await ctx.db
     .query("authAccounts")
@@ -80,8 +76,9 @@ async function deleteUserData(
       .query("authVerificationCodes")
       .withIndex("accountId", (q) => q.eq("accountId", account._id))
       .collect();
-    for (const code of codes) await ctx.db.delete(code._id);
-    await ctx.db.delete(account._id);
+    for (const code of codes)
+      await ctx.db.delete("authVerificationCodes", code._id);
+    await ctx.db.delete("authAccounts", account._id);
   }
   const sessions = await ctx.db
     .query("authSessions")
@@ -92,14 +89,15 @@ async function deleteUserData(
       .query("authRefreshTokens")
       .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
       .collect();
-    for (const token of tokens) await ctx.db.delete(token._id);
-    await ctx.db.delete(session._id);
+    for (const token of tokens)
+      await ctx.db.delete("authRefreshTokens", token._id);
+    await ctx.db.delete("authSessions", session._id);
   }
   const rateLimit = await ctx.db
     .query("authRateLimits")
     .withIndex("identifier", (q) => q.eq("identifier", email))
     .unique();
-  if (rateLimit !== null) await ctx.db.delete(rateLimit._id);
+  if (rateLimit !== null) await ctx.db.delete("authRateLimits", rateLimit._id);
 }
 
 async function deleteRoom(ctx: MutationCtx, roomId: Id<"rooms">) {
@@ -110,7 +108,8 @@ async function deleteRoom(ctx: MutationCtx, roomId: Id<"rooms">) {
         q.eq("roomId", roomId).eq("status", status),
       )
       .collect();
-    for (const request of requests) await ctx.db.delete(request._id);
+    for (const request of requests)
+      await ctx.db.delete("pendingRequests", request._id);
   }
   const games = await ctx.db
     .query("games")
@@ -124,24 +123,26 @@ async function deleteRoom(ctx: MutationCtx, roomId: Id<"rooms">) {
         .collect(),
       ctx.db
         .query("gamePlayerStats")
-        .withIndex("by_game", (q) => q.eq("gameId", game._id))
+        .withIndex("by_game_user", (q) => q.eq("gameId", game._id))
         .collect(),
     ]);
-    for (const row of [...guesses, ...playerStats])
-      await ctx.db.delete(row._id);
-    await ctx.db.delete(game._id);
+    for (const row of guesses) await ctx.db.delete("gameGuesses", row._id);
+    for (const row of playerStats) {
+      await ctx.db.delete("gamePlayerStats", row._id);
+    }
+    await ctx.db.delete("games", game._id);
   }
   const [members, activity] = await Promise.all([
     ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect(),
     ctx.db
       .query("roomActivity")
       .withIndex("by_room", (q) => q.eq("roomId", roomId))
       .unique(),
   ]);
-  for (const member of members) await ctx.db.delete(member._id);
-  if (activity !== null) await ctx.db.delete(activity._id);
-  await ctx.db.delete(roomId);
+  for (const member of members) await ctx.db.delete("roomMembers", member._id);
+  if (activity !== null) await ctx.db.delete("roomActivity", activity._id);
+  await ctx.db.delete("rooms", roomId);
 }

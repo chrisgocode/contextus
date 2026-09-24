@@ -13,6 +13,6 @@ export async function upsertRoomActivity(
   if (existing === null) {
     await ctx.db.insert("roomActivity", { roomId, lastActivityAt: now });
   } else {
-    await ctx.db.patch(existing._id, { lastActivityAt: now });
+    await ctx.db.patch("roomActivity", existing._id, { lastActivityAt: now });
   }
 }

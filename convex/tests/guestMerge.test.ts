@@ -29,7 +29,7 @@ test("mergeCurrentGuestIntoUser ignores sessions that cannot be merged", async (
 
   const guest = await seedUser(t, { isAnonymous: true });
   const missingTarget = await seedUser(t);
-  await t.run(async (ctx) => ctx.db.delete(missingTarget));
+  await t.run(async (ctx) => ctx.db.delete("users", missingTarget));
   await expect(
     (await asUserWithSession(t, guest)).run(async (ctx) =>
       mergeCurrentGuestIntoUser(ctx, missingTarget),
@@ -92,7 +92,7 @@ test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered
   const result = await t.run(async (ctx) => {
     const members = await ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect();
     const guesses = await ctx.db
       .query("gameGuesses")
@@ -106,7 +106,7 @@ test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered
       .unique();
     const achievements = await ctx.db
       .query("userAchievements")
-      .withIndex("by_user", (q) => q.eq("userId", target))
+      .withIndex("by_user_achievement", (q) => q.eq("userId", target))
       .collect();
     const guestRows = {
       memberships: (
@@ -118,13 +118,13 @@ test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered
       history: (
         await ctx.db
           .query("userGameHistory")
-          .withIndex("by_user", (q) => q.eq("userId", guest))
+          .withIndex("by_user_game", (q) => q.eq("userId", guest))
           .collect()
       ).length,
       achievements: (
         await ctx.db
           .query("userAchievements")
-          .withIndex("by_user", (q) => q.eq("userId", guest))
+          .withIndex("by_user_achievement", (q) => q.eq("userId", guest))
           .collect()
       ).length,
     };
@@ -165,7 +165,7 @@ test("mergeCurrentGuestIntoUser transfers guest-hosted rooms", async () => {
     await mergeCurrentGuestIntoUser(ctx, target);
   });
 
-  const room = await t.run(async (ctx) => ctx.db.get(roomId));
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.hostUserId).toBe(target);
 });
 
@@ -280,8 +280,8 @@ test("merged guest identities can be removed after auth switches sessions", asyn
   await t.mutation(internal.cleanup.removeMergedGuest, { guestUserId: guest });
 
   const result = await t.run(async (ctx) => ({
-    guest: await ctx.db.get(guest),
-    account: await ctx.db.get(accountId),
+    guest: await ctx.db.get("users", guest),
+    account: await ctx.db.get("authAccounts", accountId),
   }));
   expect(result).toEqual({ guest: null, account: null });
 });
@@ -466,11 +466,11 @@ test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game 
   const result = await t.run(async (ctx) => ({
     history: await ctx.db
       .query("userGameHistory")
-      .withIndex("by_user", (q) => q.eq("userId", target))
+      .withIndex("by_user_game", (q) => q.eq("userId", target))
       .collect(),
     achievements: await ctx.db
       .query("userAchievements")
-      .withIndex("by_user", (q) => q.eq("userId", target))
+      .withIndex("by_user_achievement", (q) => q.eq("userId", target))
       .collect(),
     stats: await ctx.db
       .query("userAchievementStats")

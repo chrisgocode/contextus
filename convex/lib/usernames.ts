@@ -96,7 +96,7 @@ export async function ensureUserHasUsername(
   ctx: UserMutationCtx,
   userId: Id<"users">,
 ): Promise<NormalizedUsername | null> {
-  const user = await ctx.db.get(userId);
+  const user = await ctx.db.get("users", userId);
   if (user === null) return null;
   if (user.username && user.displayUsername) {
     return {
@@ -105,6 +105,6 @@ export async function ensureUserHasUsername(
     };
   }
   const generated = await generateUniqueUsername(ctx, userId);
-  await ctx.db.patch(userId, generated);
+  await ctx.db.patch("users", userId, generated);
   return generated;
 }

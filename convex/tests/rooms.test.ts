@@ -18,7 +18,7 @@ test("anonymous users can create and host rooms", async () => {
 
   await asUser(t, guest).mutation(api.rooms.endRoom, { roomId });
 
-  const room = await t.run(async (ctx) => ctx.db.get(roomId));
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room).toMatchObject({ hostUserId: guest, status: "ended" });
 });
 
@@ -98,7 +98,7 @@ test("create returns a valid code and inserts host as member", async () => {
   const members = await t.run(async (ctx) =>
     ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect(),
   );
   expect(members).toHaveLength(1);
@@ -154,7 +154,7 @@ test("join is idempotent", async () => {
   const members = await t.run(async (ctx) =>
     ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect(),
   );
   expect(members.filter((m) => m.userId === other)).toHaveLength(1);
@@ -188,7 +188,7 @@ test("endRoom: only host can end", async () => {
     asUser(t, other).mutation(api.rooms.endRoom, { roomId }),
   ).rejects.toThrow();
   await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
-  const room = await t.run(async (ctx) => ctx.db.get(roomId));
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.status).toBe("ended");
 });
 
@@ -213,7 +213,7 @@ test("leave removes membership", async () => {
   const members = await t.run(async (ctx) =>
     ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect(),
   );
   expect(members.map((m) => m.userId)).toEqual([host]);

@@ -39,10 +39,12 @@ test("approve via requests dispatcher ends game with answer + marks approved", a
     requestId: req!._id,
   });
   expect(result.lemma).toBe("persimmon");
-  const game = await t.run(async (ctx) => ctx.db.get(gameId));
+  const game = await t.run(async (ctx) => ctx.db.get("games", gameId));
   expect(game?.status).toBe("given_up");
   expect(game?.answerLemma).toBe("persimmon");
-  const reqRow = await t.run(async (ctx) => ctx.db.get(req!._id));
+  const reqRow = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", req!._id),
+  );
   expect(reqRow?.status).toBe("approved");
 });
 
@@ -51,7 +53,7 @@ test("hostGiveup shortcut works with no pending row", async () => {
   mockContextoFetch({ answers: { 1336: "persimmon" } });
   const { host, gameId } = await startedGame(t);
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
-  const game = await t.run(async (ctx) => ctx.db.get(gameId));
+  const game = await t.run(async (ctx) => ctx.db.get("games", gameId));
   expect(game?.status).toBe("given_up");
 });
 
@@ -127,8 +129,8 @@ test("game completion credits participants beyond the first page", async () => {
   });
 
   const credited = await t.run(async (ctx) => ({
-    first: await ctx.db.get(participantIds.first!),
-    last: await ctx.db.get(participantIds.last!),
+    first: await ctx.db.get("users", participantIds.first!),
+    last: await ctx.db.get("users", participantIds.last!),
   }));
   expect(credited.first?.guestCompletedGames).toBe(1);
   expect(credited.last?.guestCompletedGames).toBe(1);

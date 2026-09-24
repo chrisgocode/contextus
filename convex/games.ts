@@ -64,7 +64,7 @@ export const getById = query({
     const { game } = access;
     let winner: Doc<"users"> | null = null;
     if (game.winnerUserId !== undefined) {
-      winner = await ctx.db.get(game.winnerUserId);
+      winner = await ctx.db.get("users", game.winnerUserId);
     }
     return {
       ...game,
@@ -80,7 +80,7 @@ export const listMyHistory = query({
     const userId = await requireUser(ctx);
     const rows = await ctx.db
       .query("userGameHistory")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user_game", (q) => q.eq("userId", userId))
       .collect();
     return rows.map((r) => r.contextoGameId);
   },

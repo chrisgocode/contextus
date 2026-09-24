@@ -151,7 +151,9 @@ test("deny patches status to denied", async () => {
     ctx.db.query("pendingRequests").first(),
   );
   await asUser(t, host).mutation(api.requests.deny, { requestId: req!._id });
-  const row = await t.run(async (ctx) => ctx.db.get(req!._id));
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", req!._id),
+  );
   expect(row?.status).toBe("denied");
 });
 

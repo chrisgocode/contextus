@@ -24,7 +24,7 @@ export const applyGuess = internalMutation({
     won: boolean;
     unlockedAchievementIds: AchievementId[];
   }> => {
-    const game = await ctx.db.get(gameId);
+    const game = await ctx.db.get("games", gameId);
     if (game === null) throw new ConvexError("Game not found");
     const existingGuess = await ctx.db
       .query("gameGuesses")
@@ -67,7 +67,7 @@ export const applyGuess = internalMutation({
 
     await ctx.db.insert("gameGuesses", decision.insertGuess);
     if (decision.gamePatch !== null) {
-      await ctx.db.patch(gameId, decision.gamePatch);
+      await ctx.db.patch("games", gameId, decision.gamePatch);
     }
     await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
     await upsertHistory(
@@ -91,7 +91,9 @@ export const applyGuess = internalMutation({
       await recordGuestGameCompletion(ctx, gameId);
     }
     if (decision.closeRequestId !== null) {
-      await ctx.db.patch(decision.closeRequestId, { status: "approved" });
+      await ctx.db.patch("pendingRequests", decision.closeRequestId, {
+        status: "approved",
+      });
     }
     return { status: "recorded", won: decision.won, unlockedAchievementIds };
   },
@@ -104,7 +106,7 @@ export const applyGiveup = internalMutation({
     closeRequestId: v.optional(v.id("pendingRequests")),
   },
   handler: async (ctx, { gameId, answerLemma, closeRequestId }) => {
-    const game = await ctx.db.get(gameId);
+    const game = await ctx.db.get("games", gameId);
     if (game === null) throw new ConvexError("Game not found");
     const decision = decideGiveup(
       { game, now: Date.now() },
@@ -113,11 +115,13 @@ export const applyGiveup = internalMutation({
     if (decision.kind === "reject") {
       throw new ConvexError("Game is no longer in progress");
     }
-    await ctx.db.patch(gameId, decision.gamePatch);
+    await ctx.db.patch("games", gameId, decision.gamePatch);
     await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
     await recordGuestGameCompletion(ctx, gameId);
     if (decision.closeRequestId !== null) {
-      await ctx.db.patch(decision.closeRequestId, { status: "approved" });
+      await ctx.db.patch("pendingRequests", decision.closeRequestId, {
+        status: "approved",
+      });
     }
     return null;
   },

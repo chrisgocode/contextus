@@ -30,11 +30,11 @@ export const listForProfile = query({
     const [unlocks, progressRows] = await Promise.all([
       ctx.db
         .query("userAchievements")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .withIndex("by_user_achievement", (q) => q.eq("userId", user._id))
         .collect(),
       ctx.db
         .query("userAchievementProgress")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .withIndex("by_user_achievement", (q) => q.eq("userId", user._id))
         .collect(),
     ]);
 
@@ -105,7 +105,7 @@ function createConvexAchievementRepository(
       if (row === null) {
         await ctx.db.insert("userAchievementStats", { userId, ...stats });
       } else {
-        await ctx.db.patch(row._id, stats);
+        await ctx.db.patch("userAchievementStats", row._id, stats);
       }
     },
 
@@ -122,7 +122,7 @@ function createConvexAchievementRepository(
           updatedAt: now,
         });
       } else {
-        await ctx.db.patch(row._id, {
+        await ctx.db.patch("userAchievementProgress", row._id, {
           current: Math.max(row.current, clampedCurrent),
           target,
           hidden,
@@ -164,7 +164,7 @@ function createConvexAchievementRepository(
       );
       const isFirstEverAttemptForPuzzle = history.firstAttemptAt === undefined;
       if (isFirstEverAttemptForPuzzle) {
-        await ctx.db.patch(history._id, {
+        await ctx.db.patch("userGameHistory", history._id, {
           firstAttemptAt: event.now,
           firstAttemptDistance: event.distance,
           firstAttemptGameId: event.gameId,
@@ -199,7 +199,7 @@ function createConvexAchievementRepository(
           existing.noBacktrackingSoFar &&
           event.distance < existing.lastDistance,
       };
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("gamePlayerStats", existing._id, {
         ...stats,
         updatedAt: event.now,
       });
@@ -213,7 +213,7 @@ function createConvexAchievementRepository(
     async listActiveGuessers(gameId) {
       const rows = await ctx.db
         .query("gamePlayerStats")
-        .withIndex("by_game", (q) => q.eq("gameId", gameId))
+        .withIndex("by_game_user", (q) => q.eq("gameId", gameId))
         .take(500);
       return rows.map((row) => row.userId);
     },
@@ -226,7 +226,7 @@ function createConvexAchievementRepository(
         now,
       );
       if (history.firstSolvedAt !== undefined) return false;
-      await ctx.db.patch(history._id, {
+      await ctx.db.patch("userGameHistory", history._id, {
         firstSolvedAt: now,
         firstSolvedGameId: gameId,
       });
@@ -294,7 +294,7 @@ async function getOrCreateHistory(
     contextoGameId,
     firstPlayedAt: now,
   });
-  const inserted = await ctx.db.get(id);
+  const inserted = await ctx.db.get("userGameHistory", id);
   if (inserted === null) {
     throw new Error("Inserted userGameHistory row could not be read");
   }

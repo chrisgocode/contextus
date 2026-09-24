@@ -11,7 +11,7 @@ async function currentUserFromSession(
 ): Promise<Id<"users"> | null> {
   const sessionId = await getAuthSessionId(ctx);
   if (sessionId === null) return null;
-  const session = await ctx.db.get(sessionId);
+  const session = await ctx.db.get("authSessions", sessionId);
   return session?.userId ?? null;
 }
 
@@ -22,8 +22,8 @@ export async function mergeCurrentGuestIntoUser(
   const guestUserId = await currentUserFromSession(ctx);
   if (guestUserId === null || guestUserId === targetUserId) return null;
   const [guest, target] = await Promise.all([
-    ctx.db.get(guestUserId),
-    ctx.db.get(targetUserId),
+    ctx.db.get("users", guestUserId),
+    ctx.db.get("users", targetUserId),
   ]);
   if (guest?.isAnonymous !== true || target === null) return null;
 
@@ -64,7 +64,7 @@ async function patchGuestHostedRooms(
     .withIndex("by_host_user", (q) => q.eq("hostUserId", guestUserId))
     .collect();
   for (const row of rows) {
-    await ctx.db.patch(row._id, { hostUserId: targetUserId });
+    await ctx.db.patch("rooms", row._id, { hostUserId: targetUserId });
   }
 }
 
@@ -85,12 +85,12 @@ async function mergeRoomMemberships(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { userId: targetUserId });
+      await ctx.db.patch("roomMembers", row._id, { userId: targetUserId });
     } else {
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("roomMembers", existing._id, {
         joinedAt: Math.min(existing.joinedAt, row.joinedAt),
       });
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("roomMembers", row._id);
     }
   }
 }
@@ -105,7 +105,7 @@ async function patchGuestGuesses(
     .withIndex("by_user", (q) => q.eq("userId", guestUserId))
     .collect();
   for (const row of rows) {
-    await ctx.db.patch(row._id, { userId: targetUserId });
+    await ctx.db.patch("gameGuesses", row._id, { userId: targetUserId });
   }
 }
 
@@ -116,7 +116,9 @@ async function patchGuestRequests(
 ) {
   const rows = await ctx.db
     .query("pendingRequests")
-    .withIndex("by_requester", (q) => q.eq("requesterUserId", guestUserId))
+    .withIndex("by_requester_game_type_status", (q) =>
+      q.eq("requesterUserId", guestUserId),
+    )
     .collect();
   for (const row of rows) {
     const existing = await ctx.db
@@ -130,9 +132,11 @@ async function patchGuestRequests(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { requesterUserId: targetUserId });
+      await ctx.db.patch("pendingRequests", row._id, {
+        requesterUserId: targetUserId,
+      });
     } else {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("pendingRequests", row._id);
     }
   }
 }
@@ -147,7 +151,7 @@ async function patchGuestWins(
     .withIndex("by_winner_user", (q) => q.eq("winnerUserId", guestUserId))
     .collect();
   for (const row of rows) {
-    await ctx.db.patch(row._id, { winnerUserId: targetUserId });
+    await ctx.db.patch("games", row._id, { winnerUserId: targetUserId });
   }
 }
 
@@ -159,7 +163,7 @@ async function mergeHistory(
   let overlappingSolves = 0;
   const rows = await ctx.db
     .query("userGameHistory")
-    .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+    .withIndex("by_user_game", (q) => q.eq("userId", guestUserId))
     .collect();
   for (const row of rows) {
     const existing = await ctx.db
@@ -169,7 +173,7 @@ async function mergeHistory(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { userId: targetUserId });
+      await ctx.db.patch("userGameHistory", row._id, { userId: targetUserId });
       continue;
     }
     if (
@@ -178,7 +182,7 @@ async function mergeHistory(
     ) {
       overlappingSolves += 1;
     }
-    await ctx.db.patch(existing._id, {
+    await ctx.db.patch("userGameHistory", existing._id, {
       firstPlayedAt: Math.min(existing.firstPlayedAt, row.firstPlayedAt),
       firstAttemptAt: earliest(existing.firstAttemptAt, row.firstAttemptAt),
       firstAttemptDistance:
@@ -201,7 +205,7 @@ async function mergeHistory(
           ? row.firstSolvedGameId
           : existing.firstSolvedGameId,
     });
-    await ctx.db.delete(row._id);
+    await ctx.db.delete("userGameHistory", row._id);
   }
   return overlappingSolves;
 }
@@ -213,7 +217,7 @@ async function mergeAchievements(
 ) {
   const rows = await ctx.db
     .query("userAchievements")
-    .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+    .withIndex("by_user_achievement", (q) => q.eq("userId", guestUserId))
     .collect();
   for (const row of rows) {
     const existing = await ctx.db
@@ -223,12 +227,12 @@ async function mergeAchievements(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { userId: targetUserId });
+      await ctx.db.patch("userAchievements", row._id, { userId: targetUserId });
     } else {
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("userAchievements", existing._id, {
         unlockedAt: Math.min(existing.unlockedAt, row.unlockedAt),
       });
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("userAchievements", row._id);
     }
   }
 }
@@ -240,7 +244,7 @@ async function mergeAchievementProgress(
 ) {
   const rows = await ctx.db
     .query("userAchievementProgress")
-    .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+    .withIndex("by_user_achievement", (q) => q.eq("userId", guestUserId))
     .collect();
   for (const row of rows) {
     const existing = await ctx.db
@@ -250,15 +254,17 @@ async function mergeAchievementProgress(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { userId: targetUserId });
+      await ctx.db.patch("userAchievementProgress", row._id, {
+        userId: targetUserId,
+      });
     } else {
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("userAchievementProgress", existing._id, {
         current: Math.max(existing.current, row.current),
         target: Math.max(existing.target, row.target),
         hidden: existing.hidden && row.hidden,
         updatedAt: Math.max(existing.updatedAt, row.updatedAt),
       });
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("userAchievementProgress", row._id);
     }
   }
 }
@@ -279,10 +285,12 @@ async function mergeAchievementStats(
     .withIndex("by_user", (q) => q.eq("userId", targetUserId))
     .unique();
   if (target === null) {
-    await ctx.db.patch(guest._id, { userId: targetUserId });
+    await ctx.db.patch("userAchievementStats", guest._id, {
+      userId: targetUserId,
+    });
     return;
   }
-  await ctx.db.patch(target._id, {
+  await ctx.db.patch("userAchievementStats", target._id, {
     redGuesses: target.redGuesses + guest.redGuesses,
     yellowGuesses: target.yellowGuesses + guest.yellowGuesses,
     greenGuesses: target.greenGuesses + guest.greenGuesses,
@@ -291,7 +299,7 @@ async function mergeAchievementStats(
       target.uniqueSolves + guest.uniqueSolves - overlappingSolves,
     ),
   });
-  await ctx.db.delete(guest._id);
+  await ctx.db.delete("userAchievementStats", guest._id);
 }
 
 async function mergeGamePlayerStats(
@@ -311,7 +319,7 @@ async function mergeGamePlayerStats(
       )
       .unique();
     if (existing === null) {
-      await ctx.db.patch(row._id, { userId: targetUserId });
+      await ctx.db.patch("gamePlayerStats", row._id, { userId: targetUserId });
       await applyCounterValue(
         ctx,
         targetUserId,
@@ -321,7 +329,7 @@ async function mergeGamePlayerStats(
       );
     } else {
       const realGuessCount = existing.realGuessCount + row.realGuessCount;
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("gamePlayerStats", existing._id, {
         realGuessCount,
         bestDistance: Math.min(existing.bestDistance, row.bestDistance),
         lastDistance:
@@ -332,7 +340,7 @@ async function mergeGamePlayerStats(
           existing.noBacktrackingSoFar && row.noBacktrackingSoFar,
         updatedAt: Math.max(existing.updatedAt, row.updatedAt),
       });
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("gamePlayerStats", row._id);
       await applyCounterValue(
         ctx,
         targetUserId,
@@ -398,7 +406,10 @@ async function applyCounterValue(
         updatedAt: now,
       });
     } else if (current > progress.current) {
-      await ctx.db.patch(progress._id, { current, updatedAt: now });
+      await ctx.db.patch("userAchievementProgress", progress._id, {
+        current,
+        updatedAt: now,
+      });
     }
     if (!rule.shouldUnlock) continue;
     const unlocked = await ctx.db
