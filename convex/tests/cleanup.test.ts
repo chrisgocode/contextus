@@ -109,6 +109,31 @@ describe("cleanup.tick", () => {
     });
     expect(status).toBe("ended");
   });
+
+  test("migrates host to an online member when the host is offline", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t, { name: "Host" });
+    const member = await seedUser(t, { name: "Member" });
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+
+    // Only the member is online; the host never sent a heartbeat.
+    await asUser(t, member).mutation(api.presence.heartbeat, {
+      roomId,
+      userId: member,
+      sessionId: "s1",
+      interval: 10000,
+    });
+
+    await t.action(internal.cleanup.tick, {});
+
+    const room = await t.run(async (ctx) => ctx.db.get(roomId));
+    expect(room?.hostUserId).toBe(member);
+    expect(room?.status).not.toBe("ended");
+  });
 });
 
 test("room activity backfill inserts only missing activity rows", async () => {

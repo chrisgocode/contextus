@@ -45,7 +45,7 @@ export const disconnect = mutation({
 });
 
 export async function onlineUserIdsForRoom(
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: ActionCtx,
   roomId: Id<"rooms">,
 ): Promise<Set<Id<"users">>> {
   const list = await presence.listRoom(ctx, roomId, true);

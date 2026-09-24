@@ -14,8 +14,7 @@ export const fetchGuess = internalAction({
     const url = `${BASE}/game/${contextoGameId}/${encodeURIComponent(word)}`;
     const res = await fetch(url);
     const body = (await res.json()) as
-      | { distance: number; lemma: string; word: string }
-      | { error: string };
+      { distance: number; lemma: string; word: string } | { error: string };
     if ("error" in body) return { ok: false, error: body.error };
     return { ok: true, lemma: body.lemma, distance: body.distance };
   },
