@@ -2,10 +2,11 @@ import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 // Identifies this build to clients so they can tell when a newer deployment
-// is live (see lib/new-version.ts). Vercel exposes the commit SHA at build
-// time; elsewhere each build gets a unique timestamp.
+// is live (see lib/new-version.ts). On Vercel every deployment gets its own ID,
+// so redeploys with changed env vars also prompt a refresh; elsewhere each
+// build gets a unique timestamp.
 const appVersion =
-  process.env.VERCEL_GIT_COMMIT_SHA ?? `build-${Date.now().toString(36)}`;
+  process.env.VERCEL_DEPLOYMENT_ID ?? `build-${Date.now().toString(36)}`;
 
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_APP_VERSION: appVersion },
