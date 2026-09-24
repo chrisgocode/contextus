@@ -211,6 +211,19 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
       contextoGameId: 1336,
       firstPlayedAt: 1,
     });
+    await ctx.db.insert("userAchievements", {
+      userId: guest,
+      achievementId: "first_solve",
+      unlockedAt: 1,
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId: guest,
+      achievementId: "streak_3",
+      current: 1,
+      target: 3,
+      hidden: false,
+      updatedAt: 1,
+    });
   });
 
   await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
@@ -220,6 +233,14 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
     history: await ctx.db
       .query("userGameHistory")
       .withIndex("by_user_game", (q) => q.eq("userId", guest))
+      .collect(),
+    achievements: await ctx.db
+      .query("userAchievements")
+      .withIndex("by_user_achievement", (q) => q.eq("userId", guest))
+      .collect(),
+    progress: await ctx.db
+      .query("userAchievementProgress")
+      .withIndex("by_user_achievement", (q) => q.eq("userId", guest))
       .collect(),
     guesses: await ctx.db
       .query("gameGuesses")
@@ -232,6 +253,8 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
   });
   expect(result.user?.username).toBeUndefined();
   expect(result.history).toEqual([]);
+  expect(result.achievements).toEqual([]);
+  expect(result.progress).toEqual([]);
   expect(result.guesses).toHaveLength(1);
 });
 
