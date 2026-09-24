@@ -1,7 +1,16 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+// Identifies this build to clients so they can tell when a newer deployment
+// is live (see lib/new-version.ts). On Vercel every deployment gets its own ID,
+// so redeploys with changed env vars also prompt a refresh; elsewhere each
+// build gets a unique timestamp.
+const appVersion =
+  process.env.VERCEL_DEPLOYMENT_ID ?? `build-${Date.now().toString(36)}`;
+
+const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_APP_VERSION: appVersion },
+};
 
 export default withSentryConfig(nextConfig, {
   // For all available options, see:

@@ -7,7 +7,7 @@ import { GameSetupCalendar } from "@/app/r/[code]/_components/GameSetupCalendar"
 import { HintGiveupBar } from "@/app/r/[code]/_components/HintGiveupBar";
 import { PendingRequestsSidebar } from "@/app/r/[code]/_components/PendingRequestsSidebar";
 import { reportClientError } from "@/lib/report-error";
-import { render, screen, userEvent, waitFor } from "./test-utils";
+import { cleanup, render, screen, userEvent, waitFor } from "./test-utils";
 
 const convex = vi.hoisted(() => ({
   useAction: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     callback(0);
     return 0;
@@ -46,6 +47,34 @@ describe("GuessInput", () => {
       expect(submit).toHaveBeenCalledWith({ gameId: "game", word: "apple" }),
     );
     expect(input).toHaveValue("");
+  });
+
+  it("keeps an unsent guess across reloads until it is submitted", async () => {
+    const submit = vi.fn().mockResolvedValue({
+      lemma: "apple",
+      unlockedAchievementIds: [],
+      won: false,
+    });
+    convex.useAction.mockReturnValue(submit);
+    const user = userEvent.setup();
+
+    const first = render(<GuessInput gameId={"game" as never} />);
+    await user.type(screen.getByPlaceholderText("Type a word…"), "apple");
+    first.unmount();
+
+    render(<GuessInput gameId={"other" as never} />);
+    expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
+    cleanup();
+
+    render(<GuessInput gameId={"game" as never} />);
+    const input = screen.getByPlaceholderText("Type a word…");
+    expect(input).toHaveValue("apple");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+    await waitFor(() => expect(input).toHaveValue(""));
+    cleanup();
+
+    render(<GuessInput gameId={"game" as never} />);
+    expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
   });
 
   it("shows expected submission messages without reporting them", async () => {
