@@ -25,6 +25,7 @@
 
 # misc
 .DS_Store
+.serena/
 *.pem
 
 # debug

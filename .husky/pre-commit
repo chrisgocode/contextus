@@ -1,0 +1,3 @@
+git diff --cached --check
+bun run lint
+bun run format:check

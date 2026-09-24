@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Doc, Id } from "../convex/_generated/dataModel";
-import {
-  decideGiveup,
-  decideGuess,
-} from "../convex/lib/gameTransitions";
+import type { Doc, Id } from "../_generated/dataModel";
+import { decideGiveup, decideGuess } from "../lib/gameTransitions";
 
 const userA = "u_a" as unknown as Id<"users">;
 const userB = "u_b" as unknown as Id<"users">;
@@ -11,9 +8,7 @@ const gameId = "g_1" as unknown as Id<"games">;
 const roomId = "r_1" as unknown as Id<"rooms">;
 const requestId = "p_1" as unknown as Id<"pendingRequests">;
 
-function mkGame(
-  overrides: Partial<Doc<"games">> = {},
-): Doc<"games"> {
+function mkGame(overrides: Partial<Doc<"games">> = {}): Doc<"games"> {
   return {
     _id: gameId,
     _creationTime: 0,

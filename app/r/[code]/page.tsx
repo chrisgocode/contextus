@@ -75,8 +75,7 @@ export default function RoomPage({
       joiningRef.current = true;
       join({ code: upper })
         .catch((err) => {
-          const isRoomLimit =
-            getErrorData(err) === "Guest room limit reached";
+          const isRoomLimit = getErrorData(err) === "Guest room limit reached";
           const message = isRoomLimit
             ? "Guest room limit reached"
             : "Could not join room. Try again.";

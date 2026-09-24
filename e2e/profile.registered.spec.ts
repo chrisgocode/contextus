@@ -16,6 +16,16 @@ test("updates a profile and exposes only its public fields", async ({
   await user.page.getByLabel("Username").fill(username);
   await expect(user.page.getByLabel("Email")).toHaveValue(user.email);
   await expect(user.page.getByLabel("Email")).toBeDisabled();
+
+  await user.page.getByLabel("Username").fill("bad-name");
+  await user.page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    user.page.getByText(
+      "Could not save profile. Check your details and try again.",
+    ),
+  ).toBeVisible();
+
+  await user.page.getByLabel("Username").fill(username);
   await user.page.getByRole("button", { name: "Save" }).click();
 
   await expect(user.page).toHaveURL(`/user/${username}`);

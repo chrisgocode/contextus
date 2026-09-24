@@ -1,0 +1,13 @@
+commit_msg_file=$1
+subject=$(sed -n '1p' "$commit_msg_file")
+pattern='^(feat|fix|chore|docs|test|style|refactor|perf|build|ci|revert)(\([^()[:space:]]+\))?!?: .+$'
+
+if ! printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+  printf '\033[31mError\033[0m: Invalid commit format. Try: feat(feature): description.\n' >&2
+  exit 1
+fi
+
+if [ "${#subject}" -gt 88 ]; then
+  printf '\033[31mError\033[0m: Commit subject must be 88 characters or fewer.\n' >&2
+  exit 1
+fi

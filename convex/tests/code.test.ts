@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ROOM_CODE_REGEX, generateRoomCode } from "../convex/lib/code";
+import { ROOM_CODE_REGEX, generateRoomCode } from "../lib/code";
 
 test("generateRoomCode default length 6", () => {
   for (let i = 0; i < 50; i++) {

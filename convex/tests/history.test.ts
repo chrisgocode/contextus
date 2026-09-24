@@ -1,6 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, mockContextoFetch, seedUser, setupTest } from "./helpers";
+import { api } from "../_generated/api";
+import {
+  asUser,
+  mockContextoFetch,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 
 afterEach(() => {
   vi.unstubAllGlobals();

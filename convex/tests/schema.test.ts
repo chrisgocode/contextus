@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { setupTest, seedUser } from "./helpers";
+import { setupTest, seedUser } from "../testHelpers.test";
 
 test("schema accepts all table shapes", async () => {
   const t = setupTest();

@@ -1,15 +1,12 @@
 import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { api } from "../_generated/api";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 test("heartbeat silently no-ops for ex-member after leaving room", async () => {
   const t = setupTest();
   const host = await seedUser(t, { name: "Host" });
   const other = await seedUser(t, { name: "Other" });
-  const { roomId, code } = await asUser(t, host).mutation(
-    api.rooms.create,
-    {},
-  );
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
   await asUser(t, other).mutation(api.rooms.join, { code });
   await asUser(t, other).mutation(api.rooms.leave, { roomId });
   await expect(

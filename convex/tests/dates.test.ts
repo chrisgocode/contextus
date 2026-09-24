@@ -3,7 +3,7 @@ import {
   LAUNCH_DATE_UTC,
   contextoGameIdForDate,
   dateForContextoGameId,
-} from "../convex/lib/dates";
+} from "../lib/dates";
 
 test("gameId 1 = launch date", () => {
   expect(contextoGameIdForDate(new Date(LAUNCH_DATE_UTC))).toBe(1);

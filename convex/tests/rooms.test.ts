@@ -1,6 +1,10 @@
-import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api";
-import { asUser, seedUser, setupTest } from "./helpers";
+import { afterEach, expect, test, vi } from "vitest";
+import { api } from "../_generated/api";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 test("create requires auth", async () => {
   const t = setupTest();
@@ -63,24 +67,24 @@ test("ending a room frees a guest room slot", async () => {
 });
 
 test("leaving a room frees a guest room slot", async () => {
-	const t = setupTest();
-	const host = await seedUser(t);
-	const guest = await seedUser(t, { isAnonymous: true });
-	const rooms = [];
-	for (let i = 0; i < 4; i++) {
-		rooms.push(await asUser(t, host).mutation(api.rooms.create, {}));
-	}
-	for (const room of rooms.slice(0, 3)) {
-		await asUser(t, guest).mutation(api.rooms.join, { code: room.code });
-	}
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const rooms = [];
+  for (let i = 0; i < 4; i++) {
+    rooms.push(await asUser(t, host).mutation(api.rooms.create, {}));
+  }
+  for (const room of rooms.slice(0, 3)) {
+    await asUser(t, guest).mutation(api.rooms.join, { code: room.code });
+  }
 
-	await asUser(t, guest).mutation(api.rooms.leave, {
-		roomId: rooms[0].roomId,
-	});
+  await asUser(t, guest).mutation(api.rooms.leave, {
+    roomId: rooms[0].roomId,
+  });
 
-	await expect(
-		asUser(t, guest).mutation(api.rooms.join, { code: rooms[3].code }),
-	).resolves.toEqual(expect.objectContaining({ roomId: rooms[3].roomId }));
+  await expect(
+    asUser(t, guest).mutation(api.rooms.join, { code: rooms[3].code }),
+  ).resolves.toEqual(expect.objectContaining({ roomId: rooms[3].roomId }));
 });
 
 test("create returns a valid code and inserts host as member", async () => {
@@ -116,6 +120,8 @@ test("create inserts a matching roomActivity row", async () => {
 });
 
 test("join updates roomActivity", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   const t = setupTest();
   const host = await seedUser(t);
   const joiner = await seedUser(t);
@@ -126,7 +132,7 @@ test("join updates roomActivity", async () => {
       .withIndex("by_room", (q) => q.eq("roomId", roomId))
       .unique(),
   );
-  await new Promise((r) => setTimeout(r, 5));
+  vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
   await asUser(t, joiner).mutation(api.rooms.join, { code });
   const after = await t.run(async (ctx) =>
     ctx.db
@@ -232,7 +238,7 @@ test("public room previews do not expose member details", async () => {
 
   const result = await t.query(api.rooms.getByCode, { code });
 
-	expect(result?.members).toEqual([]);
+  expect(result?.members).toEqual([]);
 });
 
 test("getByCode null for unknown", async () => {
@@ -278,6 +284,9 @@ test("listRecentGroups returns a registered user's ended room", async () => {
 });
 
 test("listRecentGroups returns the three newest unique participant sets", async () => {
+  vi.useFakeTimers();
+  let now = Date.parse("2026-01-01T00:00:00.000Z");
+  vi.setSystemTime(now);
   const t = setupTest();
   const chris = await seedUser(t, { name: "Chris", isAnonymous: false });
   const jane = await seedUser(t, { name: "Jane", isAnonymous: false });
@@ -286,7 +295,7 @@ test("listRecentGroups returns the three newest unique participant sets", async 
   const dana = await seedUser(t, { name: "Dana", isAnonymous: false });
 
   async function endedRoomWith(partner: typeof jane) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    vi.setSystemTime((now += 1_000));
     const room = await asUser(t, chris).mutation(api.rooms.create, {});
     await asUser(t, partner).mutation(api.rooms.join, { code: room.code });
     await asUser(t, chris).mutation(api.rooms.endRoom, { roomId: room.roomId });

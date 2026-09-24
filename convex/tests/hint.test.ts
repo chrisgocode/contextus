@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { initialHintTarget, HINT_FLOOR } from "../convex/lib/hint";
+import { initialHintTarget, HINT_FLOOR } from "../lib/hint";
 
 test("no guesses -> 299", () => {
   expect(initialHintTarget(null)).toBe(HINT_FLOOR);
