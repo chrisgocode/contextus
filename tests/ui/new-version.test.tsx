@@ -178,6 +178,7 @@ describe("watchForNewVersion", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/version", {
       cache: "no-store",
+      signal: expect.any(AbortSignal),
     });
     expect(onNewVersion).toHaveBeenCalledWith("v2");
 
@@ -185,6 +186,26 @@ describe("watchForNewVersion", () => {
     onNewVersion.mockClear();
     await vi.advanceTimersByTimeAsync(POLL_MS);
     expect(onNewVersion).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("gives up on a hung version request so later checks still run", async () => {
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const stop = watchForNewVersion("v1", vi.fn());
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     stop();
   });
 });

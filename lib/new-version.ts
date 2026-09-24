@@ -1,4 +1,7 @@
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
+// A hung request would block every later check, so give up well before the
+// next poll.
+const FETCH_TIMEOUT_MS = 10_000;
 
 type WatchOptions = {
   /** Resolves to the currently deployed version, or null if unknown. */
@@ -7,9 +10,19 @@ type WatchOptions = {
 };
 
 async function fetchDeployedVersion(): Promise<string | null> {
-  const response = await fetch("/api/version", { cache: "no-store" });
-  if (!response.ok) return null;
-  const body: unknown = await response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let body: unknown;
+  try {
+    const response = await fetch("/api/version", {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    body = await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
   if (typeof body !== "object" || body === null || !("version" in body)) {
     return null;
   }
