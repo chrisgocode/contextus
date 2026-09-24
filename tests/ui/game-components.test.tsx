@@ -48,14 +48,14 @@ describe("GuessInput", () => {
     expect(input).toHaveValue("");
   });
 
-  it("shows duplicate and failed submission errors", async () => {
+  it("shows expected submission messages without reporting them", async () => {
     const submit = vi
       .fn()
       .mockResolvedValueOnce({
         alreadyGuessed: true,
         message: "Already guessed.",
       })
-      .mockRejectedValueOnce(new Error("offline"));
+      .mockResolvedValueOnce({ message: "Unknown word." });
     convex.useAction.mockReturnValue(submit);
     const user = userEvent.setup();
 
@@ -70,11 +70,24 @@ describe("GuessInput", () => {
     await user.clear(input);
     await user.type(input, "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unknown word.");
+    expect(reportClientError).not.toHaveBeenCalled();
+  });
+
+  it("reports unexpected submission failures", async () => {
+    const error = new Error("offline");
+    convex.useAction.mockReturnValue(vi.fn().mockRejectedValue(error));
+    const user = userEvent.setup();
+
+    render(<GuessInput gameId={"game" as never} />);
+    await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not submit guess. Try again.",
     );
     expect(reportClientError).toHaveBeenCalledWith(
-      expect.any(Error),
+      error,
       expect.objectContaining({ context: "guess.submit" }),
     );
   });

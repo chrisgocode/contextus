@@ -38,7 +38,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
           setBusy(true);
           try {
             const res = await submit({ gameId, word });
-            if ("alreadyGuessed" in res && res.alreadyGuessed) {
+            if (res.message) {
               setError(res.message);
               return;
             }

@@ -25,13 +25,17 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
   return { host, other, roomId, gameId };
 }
 
-test("submit: rejects unknown word", async () => {
+test("submit: returns unknown word message", async () => {
   const t = setupTest();
   mockContextoFetch({ guesses: { 1336: {} } });
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" }),
-  ).rejects.toThrow();
+  ).resolves.toEqual({
+    message: "I'm sorry, I don't know this word",
+    won: false,
+    unlockedAchievementIds: [],
+  });
 });
 
 test("submit: updates roomActivity", async () => {
