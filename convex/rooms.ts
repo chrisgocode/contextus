@@ -19,7 +19,7 @@ async function requireGuestRoomSlot(
   ctx: Pick<MutationCtx, "db">,
   userId: Awaited<ReturnType<typeof requireUser>>,
 ) {
-  const user = await ctx.db.get(userId);
+  const user = await ctx.db.get("users", userId);
   if (user?.isAnonymous !== true) return;
   const activeMemberships = await ctx.db
     .query("roomMembers")
@@ -111,9 +111,9 @@ export const leave = mutation({
       )
       .unique();
     if (member !== null) {
-      await ctx.db.delete(member._id);
+      await ctx.db.delete("roomMembers", member._id);
     }
-    const room = await ctx.db.get(roomId);
+    const room = await ctx.db.get("rooms", roomId);
     if (room !== null && room.status === "active") {
       await upsertRoomActivity(ctx, roomId, Date.now());
     }
@@ -125,13 +125,13 @@ export const endRoom = mutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
     await requireHostByRoom(ctx, { roomId });
-    await ctx.db.patch(roomId, { status: "ended" });
+    await ctx.db.patch("rooms", roomId, { status: "ended" });
     const members = await ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .collect();
     for (const member of members) {
-      await ctx.db.patch(member._id, { active: false });
+      await ctx.db.patch("roomMembers", member._id, { active: false });
     }
     return null;
   },
@@ -141,7 +141,7 @@ export const playAgain = mutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
     const userId = await requireRegisteredUser(ctx);
-    const room = await ctx.db.get(roomId);
+    const room = await ctx.db.get("rooms", roomId);
     if (room === null) throw new ConvexError("Room not found");
     const membership = await ctx.db
       .query("roomMembers")
@@ -154,12 +154,12 @@ export const playAgain = mutation({
 
     const members = await ctx.db
       .query("roomMembers")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
       .take(101);
     if (members.length < 2) throw new ConvexError("Group not found");
     if (members.length > 100) throw new ConvexError("Room is too large");
     const users = await Promise.all(
-      members.map((member) => ctx.db.get(member.userId)),
+      members.map((member) => ctx.db.get("users", member.userId)),
     );
     if (users.some((user) => user === null || user.isAnonymous === true)) {
       throw new ConvexError("Registered accounts required");
@@ -167,13 +167,13 @@ export const playAgain = mutation({
 
     const code = await generateUniqueRoomCode(ctx);
     const now = Date.now();
-    await ctx.db.patch(roomId, {
+    await ctx.db.patch("rooms", roomId, {
       code,
       hostUserId: userId,
       status: "active",
     });
     for (const member of members) {
-      await ctx.db.patch(member._id, { active: true });
+      await ctx.db.patch("roomMembers", member._id, { active: true });
     }
     await upsertRoomActivity(ctx, roomId, now);
     return { roomId, code };
@@ -204,11 +204,11 @@ export const getByCode = query({
         ? []
         : await ctx.db
             .query("roomMembers")
-            .withIndex("by_room", (q) => q.eq("roomId", room._id))
+            .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
             .collect();
     const memberDocs = await Promise.all(
       members.map(async (m) => {
-        const user = await ctx.db.get(m.userId);
+        const user = await ctx.db.get("users", m.userId);
         return {
           userId: m.userId,
           name: user?.name ?? user?.displayUsername ?? null,
@@ -237,7 +237,7 @@ export const listMine = query({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
     const fetched = await Promise.all(
-      memberships.map((m) => ctx.db.get(m.roomId)),
+      memberships.map((m) => ctx.db.get("rooms", m.roomId)),
     );
     const rooms = fetched.filter(
       (r): r is Doc<"rooms"> => r !== null && r.status === "active",
@@ -270,7 +270,7 @@ export const listRecentGroups = query({
       .take(MAX_RECENT_MEMBERSHIPS);
     const rooms = await Promise.all(
       memberships.map(async ({ roomId }) => {
-        const room = await ctx.db.get(roomId);
+        const room = await ctx.db.get("rooms", roomId);
         if (room?.status !== "ended") return null;
         const [activity, rows] = await Promise.all([
           ctx.db
@@ -279,13 +279,13 @@ export const listRecentGroups = query({
             .unique(),
           ctx.db
             .query("roomMembers")
-            .withIndex("by_room", (q) => q.eq("roomId", roomId))
+            .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
             .take(101),
         ]);
         if (rows.length < 2 || rows.length > 100) return null;
         const members = await Promise.all(
           rows.map(async (member) => {
-            const user = await ctx.db.get(member.userId);
+            const user = await ctx.db.get("users", member.userId);
             if (user === null || user.isAnonymous === true) return null;
             return {
               userId: user._id,

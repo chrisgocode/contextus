@@ -47,6 +47,8 @@ export default defineSchema({
     firstUsedTime: v.optional(v.number()),
     parentRefreshTokenId: v.optional(v.id("authRefreshTokens")),
   })
+    // Required by @convex-dev/auth, which queries this index by name.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
     .index("sessionId", ["sessionId"])
     .index("sessionIdAndParentRefreshTokenId", [
       "sessionId",
@@ -98,8 +100,10 @@ export default defineSchema({
     joinedAt: v.number(),
     active: v.optional(v.boolean()),
   })
-    .index("by_room", ["roomId"])
     .index("by_room_user", ["roomId", "userId"])
+    // Not redundant: listRecentGroups needs memberships in creation order,
+    // which by_user_and_active would reorder by `active` first.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
     .index("by_user", ["userId"])
     .index("by_user_and_active", ["userId", "active"]),
 
@@ -155,7 +159,6 @@ export default defineSchema({
   })
     .index("by_game_status", ["gameId", "status"])
     .index("by_room_status", ["roomId", "status"])
-    .index("by_requester", ["requesterUserId"])
     .index("by_requester_game_type_status", [
       "requesterUserId",
       "gameId",
@@ -174,16 +177,13 @@ export default defineSchema({
     firstSolvedGameId: v.optional(v.id("games")),
   })
     .index("by_user_game", ["userId", "contextoGameId"])
-    .index("by_user", ["userId"])
     .index("by_user_and_firstPlayedAt", ["userId", "firstPlayedAt"]),
 
   userAchievements: defineTable({
     userId: v.id("users"),
     achievementId: v.string(),
     unlockedAt: v.number(),
-  })
-    .index("by_user_achievement", ["userId", "achievementId"])
-    .index("by_user", ["userId"]),
+  }).index("by_user_achievement", ["userId", "achievementId"]),
 
   userAchievementProgress: defineTable({
     userId: v.id("users"),
@@ -192,9 +192,7 @@ export default defineSchema({
     target: v.number(),
     hidden: v.boolean(),
     updatedAt: v.number(),
-  })
-    .index("by_user_achievement", ["userId", "achievementId"])
-    .index("by_user", ["userId"]),
+  }).index("by_user_achievement", ["userId", "achievementId"]),
 
   userAchievementStats: defineTable({
     userId: v.id("users"),
@@ -214,6 +212,5 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_game_user", ["gameId", "userId"])
-    .index("by_game", ["gameId"])
     .index("by_user", ["userId"]),
 });

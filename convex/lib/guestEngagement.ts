@@ -10,11 +10,11 @@ export async function recordGuestGameCompletion(
 ) {
   const participants = ctx.db
     .query("gamePlayerStats")
-    .withIndex("by_game", (q) => q.eq("gameId", gameId));
+    .withIndex("by_game_user", (q) => q.eq("gameId", gameId));
   for await (const participant of participants) {
-    const user = await ctx.db.get(participant.userId);
+    const user = await ctx.db.get("users", participant.userId);
     if (user?.isAnonymous === true) {
-      await ctx.db.patch(user._id, {
+      await ctx.db.patch("users", user._id, {
         guestCompletedGames: (user.guestCompletedGames ?? 0) + 1,
       });
     }

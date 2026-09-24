@@ -78,8 +78,8 @@ test("getById exposes winner details only to room members", async () => {
     contextoGameId: 1336,
   });
   await t.run(async (ctx) => {
-    await ctx.db.patch(host, { image: "winner.png" });
-    await ctx.db.patch(gameId, { status: "won", winnerUserId: host });
+    await ctx.db.patch("users", host, { image: "winner.png" });
+    await ctx.db.patch("games", gameId, { status: "won", winnerUserId: host });
   });
 
   await expect(
@@ -102,8 +102,11 @@ test("getById falls back to display username when the winner has no name", async
     contextoGameId: 1336,
   });
   await t.run(async (ctx) => {
-    await ctx.db.patch(host, { name: undefined, displayUsername: "Winner" });
-    await ctx.db.patch(gameId, { status: "won", winnerUserId: host });
+    await ctx.db.patch("users", host, {
+      name: undefined,
+      displayUsername: "Winner",
+    });
+    await ctx.db.patch("games", gameId, { status: "won", winnerUserId: host });
   });
 
   await expect(

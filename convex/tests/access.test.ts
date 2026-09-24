@@ -117,9 +117,9 @@ describe("tryMemberByGame", () => {
 
   test("returns null when game does not exist", async () => {
     const s = await seedRoomWithGame();
-    const fakeGameId = "missing" as unknown as Id<"games">;
+    await s.t.run((ctx) => ctx.db.delete("games", s.gameId));
     const r = await asUser(s.t, s.member).run((ctx) =>
-      tryMemberByGame(ctx, { gameId: fakeGameId }),
+      tryMemberByGame(ctx, { gameId: s.gameId }),
     );
     expect(r).toBeNull();
   });

@@ -96,7 +96,7 @@ describe("cleanup.tick", () => {
         .withIndex("by_room", (q) => q.eq("roomId", roomId))
         .unique();
       if (activity === null) throw new Error("missing roomActivity");
-      await ctx.db.patch(activity._id, {
+      await ctx.db.patch("roomActivity", activity._id, {
         lastActivityAt: Date.now() - IDLE_TIMEOUT_MS - 1000,
       });
     });
@@ -104,7 +104,7 @@ describe("cleanup.tick", () => {
     await t.action(internal.cleanup.tick, {});
 
     const status = await t.run(async (ctx) => {
-      const room = await ctx.db.get(roomId);
+      const room = await ctx.db.get("rooms", roomId);
       return room?.status;
     });
     expect(status).toBe("ended");
@@ -130,7 +130,7 @@ describe("cleanup.tick", () => {
 
     await t.action(internal.cleanup.tick, {});
 
-    const room = await t.run(async (ctx) => ctx.db.get(roomId));
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
     expect(room?.hostUserId).toBe(member);
     expect(room?.status).not.toBe("ended");
   });
@@ -146,7 +146,7 @@ test("room activity backfill inserts only missing activity rows", async () => {
       .withIndex("by_room", (q) => q.eq("roomId", roomId))
       .unique();
     if (activity === null) throw new Error("missing room activity");
-    await ctx.db.delete(activity._id);
+    await ctx.db.delete("roomActivity", activity._id);
   });
 
   const before = await t.query(
@@ -168,7 +168,7 @@ test("merged guest cleanup ignores missing and registered users", async () => {
   const t = setupTest();
   const registered = await seedUser(t, { isAnonymous: false });
   const missing = await seedUser(t, { isAnonymous: true });
-  await t.run(async (ctx) => ctx.db.delete(missing));
+  await t.run(async (ctx) => ctx.db.delete("users", missing));
 
   await expect(
     t.mutation(internal.cleanup.removeMergedGuest, {
@@ -179,7 +179,7 @@ test("merged guest cleanup ignores missing and registered users", async () => {
     t.mutation(internal.cleanup.removeMergedGuest, { guestUserId: missing }),
   ).resolves.toBeNull();
   await expect(
-    t.run(async (ctx) => ctx.db.get(registered)),
+    t.run(async (ctx) => ctx.db.get("users", registered)),
   ).resolves.not.toBeNull();
 });
 
@@ -216,10 +216,10 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
   await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
 
   const result = await t.run(async (ctx) => ({
-    user: await ctx.db.get(guest),
+    user: await ctx.db.get("users", guest),
     history: await ctx.db
       .query("userGameHistory")
-      .withIndex("by_user", (q) => q.eq("userId", guest))
+      .withIndex("by_user_game", (q) => q.eq("userId", guest))
       .collect(),
     guesses: await ctx.db
       .query("gameGuesses")
@@ -287,10 +287,10 @@ test("E2E account cleanup removes its complete data graph", async () => {
   await t.mutation(api.e2eCleanup.purgeAccount, { email });
 
   const remaining = await t.run(async (ctx) => ({
-    user: await ctx.db.get(userId),
-    otherUser: await ctx.db.get(otherUserId),
-    room: await ctx.db.get(roomId),
-    game: await ctx.db.get(gameId),
+    user: await ctx.db.get("users", userId),
+    otherUser: await ctx.db.get("users", otherUserId),
+    room: await ctx.db.get("rooms", roomId),
+    game: await ctx.db.get("games", gameId),
     authAccounts: await ctx.db.query("authAccounts").collect(),
     authSessions: await ctx.db.query("authSessions").collect(),
     guesses: await ctx.db.query("gameGuesses").collect(),

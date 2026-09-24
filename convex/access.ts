@@ -19,7 +19,7 @@ export async function requireRegisteredUser(ctx: DbCtx): Promise<Id<"users">> {
   if (userId === null) {
     throw new ConvexError("Not authenticated");
   }
-  const user = await ctx.db.get(userId);
+  const user = await ctx.db.get("users", userId);
   if (user === null || user.isAnonymous === true) {
     throw new ConvexError("Registered account required");
   }
@@ -47,8 +47,8 @@ async function loadByGame(
   room: Doc<"rooms"> | null;
 }> {
   const userId = await getAuthUserId(ctx as AnyCtx);
-  const game = await ctx.db.get(gameId);
-  const room = game === null ? null : await ctx.db.get(game.roomId);
+  const game = await ctx.db.get("games", gameId);
+  const room = game === null ? null : await ctx.db.get("rooms", game.roomId);
   return { userId, game, room };
 }
 
@@ -57,7 +57,7 @@ async function loadByRoom(
   { roomId }: ByRoom,
 ): Promise<{ userId: Id<"users"> | null; room: Doc<"rooms"> | null }> {
   const userId = await getAuthUserId(ctx as AnyCtx);
-  const room = await ctx.db.get(roomId);
+  const room = await ctx.db.get("rooms", roomId);
   return { userId, room };
 }
 

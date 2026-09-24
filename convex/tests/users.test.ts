@@ -90,7 +90,7 @@ test("profile queries return null when the requested user does not exist", async
     username: "deleteduser",
     displayUsername: "DeletedUser",
   });
-  await t.run(async (ctx) => await ctx.db.delete(deleted));
+  await t.run(async (ctx) => await ctx.db.delete("users", deleted));
 
   await expect(
     asUser(t, viewer).query(api.users.getUser, { userId: deleted }),
@@ -119,8 +119,10 @@ test("updateProfile updates the authenticated user's profile", async () => {
     username: "BrightUser20",
   });
 
-  const updated = await t.run(async (ctx) => await ctx.db.get(user));
-  const untouched = await t.run(async (ctx) => await ctx.db.get(other));
+  const updated = await t.run(async (ctx) => await ctx.db.get("users", user));
+  const untouched = await t.run(
+    async (ctx) => await ctx.db.get("users", other),
+  );
 
   expect(updated).toMatchObject({
     name: "Updated User",
@@ -254,7 +256,7 @@ test("guest account prompts stay hidden before the first milestone", async () =>
     asUser(t, guest).query(api.users.getGuestAccountPrompt, {}),
   ).resolves.toBeNull();
   await asUser(t, guest).mutation(api.users.dismissGuestAccountPrompt, {});
-  const stored = await t.run(async (ctx) => ctx.db.get(guest));
+  const stored = await t.run(async (ctx) => ctx.db.get("users", guest));
   expect(stored?.guestPromptedGames).toBeUndefined();
 });
 
@@ -266,7 +268,7 @@ test("backfillMissingUsernames assigns generated usernames to existing users", a
     api.users.backfillMissingUsernames,
     { batchSize: 10 },
   );
-  const updated = await t.run(async (ctx) => await ctx.db.get(user));
+  const updated = await t.run(async (ctx) => await ctx.db.get("users", user));
 
   expect(result.updated).toBe(1);
   expect(updated?.username).toMatch(/^[a-z0-9]{3,20}$/);

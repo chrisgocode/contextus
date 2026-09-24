@@ -211,7 +211,7 @@ test("submit: distance 0 ends game with winner", async () => {
     word: "persimmon",
   });
   expect(res.won).toBe(true);
-  const game = await t.run(async (ctx) => ctx.db.get(gameId));
+  const game = await t.run(async (ctx) => ctx.db.get("games", gameId));
   expect(game?.status).toBe("won");
   expect(game?.winnerUserId).toBe(host);
   expect(game?.answerLemma).toBe("persimmon");

@@ -153,7 +153,9 @@ export const listForGame = query({
           });
 
     const userIds = Array.from(new Set(sortedRaw.map((g) => g.userId)));
-    const userDocs = await Promise.all(userIds.map((uid) => ctx.db.get(uid)));
+    const userDocs = await Promise.all(
+      userIds.map((uid) => ctx.db.get("users", uid)),
+    );
     const userMap = new Map<Id<"users">, Doc<"users">>();
     userDocs.forEach((u, i) => {
       if (u !== null) userMap.set(userIds[i], u);

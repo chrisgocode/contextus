@@ -36,7 +36,7 @@ async function achievementIds(
   const rows = await t.run(async (ctx) =>
     ctx.db
       .query("userAchievements")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user_achievement", (q) => q.eq("userId", userId))
       .collect(),
   );
   return rows.map((row) => row.achievementId).sort();

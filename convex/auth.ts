@@ -4,6 +4,7 @@ import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { env } from "./_generated/server";
 import {
   E2E_GUEST_LIFETIME_MS,
   GUEST_LIFETIME_MS,
@@ -19,12 +20,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         isAnonymous: true,
         guestExpiresAt:
           Date.now() +
-          (process.env.E2E_TEST === "1"
-            ? E2E_GUEST_LIFETIME_MS
-            : GUEST_LIFETIME_MS),
+          (env.E2E_TEST === "1" ? E2E_GUEST_LIFETIME_MS : GUEST_LIFETIME_MS),
       }),
     }),
-    ...(process.env.E2E_TEST === "1" ? [Password] : []),
+    ...(env.E2E_TEST === "1" ? [Password] : []),
   ],
   callbacks: {
     async beforeSessionCreation(ctx, { userId }) {
@@ -37,9 +36,11 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           guestUserId: mergedGuestUserId,
         });
       }
-      const user = await ctx.db.get(userId as Id<"users">);
+      const user = await ctx.db.get("users", userId as Id<"users">);
       if (user?.isAnonymous === true) return;
-      await ctx.db.patch(userId as Id<"users">, { isAnonymous: false });
+      await ctx.db.patch("users", userId as Id<"users">, {
+        isAnonymous: false,
+      });
     },
     async afterUserCreatedOrUpdated(ctx, { userId }) {
       await ensureUserHasUsername(ctx, userId as Id<"users">);

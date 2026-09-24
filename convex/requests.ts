@@ -29,7 +29,7 @@ export const listPending = query({
       : rowsRaw.filter((r) => r.requesterUserId === userId);
     const hydrated = await Promise.all(
       rows.map(async (r) => {
-        const u = await ctx.db.get(r.requesterUserId);
+        const u = await ctx.db.get("users", r.requesterUserId);
         return {
           ...r,
           requesterName: u?.name ?? u?.displayUsername ?? null,
@@ -79,10 +79,10 @@ export const create = mutation({
 export const deny = mutation({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
-    const req = await ctx.db.get(requestId);
+    const req = await ctx.db.get("pendingRequests", requestId);
     if (req === null) throw new ConvexError("Request not found");
     await requireHostByRoom(ctx, { roomId: req.roomId });
-    await ctx.db.patch(requestId, { status: "denied" });
+    await ctx.db.patch("pendingRequests", requestId, { status: "denied" });
     return null;
   },
 });
@@ -90,7 +90,7 @@ export const deny = mutation({
 export const _read = internalQuery({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
-    return await ctx.db.get(requestId);
+    return await ctx.db.get("pendingRequests", requestId);
   },
 });
 
