@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint . --ignore-pattern \"convex/_generated/**\" --ignore-pattern \"coverage/**\"",
     "format:check": "prettier --check .",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
