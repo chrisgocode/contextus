@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://contextus.vercel.app"),
+  metadataBase: new URL("https://contextus.sh"),
   title: "Play Contexto with Friends | Contextus",
   description:
     "Play Contexto together in real time. Create a free room, share the code with friends, and solve the same word puzzle as a team. No account needed to start.",
