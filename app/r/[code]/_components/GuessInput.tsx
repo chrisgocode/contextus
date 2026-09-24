@@ -14,9 +14,34 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { reportClientError } from "@/lib/report-error";
 
+// Unsent guesses live in sessionStorage so a reload (e.g. from the new-version
+// toast) doesn't throw away what the player was typing.
+function draftKey(gameId: Id<"games">) {
+  return `guess-draft:${gameId}`;
+}
+
+function saveDraft(gameId: Id<"games">, word: string) {
+  try {
+    if (word) sessionStorage.setItem(draftKey(gameId), word);
+    else sessionStorage.removeItem(draftKey(gameId));
+  } catch {
+    // Storage unavailable (e.g. blocked); drafts just won't survive reloads.
+  }
+}
+
+function loadDraft(gameId: Id<"games">) {
+  try {
+    return sessionStorage.getItem(draftKey(gameId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
   const submit = useAction(api.guesses.submit);
-  const [word, setWord] = useState("");
+  // Only mounted once the game has loaded on the client, so reading storage
+  // here can't cause a hydration mismatch.
+  const [word, setWord] = useState(() => loadDraft(gameId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [achievementUnlocks, setAchievementUnlocks] = useState<
@@ -26,6 +51,11 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
   const dismissAchievementUnlock = useCallback(() => {
     setAchievementUnlocks((items) => items.slice(1));
   }, []);
+
+  function updateWord(next: string) {
+    setWord(next);
+    saveDraft(gameId, next);
+  }
 
   return (
     <>
@@ -42,7 +72,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
               setError(res.message);
               return;
             }
-            setWord("");
+            updateWord("");
             if (res.unlockedAchievementIds.length > 0) {
               const unlockedAt = Date.now();
               const items = res.unlockedAchievementIds.flatMap((id, index) => {
@@ -84,7 +114,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
             placeholder="Type a word…"
             value={word}
             onChange={(e) => {
-              setWord(e.target.value);
+              updateWord(e.target.value);
               setError(null);
             }}
             disabled={busy}
