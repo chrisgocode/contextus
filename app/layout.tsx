@@ -5,6 +5,7 @@ import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { NewVersionNotifier } from "./_components/NewVersionNotifier";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -47,6 +48,7 @@ export default function RootLayout({
           <ConvexClientProvider>
             {children}
             <Toaster richColors position="top-center" />
+            <NewVersionNotifier />
           </ConvexClientProvider>
         </body>
       </html>
