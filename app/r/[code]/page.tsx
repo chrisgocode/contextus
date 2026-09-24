@@ -109,7 +109,6 @@ export default function RoomPage({
         onGuest={async () => {
           try {
             await signIn("anonymous");
-            await join({ code: upper });
           } catch (err) {
             if (getErrorData(err) === "Guest room limit reached") {
               setJoinError("Guest room limit reached");
