@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Figtree, JetBrains_Mono } from "next/font/google";
+import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
@@ -13,19 +13,18 @@ const jetbrainsMono = JetBrains_Mono({
 
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Contextus — co-op Contexto",
-  description: "Multiplayer co-op Contexto.",
+  metadataBase: new URL("https://contextus.sh"),
+  title: "Play Contexto with Friends | Contextus",
+  description:
+    "Play Contexto together in real time. Create a free room, share the code with friends, and solve the same word puzzle as a team. No account needed to start.",
+  openGraph: {
+    title: "Play Contexto with Friends | Contextus",
+    description:
+      "Create a free room, share the code, and solve Contexto word puzzles together in real time.",
+    siteName: "Contextus",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -44,9 +43,7 @@ export default function RootLayout({
           jetbrainsMono.variable,
         )}
       >
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
+        <body className="antialiased">
           <ConvexClientProvider>
             {children}
             <Toaster richColors position="top-center" />

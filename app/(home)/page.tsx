@@ -2,6 +2,7 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -64,6 +65,7 @@ export default function Home() {
       <>
         {loadingOverlay}
         {header}
+        <HomeIntro />
         <HomeContentSkeleton />
       </>
     );
@@ -74,16 +76,7 @@ export default function Home() {
       {loadingOverlay}
       <div inert={openingRoom} className="contents">
         {header}
-        <section className="flex flex-col gap-3">
-          <p className="max-w-xl text-muted-foreground">
-            Co-op Contexto with friends. Join a room code and guess together.
-          </p>
-          {!isRegistered && (
-            <p className="text-sm text-muted-foreground">
-              No account needed—create or join a room and start playing.
-            </p>
-          )}
-        </section>
+        <HomeIntro />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
         <CreateRoom
@@ -96,6 +89,27 @@ export default function Home() {
         />
       </div>
     </>
+  );
+}
+
+function HomeIntro() {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-xl font-semibold">Play Contexto with friends</h2>
+      <p className="max-w-xl text-muted-foreground">
+        Play Contexto with friends in real time. Create a room, share its code,
+        and work together to find the hidden word. Everyone sees the same
+        guesses and how close each word is to the answer.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Free to play in your browser. No account needed to start. New to the
+        game?{" "}
+        <Link className="underline underline-offset-4" href="/how-to-play">
+          Learn how to play
+        </Link>
+        .
+      </p>
+    </section>
   );
 }
 
