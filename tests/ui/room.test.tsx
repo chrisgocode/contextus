@@ -148,7 +148,7 @@ describe("RoomPage", () => {
       await screen.findByRole("button", { name: "Join as guest" }),
     );
     expect(mocks.signIn).toHaveBeenCalledWith("anonymous");
-    expect(mocks.join).toHaveBeenCalledWith({ code: "ABCDEF" });
+    expect(mocks.join).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect(mocks.push).toHaveBeenCalledWith("/signin?redirectTo=%2Fr%2FABCDEF");
