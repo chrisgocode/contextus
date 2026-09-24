@@ -6,6 +6,14 @@ import { requireMemberByGame, requireUser, tryMemberByGame } from "./access";
 import type { AchievementId } from "./lib/achievements";
 
 const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
+type SubmitResult = {
+  message?: string;
+  lemma?: string;
+  distance?: number;
+  won: boolean;
+  alreadyGuessed?: true;
+  unlockedAchievementIds: AchievementId[];
+};
 
 function normalizeWord(input: string): string {
   return input.trim().toLowerCase();
@@ -34,7 +42,7 @@ export const _preflight = internalQuery({
 
 export const submit = action({
   args: { gameId: v.id("games"), word: v.string() },
-  handler: async (ctx, { gameId, word }) => {
+  handler: async (ctx, { gameId, word }): Promise<SubmitResult> => {
     const userId = await requireUser(ctx);
     const lemma = normalizeWord(word);
     if (lemma.length === 0) throw new ConvexError("Empty word");
@@ -55,7 +63,11 @@ export const submit = action({
         word: lemma,
       });
       if (!result.ok) {
-        throw new ConvexError(result.error);
+        return {
+          message: result.error,
+          won: false,
+          unlockedAchievementIds: [],
+        };
       }
       distance = result.distance;
       canonicalLemma = result.lemma;
