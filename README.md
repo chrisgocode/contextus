@@ -14,7 +14,7 @@ Co-op multiplayer [Contexto](https://contexto.me). Create a room, share the six-
 - **Any puzzle in the archive.** The host picks from every Contexto puzzle since launch, then can start another after the round ends.
 - **Hints and give-ups by request.** The host can use them directly. Other players send a request that the host approves or denies.
 - **Host handoff.** If the host goes offline, the next player online becomes host. Rooms with no one online end after 30 minutes of inactivity.
-- **Profiles and achievements.** Each player gets a public profile with a year-long activity graph and 27 achievements across bronze, silver, gold, diamond, and hidden tiers.
+- **Profiles and achievements.** Each player gets a public profile with a year-long activity graph and 33 achievements across bronze, silver, gold, diamond, and hidden tiers.
 
 ## Quick start
 

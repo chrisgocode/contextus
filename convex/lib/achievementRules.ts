@@ -5,7 +5,8 @@ export type CounterRuleId =
   | "yellowGuesses"
   | "greenGuesses"
   | "uniqueSolves"
-  | "gameRealGuesses";
+  | "gameRealGuesses"
+  | "streakDays";
 
 export type CounterAchievementRule = {
   counterId: CounterRuleId;
@@ -60,6 +61,10 @@ export const counterAchievementRules = [
     threshold: 250,
   },
   { counterId: "gameRealGuesses", achievementId: "rabbit_hole", threshold: 50 },
+  { counterId: "streakDays", achievementId: "on_a_roll", threshold: 3 },
+  { counterId: "streakDays", achievementId: "habit_formed", threshold: 7 },
+  { counterId: "streakDays", achievementId: "unstoppable", threshold: 15 },
+  { counterId: "streakDays", achievementId: "century_club", threshold: 30 },
 ] satisfies CounterAchievementRule[];
 
 export type EventRuleContext = {
@@ -162,6 +167,44 @@ export const eventAchievementRules = [
   },
 ] satisfies EventAchievementRule[];
 
+// Solve rules run for every active guesser credited with a solve, in that
+// player's local time.
+export type SolveRuleContext = {
+  localMinuteOfDay: number;
+  // Minutes since the puzzle's local release, or null unless the puzzle is
+  // the player's current local day's puzzle.
+  minutesSinceRelease: number | null;
+};
+
+export type SolvePredicateId =
+  "solvedBetweenMidnightAnd4am" | "solvedWithin10MinutesOfRelease";
+
+export const solvePredicates = {
+  solvedBetweenMidnightAnd4am: (ctx: SolveRuleContext) =>
+    ctx.localMinuteOfDay < 4 * 60,
+  solvedWithin10MinutesOfRelease: (ctx: SolveRuleContext) =>
+    ctx.minutesSinceRelease !== null && ctx.minutesSinceRelease < 10,
+} satisfies Record<SolvePredicateId, (ctx: SolveRuleContext) => boolean>;
+
+export type SolveAchievementRule = {
+  achievementId: AchievementId;
+  predicateId: SolvePredicateId;
+  progress: number;
+};
+
+export const solveAchievementRules = [
+  {
+    achievementId: "night_owl",
+    predicateId: "solvedBetweenMidnightAnd4am",
+    progress: 1,
+  },
+  {
+    achievementId: "early_bird",
+    predicateId: "solvedWithin10MinutesOfRelease",
+    progress: 1,
+  },
+] satisfies SolveAchievementRule[];
+
 export function counterRulesFor(
   counterId: CounterRuleId,
 ): CounterAchievementRule[] {
@@ -187,5 +230,13 @@ export function matchingEventRules(
 ): EventAchievementRule[] {
   return eventAchievementRules.filter((rule) =>
     eventPredicates[rule.predicateId](context),
+  );
+}
+
+export function matchingSolveRules(
+  context: SolveRuleContext,
+): SolveAchievementRule[] {
+  return solveAchievementRules.filter((rule) =>
+    solvePredicates[rule.predicateId](context),
   );
 }

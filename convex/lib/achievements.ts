@@ -2,9 +2,19 @@ import type { Id } from "../_generated/dataModel";
 import {
   type CounterRuleId,
   type EventRuleContext,
+  counterRulesFor,
   evaluateCounterRules,
   matchingEventRules,
+  matchingSolveRules,
 } from "./achievementRules";
+import { dateForContextoGameId } from "./dates";
+import {
+  DEFAULT_TIME_ZONE,
+  type LocalTime,
+  localTime,
+  streakEndingOn,
+  utcDayKey,
+} from "./localTime";
 
 export type AchievementId =
   | "youll_get_there"
@@ -54,9 +64,9 @@ export const achievementDefinitions: AchievementDefinition[] = [
   { id: "hot_on_the_trail", target: 1, hidden: false, active: true },
   { id: "bullseye", target: 1, hidden: false, active: true },
   { id: "word_explorer", target: 10, hidden: false, active: true },
-  { id: "on_a_roll", target: 3, hidden: false, active: false },
+  { id: "on_a_roll", target: 3, hidden: false, active: true },
   { id: "sharp_mind", target: 1, hidden: false, active: true },
-  { id: "habit_formed", target: 7, hidden: false, active: false },
+  { id: "habit_formed", target: 7, hidden: false, active: true },
   { id: "linguist", target: 50, hidden: false, active: true },
   { id: "lucky_shot", target: 1, hidden: false, active: true },
   { id: "it_happens", target: 250, hidden: false, active: true },
@@ -64,14 +74,14 @@ export const achievementDefinitions: AchievementDefinition[] = [
   { id: "green_thumb", target: 50, hidden: false, active: true },
   { id: "scorching_hot", target: 1, hidden: false, active: true },
   { id: "mind_reader", target: 1, hidden: false, active: true },
-  { id: "unstoppable", target: 15, hidden: false, active: false },
+  { id: "unstoppable", target: 15, hidden: false, active: true },
   { id: "lexicon_master", target: 100, hidden: false, active: true },
   { id: "really", target: 1000, hidden: false, active: true },
   { id: "lukewarm", target: 500, hidden: false, active: true },
   { id: "green_machine", target: 250, hidden: false, active: true },
   { id: "no_backtracking", target: 1, hidden: false, active: true },
   { id: "psychic", target: 1, hidden: false, active: true },
-  { id: "century_club", target: 30, hidden: false, active: false },
+  { id: "century_club", target: 30, hidden: false, active: true },
   { id: "one_and_done", target: 1, hidden: false, active: true },
   { id: "dictionary_incarnate", target: 250, hidden: false, active: true },
   { id: "skill_issue", target: 5000, hidden: false, active: true },
@@ -79,10 +89,15 @@ export const achievementDefinitions: AchievementDefinition[] = [
   { id: "flow_state", target: 1000, hidden: false, active: true },
   { id: "so_close", target: 1, hidden: true, active: true },
   { id: "rabbit_hole", target: 50, hidden: true, active: true },
-  { id: "night_owl", target: 1, hidden: true, active: false },
-  { id: "early_bird", target: 1, hidden: true, active: false },
+  { id: "night_owl", target: 1, hidden: true, active: true },
+  { id: "early_bird", target: 1, hidden: true, active: true },
   { id: "comeback_kid", target: 1, hidden: true, active: true },
 ];
+
+// Longest streak any achievement asks for; older solve days never matter.
+const STREAK_LOOKBACK_DAYS = Math.max(
+  ...counterRulesFor("streakDays").map((rule) => rule.threshold),
+);
 
 const definitionById = new Map(achievementDefinitions.map((d) => [d.id, d]));
 
@@ -153,6 +168,15 @@ export type AchievementRepository = {
     now: number,
   ): Promise<boolean>;
   countTeamRealGuesses(gameId: Id<"games">): Promise<number>;
+  getTimeZone(userId: Id<"users">): Promise<string | undefined>;
+  // Returns false if the user already has a solve on `dayKey`.
+  recordSolveDay(userId: Id<"users">, dayKey: string): Promise<boolean>;
+  // The user's latest solve days on or before `dayKey`, newest first.
+  listSolveDaysThrough(
+    userId: Id<"users">,
+    dayKey: string,
+    limit: number,
+  ): Promise<string[]>;
 };
 
 export function createAchievementService(deps: {
@@ -269,6 +293,12 @@ export function createAchievementService(deps: {
             );
           }
         }
+        await applySolveCredit(
+          participantUserId,
+          event.contextoGameId,
+          event.now,
+          unlockForUser,
+        );
       }
     }
     await applyEventRules(
@@ -346,6 +376,59 @@ export function createAchievementService(deps: {
       userId,
       "uniqueSolves",
       stats.uniqueSolves,
+      now,
+      unlockForUser,
+    );
+  }
+
+  // Achievements that depend on when the player solved, in their local time.
+  async function applySolveCredit(
+    userId: Id<"users">,
+    contextoGameId: number,
+    now: number,
+    unlockForUser: (
+      userId: Id<"users">,
+      achievementId: AchievementId,
+      now: number,
+    ) => Promise<void>,
+  ) {
+    const timeZone = (await deps.repo.getTimeZone(userId)) ?? DEFAULT_TIME_ZONE;
+    const local = localTime(now, timeZone);
+    const releaseDayKey = utcDayKey(
+      dateForContextoGameId(contextoGameId).getTime(),
+    );
+    for (const rule of matchingSolveRules({
+      localMinuteOfDay: local.minuteOfDay,
+      minutesSinceRelease:
+        local.dayKey === releaseDayKey ? local.minuteOfDay : null,
+    })) {
+      if (!isActiveAchievement(rule.achievementId)) continue;
+      await updateProgress(userId, rule.achievementId, rule.progress, now);
+      await unlockForUser(userId, rule.achievementId, now);
+    }
+    await applySolveStreak(userId, local, now, unlockForUser);
+  }
+
+  async function applySolveStreak(
+    userId: Id<"users">,
+    { dayKey }: LocalTime,
+    now: number,
+    unlockForUser: (
+      userId: Id<"users">,
+      achievementId: AchievementId,
+      now: number,
+    ) => Promise<void>,
+  ) {
+    if (!(await deps.repo.recordSolveDay(userId, dayKey))) return;
+    const recentDays = await deps.repo.listSolveDaysThrough(
+      userId,
+      dayKey,
+      STREAK_LOOKBACK_DAYS,
+    );
+    await applyCounterRules(
+      userId,
+      "streakDays",
+      streakEndingOn(dayKey, new Set(recentDays)),
       now,
       unlockForUser,
     );

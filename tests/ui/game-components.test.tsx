@@ -300,6 +300,30 @@ describe("GameSetupCalendar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("starts the puzzle for the host's local calendar day", async () => {
+    const originalTimeZone = process.env.TZ;
+    process.env.TZ = "Asia/Tokyo";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 00:05 on 2026-09-25 in Tokyo, still 2026-09-24 in UTC.
+    vi.setSystemTime(new Date("2026-09-24T15:05:00Z"));
+    try {
+      const start = vi.fn().mockResolvedValue({ gameId: "game" });
+      convex.useMutation.mockReturnValue(start);
+      convex.useQuery.mockReturnValue([]);
+      const user = userEvent.setup();
+      render(<GameSetupCalendar roomId={"room" as never} isHost />);
+
+      await user.click(screen.getByRole("button", { name: "Start game" }));
+      expect(start).toHaveBeenCalledWith({
+        contextoGameId: 1468,
+        roomId: "room",
+      });
+    } finally {
+      vi.useRealTimers();
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   it("reports a failed attempt to start the selected puzzle", async () => {
     const start = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(start);

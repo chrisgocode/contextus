@@ -16,6 +16,8 @@ export default defineSchema({
     guestCompletedGames: v.optional(v.number()),
     guestPromptedGames: v.optional(v.number()),
     guestExpiresAt: v.optional(v.number()),
+    // IANA time zone reported by the client, for local-time achievements.
+    timeZone: v.optional(v.string()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"])
@@ -204,6 +206,13 @@ export default defineSchema({
     greenGuesses: v.number(),
     uniqueSolves: v.number(),
   }).index("by_user", ["userId"]),
+
+  // One row per local calendar day on which the user was credited with a
+  // solve. Streak achievements count consecutive days.
+  userSolveDays: defineTable({
+    userId: v.id("users"),
+    dayKey: v.string(),
+  }).index("by_user_and_dayKey", ["userId", "dayKey"]),
 
   gamePlayerStats: defineTable({
     gameId: v.id("games"),
