@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 
 export function HintGiveupBar({
@@ -35,18 +36,20 @@ export function HintGiveupBar({
         await createRequest({ gameId, type: kind });
       }
     } catch (e) {
+      const context = `${isHost ? "host" : "request"}.${kind}`;
       const message =
-        kind === "hint"
+        expectedClientErrorMessage(e, context) ??
+        (kind === "hint"
           ? isHost
             ? "Could not get a hint. Try again."
             : "Could not request a hint. Try again."
           : isHost
             ? "Could not give up. Try again."
-            : "Could not request to give up. Try again.";
+            : "Could not request to give up. Try again.");
       setError(message);
       reportClientError(e, {
         userMessage: message,
-        context: `${isHost ? "host" : "request"}.${kind}`,
+        context,
         showToast: false,
       });
     } finally {
