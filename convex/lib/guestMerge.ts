@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { evaluateCounterRules } from "./achievementRules";
 import { getAchievementDefinition } from "./achievements";
+import { longestStreak } from "./localTime";
 
 type MergeCtx = Pick<MutationCtx, "auth" | "db">;
 
@@ -37,6 +38,7 @@ export async function mergeCurrentGuestIntoUser(
     overlappingSolvesPromise,
     mergeAchievements(ctx, guestUserId, targetUserId),
     mergeAchievementProgress(ctx, guestUserId, targetUserId),
+    mergeSolveDays(ctx, guestUserId, targetUserId),
   ]);
   const mergeResults = {
     overlappingSolves: await overlappingSolvesPromise,
@@ -51,6 +53,7 @@ export async function mergeCurrentGuestIntoUser(
     mergeGamePlayerStats(ctx, guestUserId, targetUserId),
   ]);
   await reconcileCounterAchievements(ctx, targetUserId);
+  await reconcileStreakAchievements(ctx, targetUserId);
   return guestUserId;
 }
 
@@ -302,6 +305,30 @@ async function mergeAchievementStats(
   await ctx.db.delete("userAchievementStats", guest._id);
 }
 
+async function mergeSolveDays(
+  ctx: MergeCtx,
+  guestUserId: Id<"users">,
+  targetUserId: Id<"users">,
+) {
+  const rows = await ctx.db
+    .query("userSolveDays")
+    .withIndex("by_user_and_dayKey", (q) => q.eq("userId", guestUserId))
+    .collect();
+  for (const row of rows) {
+    const existing = await ctx.db
+      .query("userSolveDays")
+      .withIndex("by_user_and_dayKey", (q) =>
+        q.eq("userId", targetUserId).eq("dayKey", row.dayKey),
+      )
+      .unique();
+    if (existing === null) {
+      await ctx.db.patch("userSolveDays", row._id, { userId: targetUserId });
+    } else {
+      await ctx.db.delete("userSolveDays", row._id);
+    }
+  }
+}
+
 async function mergeGamePlayerStats(
   ctx: MergeCtx,
   guestUserId: Id<"users">,
@@ -426,6 +453,23 @@ async function applyCounterValue(
       });
     }
   }
+}
+
+// Guest and account solve days can interleave into a longer streak than
+// either side had alone.
+async function reconcileStreakAchievements(ctx: MergeCtx, userId: Id<"users">) {
+  const rows = await ctx.db
+    .query("userSolveDays")
+    .withIndex("by_user_and_dayKey", (q) => q.eq("userId", userId))
+    .collect();
+  if (rows.length === 0) return;
+  await applyCounterValue(
+    ctx,
+    userId,
+    "streakDays",
+    longestStreak(new Set(rows.map((row) => row.dayKey))),
+    Date.now(),
+  );
 }
 
 function earliest(a: number | undefined, b: number | undefined) {

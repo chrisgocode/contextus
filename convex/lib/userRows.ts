@@ -41,4 +41,10 @@ export async function deleteUserOwnedRows(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
   for (const row of stats) await ctx.db.delete("gamePlayerStats", row._id);
+
+  const solveDays = await ctx.db
+    .query("userSolveDays")
+    .withIndex("by_user_and_dayKey", (q) => q.eq("userId", userId))
+    .collect();
+  for (const row of solveDays) await ctx.db.delete("userSolveDays", row._id);
 }

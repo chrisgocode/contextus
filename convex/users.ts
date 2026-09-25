@@ -8,6 +8,7 @@ import {
   ensureUserHasUsername,
   normalizeUsernameInput,
 } from "./lib/usernames";
+import { canonicalTimeZone } from "./lib/localTime";
 import { playerFromUser } from "./lib/player";
 
 const ACTIVITY_DAYS = 365;
@@ -105,6 +106,21 @@ export const dismissGuestAccountPrompt = mutation({
     const milestone = Math.floor((user.guestCompletedGames ?? 0) / 3) * 3;
     if (milestone >= 3) {
       await ctx.db.patch("users", userId, { guestPromptedGames: milestone });
+    }
+    return null;
+  },
+});
+
+// Records the caller's IANA time zone. Unknown zones are ignored.
+export const setTimeZone = mutation({
+  args: { timeZone: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const timeZone = canonicalTimeZone(args.timeZone);
+    if (timeZone === null) return null;
+    const user = await ctx.db.get("users", userId);
+    if (user !== null && user.timeZone !== timeZone) {
+      await ctx.db.patch("users", userId, { timeZone });
     }
     return null;
   },

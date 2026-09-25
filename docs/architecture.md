@@ -69,6 +69,7 @@ Pure logic lives in `convex/lib/` so it can be unit tested without a database. T
 | `userGameHistory`                                                     | Per-user first play, first attempt, and first solve for each Contexto puzzle   |
 | `gamePlayerStats`                                                     | Per-user, per-game stats used by achievements                                  |
 | `userAchievements`, `userAchievementProgress`, `userAchievementStats` | Unlocked achievements, progress counters, and lifetime guess color totals      |
+| `userSolveDays`                                                       | Local calendar days on which each user was credited with a solve (streaks)     |
 
 ## Guess pipeline
 

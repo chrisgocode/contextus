@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SITE_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { NewVersionNotifier } from "./_components/NewVersionNotifier";
+import { TimeZoneSync } from "./_components/TimeZoneSync";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -50,6 +51,7 @@ export default function RootLayout({
             {children}
             <Toaster richColors position="top-center" />
             <NewVersionNotifier />
+            <TimeZoneSync />
           </ConvexClientProvider>
         </body>
       </html>

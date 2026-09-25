@@ -508,3 +508,45 @@ test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game 
     ]),
   );
 });
+
+test("mergeCurrentGuestIntoUser combines interleaved solve days into one streak", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t, {
+    username: "streaker",
+    displayUsername: "Streaker",
+  });
+  await t.run(async (ctx) => {
+    for (const dayKey of ["2026-03-01", "2026-03-03"]) {
+      await ctx.db.insert("userSolveDays", { userId: guest, dayKey });
+    }
+    for (const dayKey of ["2026-03-02", "2026-03-03"]) {
+      await ctx.db.insert("userSolveDays", { userId: target, dayKey });
+    }
+  });
+  const guestSession = await asUserWithSession(t, guest);
+
+  await guestSession.run(async (ctx) => {
+    await mergeCurrentGuestIntoUser(ctx, target);
+  });
+
+  const profile = await asUser(t, target).query(
+    api.achievements.listForProfile,
+    { username: "streaker" },
+  );
+  const find = (id: string) =>
+    profile?.achievements.find((item) => item.achievementId === id);
+  expect(find("on_a_roll")?.unlocked).toBe(true);
+  expect(find("habit_formed")?.progress).toEqual({ current: 3, target: 7 });
+  const days = await t.run(async (ctx) =>
+    ctx.db
+      .query("userSolveDays")
+      .withIndex("by_user_and_dayKey", (q) => q.eq("userId", target))
+      .collect(),
+  );
+  expect(days.map((row) => row.dayKey)).toEqual([
+    "2026-03-01",
+    "2026-03-02",
+    "2026-03-03",
+  ]);
+});

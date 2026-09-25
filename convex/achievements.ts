@@ -246,6 +246,33 @@ function createConvexAchievementRepository(
       }
       return count;
     },
+
+    async getTimeZone(userId) {
+      return (await ctx.db.get("users", userId))?.timeZone;
+    },
+
+    async recordSolveDay(userId, dayKey) {
+      const existing = await ctx.db
+        .query("userSolveDays")
+        .withIndex("by_user_and_dayKey", (q) =>
+          q.eq("userId", userId).eq("dayKey", dayKey),
+        )
+        .unique();
+      if (existing !== null) return false;
+      await ctx.db.insert("userSolveDays", { userId, dayKey });
+      return true;
+    },
+
+    async listSolveDaysThrough(userId, dayKey, limit) {
+      const rows = await ctx.db
+        .query("userSolveDays")
+        .withIndex("by_user_and_dayKey", (q) =>
+          q.eq("userId", userId).lte("dayKey", dayKey),
+        )
+        .order("desc")
+        .take(limit);
+      return rows.map((row) => row.dayKey);
+    },
   };
 }
 
