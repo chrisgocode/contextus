@@ -20,9 +20,7 @@ test("updates a profile and exposes only its public fields", async ({
   await user.page.getByLabel("Username").fill("bad-name");
   await user.page.getByRole("button", { name: "Save" }).click();
   await expect(
-    user.page.getByText(
-      "Could not save profile. Check your details and try again.",
-    ),
+    user.page.getByText("Username can only contain letters and numbers."),
   ).toBeVisible();
 
   await user.page.getByLabel("Username").fill(username);
