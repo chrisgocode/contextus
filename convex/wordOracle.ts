@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
+  env,
   internalMutation,
   internalQuery,
   type ActionCtx,
 } from "./_generated/server";
 import { contextoOracle } from "./contexto";
+import { e2eWordOracle } from "./e2eWordOracle";
 
 export type ScoredLemma = { lemma: string; distance: number };
 
@@ -25,6 +27,11 @@ export type WordOracle = {
   answer(contextoGameId: number): Promise<{ lemma: string }>;
 };
 
+// E2E deployments swap Contexto for a deterministic fake.
+function sourceOracle(): WordOracle {
+  return env.E2E_TEST === "1" ? e2eWordOracle : contextoOracle;
+}
+
 // The word oracle for one Contexto puzzle, with distances served from the
 // wordDistances cache when possible. Callers never see cache vs. fetch.
 export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
@@ -35,7 +42,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
         { contextoGameId, word },
       );
       if (cached !== null) return { ok: true, ...cached };
-      const result = await contextoOracle.distance(contextoGameId, word);
+      const result = await sourceOracle().distance(contextoGameId, word);
       if (result.ok) {
         await ctx.runMutation(internal.wordOracle._cacheDistance, {
           contextoGameId,
@@ -48,7 +55,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
     },
 
     async tip(distance: number): Promise<ScoredLemma> {
-      const tip = await contextoOracle.tip(contextoGameId, distance);
+      const tip = await sourceOracle().tip(contextoGameId, distance);
       await ctx.runMutation(internal.wordOracle._cacheDistance, {
         contextoGameId,
         input: tip.lemma,
@@ -59,7 +66,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
     },
 
     async answer(): Promise<{ lemma: string }> {
-      return await contextoOracle.answer(contextoGameId);
+      return await sourceOracle().answer(contextoGameId);
     },
   };
 }

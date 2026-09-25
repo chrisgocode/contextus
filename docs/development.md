@@ -61,9 +61,15 @@ bun run test:e2e       # headless
 bun run test:e2e:ui    # Playwright UI mode
 ```
 
-Playwright starts `bun run dev:e2e` if nothing is already running on the base URL. Global setup and teardown purge the test accounts through `e2eCleanup.purgeAccount`. Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
+Playwright starts `bun run dev:e2e` if nothing is already running on the base URL (in CI it serves a production build with `bun run start:e2e`). Global setup and teardown purge the test accounts through `e2eCleanup.purgeAccount`. Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
 
-> **Do not set `E2E_TEST` on a production deployment.** It enables password sign-in and shortens guest lifetimes to one hour.
+With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` instead of calling Contexto: `wordN` is at distance N, `word0` is the answer, hints return `wordN`, and other plain words get a stable distance of 1000 or more. Any deployment with `E2E_TEST=1`, including your dev deployment, plays with fake distances.
+
+> **Do not set `E2E_TEST` on a production deployment.** It enables password sign-in, shortens guest lifetimes to one hour, and replaces Contexto with the fake word oracle.
+
+#### In CI
+
+The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwaway local Convex backend with `CONVEX_AGENT_MODE=anonymous npx convex dev`, then runs `scripts/setup-e2e-convex-env.mjs` to set `E2E_TEST`, `SITE_URL`, and a fresh Convex Auth signing key. After that it builds the app and runs Playwright. When the job fails, the Playwright report, traces, and Convex log are uploaded as the `playwright-report` artifact.
 
 ## Code quality
 
