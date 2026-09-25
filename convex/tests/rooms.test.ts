@@ -310,10 +310,10 @@ test("getByCode shows a member's uploaded avatar before their OAuth image", asyn
   });
 });
 
-test("getByCode uses one fallback for nameless and deleted members", async () => {
+test("getByCode uses one fallback for blank and deleted members", async () => {
   const t = setupTest();
   const host = await seedUser(t, { name: "Host" });
-  const nameless = await seedUser(t, { displayUsername: "Nickname" });
+  const nameless = await seedUser(t, { displayUsername: " Nickname " });
   const deleted = await seedUser(t);
   const formerGuest = await seedUser(t, { isAnonymous: true });
   const { code } = await asUser(t, host).mutation(api.rooms.create, {});
@@ -321,7 +321,7 @@ test("getByCode uses one fallback for nameless and deleted members", async () =>
   await asUser(t, deleted).mutation(api.rooms.join, { code });
   await asUser(t, formerGuest).mutation(api.rooms.join, { code });
   await t.run(async (ctx) => {
-    await ctx.db.patch("users", nameless, { name: undefined });
+    await ctx.db.patch("users", nameless, { name: "   " });
     await ctx.db.delete("users", deleted);
     await ctx.db.patch("users", formerGuest, {
       name: "Former Guest",

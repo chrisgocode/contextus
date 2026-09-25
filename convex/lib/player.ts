@@ -13,7 +13,7 @@ export async function playerFromUser(
     : null;
   return {
     id,
-    name: user?.name ?? user?.displayUsername ?? "Player",
+    name: user?.name?.trim() || user?.displayUsername?.trim() || "Player",
     image: uploadedImage ?? user?.image ?? null,
     isGuest: user?.isAnonymous === true,
     exists: user !== null,
