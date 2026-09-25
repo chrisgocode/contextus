@@ -9,5 +9,3 @@ export function generateRoomCode(length = 6): string {
   }
   return out;
 }
-
-export const ROOM_CODE_REGEX = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;

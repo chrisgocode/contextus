@@ -11,11 +11,24 @@ import {
 } from "@/app/_components/achievement-metadata";
 import { Achievements } from "@/app/user/[username]/_components/Achievements";
 import { ActivityGraph } from "@/app/user/[username]/_components/ActivityGraph";
+import { achievementDefinitions } from "@/convex/lib/achievements";
 import { render, screen, userEvent } from "./test-utils";
 
 afterEach(() => vi.useRealTimers());
 
 describe("achievement metadata", () => {
+  it("covers every server achievement, hidden ones in the Hidden category", () => {
+    expect(
+      achievements
+        .map(({ id, category }) => ({ id, hidden: category === "hidden" }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    ).toEqual(
+      achievementDefinitions
+        .map(({ id, hidden }) => ({ id, hidden }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  });
+
   it("resolves known, hidden, and missing achievement metadata", () => {
     expect(getAchievementById("bullseye")?.name).toBe("Bullseye");
     expect(getAchievementById("missing")).toBeNull();

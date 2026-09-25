@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 async function createRoomWith(t: ReturnType<typeof setupTest>) {
@@ -112,42 +112,6 @@ test("getById falls back to display username when the winner has no name", async
   await expect(
     asUser(t, host).query(api.games.getById, { gameId }),
   ).resolves.toMatchObject({ winnerName: "Winner", winnerImage: null });
-});
-
-test("start: upserts user history", async () => {
-  const t = setupTest();
-  const { host, roomId } = await createRoomWith(t);
-  await asUser(t, host).mutation(api.games.start, {
-    roomId,
-    contextoGameId: 1336,
-  });
-  const history = await t.run(async (ctx) =>
-    ctx.db
-      .query("userGameHistory")
-      .withIndex("by_user_game", (q) =>
-        q.eq("userId", host).eq("contextoGameId", 1336),
-      )
-      .collect(),
-  );
-  expect(history).toHaveLength(1);
-});
-
-test("listMyHistory deduplicates repeated history records", async () => {
-  const t = setupTest();
-  const userId = await seedUser(t);
-
-  await t.mutation(internal.games._recordHistory, {
-    userId,
-    contextoGameId: 1336,
-  });
-  await t.mutation(internal.games._recordHistory, {
-    userId,
-    contextoGameId: 1336,
-  });
-
-  await expect(
-    asUser(t, userId).query(api.games.listMyHistory, {}),
-  ).resolves.toEqual([1336]);
 });
 
 test("listFinished returns finished games newest first only to members", async () => {

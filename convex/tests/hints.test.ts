@@ -62,7 +62,7 @@ test("hint walks past already-guessed when best=1", async () => {
   expect(result.distance).toBe(3);
 });
 
-test("approve attributes hint to requester and marks request approved atomically", async () => {
+test("approve attributes hint to requester and marks request approved", async () => {
   const t = setupTest();
   fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
   const { host, other, gameId } = await startedGame(t);

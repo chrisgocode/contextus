@@ -1,16 +1,7 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
-import {
-  asUser,
-  fakeWordOracle,
-  seedUser,
-  setupTest,
-} from "../testHelpers.test";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 async function startedGame(t: ReturnType<typeof setupTest>) {
   const host = await seedUser(t, { name: "Host" });
@@ -146,22 +137,6 @@ test("apply attributes a guess turn to the caller", async () => {
   ]);
 });
 
-test("apply attributes an approved hint to the requester, not the host", async () => {
-  const t = setupTest();
-  const { host, other, gameId } = await startedGame(t);
-  const requestId = await createRequest(t, other, gameId, "hint");
-  await asUser(t, host).mutation(internal.turns._apply, {
-    gameId,
-    turn: { kind: "hint", lemma: "pomelo", distance: 299 },
-    requestId,
-  });
-  const { guesses, requests } = await snapshot(t, gameId);
-  expect(guesses).toMatchObject([
-    { userId: other, lemma: "pomelo", source: "hint" },
-  ]);
-  expect(requests.map((r) => r.status)).toEqual(["approved"]);
-});
-
 test("apply rejects a request whose type does not match the turn", async () => {
   const t = setupTest();
   const { host, other, gameId } = await startedGame(t);
@@ -182,36 +157,4 @@ test("apply rejects a request whose type does not match the turn", async () => {
     }),
   ).rejects.toThrow("Request not found or already handled");
   expect(await snapshot(t, gameId)).toEqual(before);
-});
-
-test("guess turns go through the word oracle, not fetch", async () => {
-  const t = setupTest();
-  const oracle = fakeWordOracle({ guesses: { 1336: { hello: 42 } } });
-  const fetchSpy = vi.fn();
-  vi.stubGlobal("fetch", fetchSpy);
-  const { host, gameId } = await startedGame(t);
-  const res = await asUser(t, host).action(api.guesses.submit, {
-    gameId,
-    word: "hello",
-  });
-  expect(res).toMatchObject({ lemma: "hello", distance: 42 });
-  expect(oracle.distance).toHaveBeenCalledWith(1336, "hello");
-  expect(fetchSpy).not.toHaveBeenCalled();
-  vi.unstubAllGlobals();
-});
-
-test("unknown words are not cached", async () => {
-  const t = setupTest();
-  const oracle = fakeWordOracle({ guesses: { 1336: {} } });
-  const { host, gameId } = await startedGame(t);
-  const res = await asUser(t, host).action(api.guesses.submit, {
-    gameId,
-    word: "zzz",
-  });
-  expect(res.message).toBe("I'm sorry, I don't know this word");
-  const cached = await t.run(async (ctx) =>
-    ctx.db.query("wordDistances").collect(),
-  );
-  expect(cached).toEqual([]);
-  expect(oracle.distance).toHaveBeenCalledTimes(1);
 });

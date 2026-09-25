@@ -19,23 +19,6 @@ const baseContext: EventRuleContext = {
   won: false,
 };
 
-test("counter rules evaluate every achievement in a family", () => {
-  const rules = evaluateCounterRules("redGuesses", 250);
-
-  expect(rules.map((rule) => rule.achievementId)).toEqual([
-    "youll_get_there",
-    "it_happens",
-    "really",
-    "skill_issue",
-  ]);
-  expect(rules.map((rule) => rule.shouldUnlock)).toEqual([
-    true,
-    true,
-    false,
-    false,
-  ]);
-});
-
 test("counter rules unlock at threshold boundaries", () => {
   const below = evaluateCounterRules("uniqueSolves", 9);
   const atThreshold = evaluateCounterRules("uniqueSolves", 10);

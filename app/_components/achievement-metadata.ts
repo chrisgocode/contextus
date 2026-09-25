@@ -1,4 +1,5 @@
 import type { StaticImageData } from "next/image";
+import type { AchievementId } from "@/convex/lib/achievements";
 import bronzeTrophy from "@/assets/bronze-trophy.svg";
 import diamondTrophy from "@/assets/diamond-trophy.svg";
 import goldTrophy from "@/assets/gold-trophy.svg";
@@ -10,7 +11,7 @@ export type AchievementCategory =
   "bronze" | "silver" | "gold" | "diamond" | "hidden";
 
 export type Achievement = {
-  id: string;
+  id: AchievementId;
   category: AchievementCategory;
   name: string;
   description: string;
@@ -264,7 +265,7 @@ export const achievementGroups: AchievementGroup[] = [
   },
 ];
 
-const achievementById = new Map(
+const achievementById = new Map<string, (typeof achievements)[number]>(
   achievements.map((achievement) => [achievement.id, achievement]),
 );
 const groupByCategory = new Map(

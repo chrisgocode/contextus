@@ -16,5 +16,5 @@ test("heartbeat silently no-ops for ex-member after leaving room", async () => {
       sessionId: "s1",
       interval: 10000,
     }),
-  ).resolves.not.toThrow();
+  ).resolves.toBeNull();
 });
