@@ -15,12 +15,15 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
   signIn: vi.fn(),
+  submit: vi.fn(),
+  useAction: vi.fn(),
   useConvexAuth: vi.fn(),
   useMutation: vi.fn(),
   useQuery: vi.fn(),
 }));
 
 vi.mock("convex/react", () => ({
+  useAction: mocks.useAction,
   useConvexAuth: mocks.useConvexAuth,
   useMutation: mocks.useMutation,
   useQuery: mocks.useQuery,
@@ -37,9 +40,6 @@ vi.mock("@/app/r/[code]/_components/usePresenceSet", () => ({
 }));
 vi.mock("@/app/r/[code]/_components/useElementInViewport", () => ({
   useElementInViewport: () => true,
-}));
-vi.mock("@/app/r/[code]/_components/GuessInput", () => ({
-  GuessInput: () => <div>Guess input</div>,
 }));
 vi.mock("@/app/r/[code]/_components/GuessList", () => ({
   GuessList: () => <div>Guess list</div>,
@@ -91,6 +91,7 @@ beforeEach(() => {
     isAuthenticated: true,
     isLoading: false,
   });
+  mocks.useAction.mockReturnValue(mocks.submit);
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
     if (name === "rooms:leave") return mocks.leave;
@@ -109,6 +110,58 @@ beforeEach(() => {
 });
 
 describe("RoomPage", () => {
+  it("shows winning guess unlocks after the active game disappears", async () => {
+    let resolveSubmit!: (value: unknown) => void;
+    mocks.submit.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    let activeGame: { _id: string; contextoGameId: number } | null = {
+      _id: "game",
+      contextoGameId: 123,
+    };
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode") return room;
+      if (name === "games:getActive") return activeGame;
+      if (name === "games:listFinished") return [];
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    const user = userEvent.setup();
+    const view = await renderRoom();
+    await user.type(screen.getByPlaceholderText("Type a word…"), "answer");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+
+    activeGame = null;
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    await act(async () =>
+      resolveSubmit({
+        message: null,
+        won: true,
+        lemma: "answer",
+        unlockedAchievementIds: ["one_and_done", "bullseye"],
+      }),
+    );
+
+    expect(
+      screen.getByText("Diamond achievement unlocked: One and Done"),
+    ).toBeVisible();
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText("Bronze achievement unlocked: Bullseye"),
+        ).toBeVisible(),
+      { timeout: 5000 },
+    );
+  });
+
   it("renders an active member room and performs host room controls", async () => {
     mocks.leave.mockResolvedValue(null);
     mocks.endRoom.mockResolvedValue(null);

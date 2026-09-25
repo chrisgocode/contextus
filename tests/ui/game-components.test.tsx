@@ -38,7 +38,9 @@ describe("GuessInput", () => {
     convex.useAction.mockReturnValue(submit);
     const user = userEvent.setup();
 
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     const input = screen.getByPlaceholderText("Type a word…");
     await user.type(input, "apple");
     await user.click(screen.getByRole("button", { name: "Guess" }));
@@ -58,22 +60,30 @@ describe("GuessInput", () => {
     convex.useAction.mockReturnValue(submit);
     const user = userEvent.setup();
 
-    const first = render(<GuessInput gameId={"game" as never} />);
+    const first = render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     await user.type(screen.getByPlaceholderText("Type a word…"), "apple");
     first.unmount();
 
-    render(<GuessInput gameId={"other" as never} />);
+    render(
+      <GuessInput gameId={"other" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
     cleanup();
 
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     const input = screen.getByPlaceholderText("Type a word…");
     expect(input).toHaveValue("apple");
     await user.click(screen.getByRole("button", { name: "Guess" }));
     await waitFor(() => expect(input).toHaveValue(""));
     cleanup();
 
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
   });
 
@@ -88,7 +98,9 @@ describe("GuessInput", () => {
     convex.useAction.mockReturnValue(submit);
     const user = userEvent.setup();
 
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     const input = screen.getByPlaceholderText("Type a word…");
     await user.type(input, "apple");
     await user.click(screen.getByRole("button", { name: "Guess" }));
@@ -108,7 +120,9 @@ describe("GuessInput", () => {
     convex.useAction.mockReturnValue(vi.fn().mockRejectedValue(error));
     const user = userEvent.setup();
 
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
 

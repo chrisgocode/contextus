@@ -3,7 +3,12 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+import {
+  AchievementUnlockQueue,
+  type AchievementUnlockQueueItem,
+} from "@/app/_components/AchievementUnlockQueue";
+import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
@@ -280,6 +285,31 @@ function RoomLoaded({
   const returnScrollYRef = useRef<number | null>(null);
   const requestsVisible = useElementInViewport(requestsElement, 0.1);
   const pendingRequestCount = pendingRequests?.length ?? 0;
+  const [achievementUnlocks, setAchievementUnlocks] = useState<
+    AchievementUnlockQueueItem[]
+  >([]);
+  const dismissAchievementUnlock = useCallback(() => {
+    setAchievementUnlocks((items) => items.slice(1));
+  }, []);
+
+  function onAchievementsUnlocked(ids: string[]) {
+    const unlockedAt = Date.now();
+    const items = ids.flatMap((id, index) => {
+      const metadata = getUnlockedAchievementMetadata(id);
+      if (metadata === null) return [];
+      return [
+        {
+          key: `${id}-${unlockedAt}-${index}`,
+          achievementName: metadata.achievement.name,
+          category: metadata.achievement.category,
+          categoryLabel: metadata.group.label,
+          trophy: metadata.trophy,
+          trophyAlt: `${metadata.group.label} trophy`,
+        },
+      ];
+    });
+    setAchievementUnlocks((current) => [...current, ...items]);
+  }
 
   function scrollToRequests() {
     returnScrollYRef.current = window.scrollY;
@@ -362,7 +392,10 @@ function RoomLoaded({
                 </p>
                 <HintGiveupBar gameId={activeGame._id} isHost={isViewerHost} />
               </div>
-              <GuessInput gameId={activeGame._id} />
+              <GuessInput
+                gameId={activeGame._id}
+                onAchievementsUnlocked={onAchievementsUnlocked}
+              />
               <GuessList gameId={activeGame._id} />
             </>
           )}
@@ -429,6 +462,10 @@ function RoomLoaded({
             onClick={scrollToRequests}
           />
         )}
+      <AchievementUnlockQueue
+        items={achievementUnlocks}
+        onItemDone={dismissAchievementUnlock}
+      />
     </main>
   );
 }
