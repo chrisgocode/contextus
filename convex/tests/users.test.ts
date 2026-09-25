@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
+import { backfillMissingUsernames } from "../users";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 afterEach(() => {
@@ -260,14 +261,18 @@ test("guest account prompts stay hidden before the first milestone", async () =>
   expect(stored?.guestPromptedGames).toBeUndefined();
 });
 
+test("backfillMissingUsernames is not callable by public clients", () => {
+  expect(backfillMissingUsernames.isInternal).toBe(true);
+  expect(backfillMissingUsernames).not.toHaveProperty("isPublic");
+});
+
 test("backfillMissingUsernames assigns generated usernames to existing users", async () => {
   const t = setupTest();
   const user = await seedUser(t, { username: undefined });
 
-  const result = await asUser(t, user).mutation(
-    api.users.backfillMissingUsernames,
-    { batchSize: 10 },
-  );
+  const result = await t.mutation(internal.users.backfillMissingUsernames, {
+    batchSize: 10,
+  });
   const updated = await t.run(async (ctx) => await ctx.db.get("users", user));
 
   expect(result.updated).toBe(1);
@@ -278,16 +283,25 @@ test("backfillMissingUsernames assigns generated usernames to existing users", a
 
 test("backfillMissingUsernames clamps the batch size and reports more work", async () => {
   const t = setupTest();
-  const caller = await seedUser(t, { username: "caller" });
+  const existing = await seedUser(t, {
+    username: "existing",
+    displayUsername: "Existing",
+  });
   await seedUser(t, { username: undefined });
   await seedUser(t, { username: undefined });
 
-  const first = await asUser(t, caller).mutation(
-    api.users.backfillMissingUsernames,
-    { batchSize: 0 },
+  const first = await t.mutation(internal.users.backfillMissingUsernames, {
+    batchSize: 0,
+  });
+  const unchanged = await t.run(
+    async (ctx) => await ctx.db.get("users", existing),
   );
 
   expect(first).toEqual({ updated: 1, hasMore: true });
+  expect(unchanged).toMatchObject({
+    username: "existing",
+    displayUsername: "Existing",
+  });
 });
 
 test("getActivityGraph aggregates user history by UTC day", async () => {
