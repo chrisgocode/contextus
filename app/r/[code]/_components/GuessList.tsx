@@ -74,11 +74,11 @@ function Row({ g, highlight }: { g: Guess; highlight?: boolean }) {
           </span>
         )}
         <Avatar className="h-5 w-5 ring-1 ring-black/30">
-          {g.userImage && (
-            <AvatarImage src={g.userImage} alt={g.userName ?? ""} />
+          {g.player.image && (
+            <AvatarImage src={g.player.image} alt={g.player.name} />
           )}
           <AvatarFallback className="text-[10px]">
-            {(g.userName ?? "?").slice(0, 1).toUpperCase()}
+            {g.player.name.slice(0, 1).toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <span className="font-mono text-sm tabular-nums opacity-90 min-w-[3ch] text-right">

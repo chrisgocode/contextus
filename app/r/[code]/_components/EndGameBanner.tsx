@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { reportClientError } from "@/lib/report-error";
@@ -30,6 +31,7 @@ export function EndGameBanner({
   gameId: Id<"games">;
 }) {
   const data = useQuery(api.guesses.listForGame, { gameId });
+  const game = useQuery(api.games.getById, { gameId });
   const sorted = data?.sorted ?? [];
   const hintCount = sorted.filter((g) => g.source === "hint").length;
   const guessCount = sorted.length - hintCount;
@@ -58,6 +60,19 @@ export function EndGameBanner({
     <>
       <section className="rounded-lg border-2 border-amber-500/60 bg-neutral-900 p-6 text-center flex flex-col items-center gap-4">
         <h2 className="text-2xl font-bold">Congrats!</h2>
+        {game?.winner && (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-8 w-8">
+              {game.winner.image && (
+                <AvatarImage src={game.winner.image} alt={game.winner.name} />
+              )}
+              <AvatarFallback>
+                {game.winner.name.slice(0, 1).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span>{game.winner.name} won</span>
+          </div>
+        )}
         <p className="text-lg">
           {hintCount > 0 ? (
             <>

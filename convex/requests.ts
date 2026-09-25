@@ -8,6 +8,7 @@ import {
   tryMemberByGame,
 } from "./access";
 import { performTurn } from "./turns";
+import { loadPlayers } from "./lib/player";
 
 const REQUEST_TYPE = v.union(v.literal("hint"), v.literal("giveup"));
 
@@ -27,17 +28,14 @@ export const listPending = query({
     const rows = isHost
       ? rowsRaw
       : rowsRaw.filter((r) => r.requesterUserId === userId);
-    const hydrated = await Promise.all(
-      rows.map(async (r) => {
-        const u = await ctx.db.get("users", r.requesterUserId);
-        return {
-          ...r,
-          requesterName: u?.name ?? u?.displayUsername ?? null,
-          requesterImage: u?.image ?? null,
-        };
-      }),
+    const players = await loadPlayers(
+      ctx,
+      rows.map((r) => r.requesterUserId),
     );
-    return hydrated;
+    return rows.map((r) => ({
+      ...r,
+      requester: players.get(r.requesterUserId)!,
+    }));
   },
 });
 

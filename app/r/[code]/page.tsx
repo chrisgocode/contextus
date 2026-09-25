@@ -388,15 +388,15 @@ function RoomLoaded({
                       }`}
                     />
                     <Avatar className="h-6 w-6">
-                      {m.image && (
-                        <AvatarImage src={m.image} alt={m.name ?? ""} />
+                      {m.player.image && (
+                        <AvatarImage src={m.player.image} alt={m.player.name} />
                       )}
                       <AvatarFallback>
-                        {(m.name ?? "?").slice(0, 1).toUpperCase()}
+                        {m.player.name.slice(0, 1).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <span className="text-sm flex-1 truncate">
-                      {m.name ?? "Anonymous"}
+                      {m.player.name}
                     </span>
                     {m.isHost && (
                       <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">

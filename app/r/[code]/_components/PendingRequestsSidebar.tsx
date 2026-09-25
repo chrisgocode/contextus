@@ -38,21 +38,15 @@ export function PendingRequestsSidebar({
           <li key={p._id} className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <Avatar className="h-6 w-6">
-                {p.requesterImage && (
-                  <AvatarImage
-                    src={p.requesterImage}
-                    alt={p.requesterName ?? ""}
-                  />
+                {p.requester.image && (
+                  <AvatarImage src={p.requester.image} alt={p.requester.name} />
                 )}
                 <AvatarFallback>
-                  {(p.requesterName ?? "?").slice(0, 1).toUpperCase()}
+                  {p.requester.name.slice(0, 1).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <span className="text-sm">
-                <span className="font-medium">
-                  {p.requesterName ?? "Someone"}
-                </span>{" "}
-                wants{" "}
+                <span className="font-medium">{p.requester.name}</span> wants{" "}
                 <span className="font-mono">
                   {p.type === "hint" ? "a hint" : "to give up"}
                 </span>

@@ -115,8 +115,8 @@ export function ProfileClient({ username }: { username: string }) {
   }
 
   const loadedProfile = profile;
-  const displayName = loadedProfile.name ?? "Anonymous";
-  const avatarSrc = selectedAvatarPreview ?? loadedProfile.image;
+  const displayName = loadedProfile.player.name;
+  const avatarSrc = selectedAvatarPreview ?? loadedProfile.player.image;
   const canEdit = loadedProfile.isCurrentUser;
   const profileEmail = loadedProfile.email ?? "";
   const profileUsername =

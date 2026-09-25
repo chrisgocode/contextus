@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { loadPlayers } from "../lib/player";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 afterEach(() => {
@@ -276,11 +277,85 @@ test("listRecentGroups returns a registered user's ended room", async () => {
     expect.objectContaining({
       roomId,
       members: [
-        expect.objectContaining({ userId: host, name: "Chris" }),
-        expect.objectContaining({ userId: partner, name: "Jane" }),
+        expect.objectContaining({
+          userId: host,
+          player: expect.objectContaining({ name: "Chris" }),
+        }),
+        expect.objectContaining({
+          userId: partner,
+          player: expect.objectContaining({ name: "Jane" }),
+        }),
       ],
     }),
   ]);
+});
+
+test("getByCode shows a member's uploaded avatar before their OAuth image", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t, { name: "Chris", image: "oauth.png" });
+  const avatarStorageId = await t.run(async (ctx) =>
+    ctx.storage.store(new Blob(["avatar"], { type: "image/png" })),
+  );
+  await t.run(async (ctx) =>
+    ctx.db.patch("users", userId, { avatarStorageId }),
+  );
+  const { code } = await asUser(t, userId).mutation(api.rooms.create, {});
+
+  const room = await asUser(t, userId).query(api.rooms.getByCode, { code });
+  expect(room?.members[0].player).toMatchObject({
+    id: userId,
+    name: "Chris",
+    image: expect.stringContaining("/api/storage/"),
+    isGuest: false,
+  });
+});
+
+test("getByCode uses one fallback for nameless and deleted members", async () => {
+  const t = setupTest();
+  const host = await seedUser(t, { name: "Host" });
+  const nameless = await seedUser(t, { displayUsername: "Nickname" });
+  const deleted = await seedUser(t);
+  const formerGuest = await seedUser(t, { isAnonymous: true });
+  const { code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, nameless).mutation(api.rooms.join, { code });
+  await asUser(t, deleted).mutation(api.rooms.join, { code });
+  await asUser(t, formerGuest).mutation(api.rooms.join, { code });
+  await t.run(async (ctx) => {
+    await ctx.db.patch("users", nameless, { name: undefined });
+    await ctx.db.delete("users", deleted);
+    await ctx.db.patch("users", formerGuest, {
+      name: "Former Guest",
+      isAnonymous: false,
+    });
+  });
+
+  const room = await asUser(t, host).query(api.rooms.getByCode, { code });
+  expect(room?.members.find((m) => m.userId === nameless)?.player.name).toBe(
+    "Nickname",
+  );
+  expect(room?.members.find((m) => m.userId === deleted)?.player).toMatchObject(
+    {
+      name: "Player",
+      image: null,
+    },
+  );
+  expect(
+    room?.members.find((m) => m.userId === formerGuest)?.player,
+  ).toMatchObject({
+    name: "Former Guest",
+    isGuest: false,
+  });
+});
+
+test("loading repeated players reads each user once", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  await t.run(async (ctx) => {
+    const get = vi.spyOn(ctx.db, "get");
+    const players = await loadPlayers(ctx, [userId, userId]);
+    expect(players.get(userId)?.name).toBe("Test User");
+    expect(get).toHaveBeenCalledTimes(1);
+  });
 });
 
 test("listRecentGroups returns the three newest unique participant sets", async () => {

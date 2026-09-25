@@ -95,8 +95,8 @@ describe("Home", () => {
           {
             lastActivityAt: Date.UTC(2026, 0, 2),
             members: [
-              { image: null, name: "Alex", userId: "alex" },
-              { image: null, name: "Blair", userId: "blair" },
+              { player: { image: null, name: "Alex" }, userId: "alex" },
+              { player: { image: null, name: "Blair" }, userId: "blair" },
             ],
             roomId: "old-room",
           },

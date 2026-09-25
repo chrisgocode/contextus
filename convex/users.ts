@@ -8,6 +8,7 @@ import {
   ensureUserHasUsername,
   normalizeUsernameInput,
 } from "./lib/usernames";
+import { playerFromUser } from "./lib/player";
 
 const ACTIVITY_DAYS = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -37,17 +38,16 @@ export const getUser = query({
     const requestedUserId = userId ?? currentUserId;
     const user = await ctx.db.get("users", requestedUserId);
     if (user === null) return null;
-    const uploadedAvatarUrl = user.avatarStorageId
-      ? await ctx.storage.getUrl(user.avatarStorageId)
-      : null;
+    const player = await playerFromUser(ctx, user._id, user);
 
     return {
       _id: user._id,
+      player,
       name: user.name ?? null,
       email: requestedUserId === currentUserId ? (user.email ?? null) : null,
       username: user.username ?? null,
       displayUsername: user.displayUsername ?? null,
-      image: uploadedAvatarUrl ?? user.image ?? null,
+      image: player.image,
       isAnonymous: user.isAnonymous === true,
       isCurrentUser: requestedUserId === currentUserId,
     };
@@ -62,16 +62,15 @@ export const getByUsername = query({
 
     const currentUserId = await getAuthUserId(ctx);
     const isCurrentUser = currentUserId === user._id;
-    const uploadedAvatarUrl = user.avatarStorageId
-      ? await ctx.storage.getUrl(user.avatarStorageId)
-      : null;
+    const player = await playerFromUser(ctx, user._id, user);
 
     return {
       _id: user._id,
+      player,
       name: user.name ?? null,
       username: user.username ?? null,
       displayUsername: user.displayUsername ?? null,
-      image: uploadedAvatarUrl ?? user.image ?? null,
+      image: player.image,
       isAnonymous: user.isAnonymous === true,
       isCurrentUser,
       email: isCurrentUser ? (user.email ?? null) : null,
