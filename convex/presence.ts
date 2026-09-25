@@ -2,7 +2,7 @@ import { Presence } from "@convex-dev/presence";
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { ActionCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { tryMemberByRoom } from "./access";
 
@@ -45,7 +45,7 @@ export const disconnect = mutation({
 });
 
 export async function onlineUserIdsForRoom(
-  ctx: ActionCtx,
+  ctx: ActionCtx | MutationCtx,
   roomId: Id<"rooms">,
 ): Promise<Set<Id<"users">>> {
   const list = await presence.listRoom(ctx, roomId, true);
