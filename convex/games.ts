@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import {
   requireHostByRoom,
   requireUser,
@@ -118,11 +118,3 @@ export async function upsertHistory(
     });
   }
 }
-
-// internal mutation used by guesses.submit action
-export const _recordHistory = internalMutation({
-  args: { userId: v.id("users"), contextoGameId: v.number() },
-  handler: async (ctx, { userId, contextoGameId }) => {
-    await upsertHistory(ctx, userId, contextoGameId);
-  },
-});

@@ -25,9 +25,9 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
   return { host, other, roomId, gameId };
 }
 
-test("submit: returns unknown word message", async () => {
+test("submit: returns unknown word message without caching it", async () => {
   const t = setupTest();
-  fakeWordOracle({ guesses: { 1336: {} } });
+  const oracle = fakeWordOracle({ guesses: { 1336: {} } });
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" }),
@@ -36,6 +36,11 @@ test("submit: returns unknown word message", async () => {
     won: false,
     unlockedAchievementIds: [],
   });
+  const cached = await t.run(async (ctx) =>
+    ctx.db.query("wordDistances").collect(),
+  );
+  expect(cached).toEqual([]);
+  expect(oracle.distance).toHaveBeenCalledTimes(1);
 });
 
 test("submit: updates roomActivity", async () => {

@@ -337,66 +337,43 @@ test("getActivityGraph aggregates user history by UTC day", async () => {
   });
 });
 
-test("getActivityGraph can show another user's activity by username", async () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-06-25T12:00:00.000Z"));
+test.each([
+  { viewer: "another signed-in user", signedIn: true, username: "PublicUser" },
+  { viewer: "a signed-out visitor", signedIn: false, username: "PUBLICUSER" },
+])(
+  "getActivityGraph shows the named user's activity to $viewer",
+  async ({ signedIn, username }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-25T12:00:00.000Z"));
 
-  const t = setupTest();
-  const viewer = await seedUser(t);
-  const viewed = await seedUser(t, {
-    username: "publicuser",
-    displayUsername: "PublicUser",
-  });
-
-  await t.run(async (ctx) => {
-    await ctx.db.insert("userGameHistory", {
-      userId: viewed,
-      contextoGameId: 1,
-      firstPlayedAt: Date.UTC(2026, 5, 25, 12, 0),
+    const t = setupTest();
+    const viewer = await seedUser(t);
+    const viewed = await seedUser(t, {
+      username: "publicuser",
+      displayUsername: "PublicUser",
     });
-  });
 
-  const graph = await asUser(t, viewer).query(api.users.getActivityGraph, {
-    username: "PublicUser",
-  });
-
-  expect(graph?.totalCount).toBe(1);
-  expect(graph?.days.at(-1)).toMatchObject({
-    date: "2026-06-25",
-    count: 1,
-    level: 1,
-  });
-});
-
-test("getActivityGraph can be read without authentication", async () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-06-25T12:00:00.000Z"));
-
-  const t = setupTest();
-  const viewed = await seedUser(t, {
-    username: "publicuser",
-    displayUsername: "PublicUser",
-  });
-
-  await t.run(async (ctx) => {
-    await ctx.db.insert("userGameHistory", {
-      userId: viewed,
-      contextoGameId: 1,
-      firstPlayedAt: Date.UTC(2026, 5, 25, 12, 0),
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userGameHistory", {
+        userId: viewed,
+        contextoGameId: 1,
+        firstPlayedAt: Date.UTC(2026, 5, 25, 12, 0),
+      });
     });
-  });
 
-  const graph = await t.query(api.users.getActivityGraph, {
-    username: "PUBLICUSER",
-  });
+    const graph = await (signedIn ? asUser(t, viewer) : t).query(
+      api.users.getActivityGraph,
+      { username },
+    );
 
-  expect(graph?.totalCount).toBe(1);
-  expect(graph?.days.at(-1)).toMatchObject({
-    date: "2026-06-25",
-    count: 1,
-    level: 1,
-  });
-});
+    expect(graph?.totalCount).toBe(1);
+    expect(graph?.days.at(-1)).toMatchObject({
+      date: "2026-06-25",
+      count: 1,
+      level: 1,
+    });
+  },
+);
 
 test("getActivityGraph caps busy-day intensity at four", async () => {
   vi.useFakeTimers();

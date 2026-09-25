@@ -3,9 +3,11 @@ import { ConvexError } from "convex/values";
 import { requireRegisteredUser, requireUser } from "../access";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
-test("requireUser throws when unauthenticated", async () => {
+test("requireUser throws ConvexError when unauthenticated", async () => {
   const t = setupTest();
-  await expect(t.run(async (ctx) => await requireUser(ctx))).rejects.toThrow();
+  await expect(
+    t.run(async (ctx) => await requireUser(ctx)),
+  ).rejects.toBeInstanceOf(ConvexError);
 });
 
 test("requireUser returns userId when authenticated", async () => {
@@ -15,13 +17,6 @@ test("requireUser returns userId when authenticated", async () => {
     async (ctx) => await requireUser(ctx),
   );
   expect(result).toBe(userId);
-});
-
-test("ConvexError is thrown for unauthenticated", async () => {
-  const t = setupTest();
-  await expect(
-    t.run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toBeInstanceOf(ConvexError);
 });
 
 test("requireRegisteredUser rejects anonymous users", async () => {

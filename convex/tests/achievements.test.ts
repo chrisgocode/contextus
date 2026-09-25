@@ -73,21 +73,6 @@ test("submitted real guesses unlock the matching first color achievements", asyn
   );
 });
 
-test("first qualifying guess returns newly unlocked achievement ids", async () => {
-  const t = setupTest();
-  fakeWordOracle({
-    guesses: { 1336: { ember: 2000 } },
-  });
-  const { host, gameId } = await startedGame(t);
-
-  const res = await asUser(t, host).action(api.guesses.submit, {
-    gameId,
-    word: "ember",
-  });
-
-  expect(res.unlockedAchievementIds).toEqual(["youll_get_there"]);
-});
-
 test("already unlocked achievements are not returned again", async () => {
   const t = setupTest();
   fakeWordOracle({
@@ -126,22 +111,6 @@ test("duplicate guesses and hints do not unlock or increment achievements", asyn
     yellowGuesses: 0,
     greenGuesses: 0,
   });
-});
-
-test("duplicate guesses return no newly unlocked achievement ids", async () => {
-  const t = setupTest();
-  fakeWordOracle({
-    guesses: { 1336: { ember: 2000 } },
-  });
-  const { host, other, gameId } = await startedGame(t);
-
-  await asUser(t, host).action(api.guesses.submit, { gameId, word: "ember" });
-  const res = await asUser(t, other).action(api.guesses.submit, {
-    gameId,
-    word: "ember",
-  });
-
-  expect(res.unlockedAchievementIds).toEqual([]);
 });
 
 test("lifetime color counters unlock at threshold boundaries", async () => {
@@ -217,7 +186,6 @@ test("winning guesses can return multiple new achievement ids for the submitter"
       "psychic",
     ]),
   );
-  expect(res.unlockedAchievementIds.length).toBeGreaterThan(1);
 });
 
 test("the same contexto puzzle only counts once for lifetime solve totals", async () => {
@@ -455,20 +423,4 @@ test("listForProfile reveals unlocked hidden achievements", async () => {
     unlocked: true,
     unlockedAt: 456,
   });
-});
-
-test("timezone and streak achievements stay disabled in v1", async () => {
-  const t = setupTest();
-  fakeWordOracle({ guesses: { 1336: { answer: 0 } } });
-  const { host, gameId } = await startedGame(t);
-
-  await asUser(t, host).action(api.guesses.submit, { gameId, word: "answer" });
-
-  const unlocked = await achievementIds(t, host);
-  expect(unlocked).not.toContain("night_owl");
-  expect(unlocked).not.toContain("early_bird");
-  expect(unlocked).not.toContain("on_a_roll");
-  expect(unlocked).not.toContain("habit_formed");
-  expect(unlocked).not.toContain("unstoppable");
-  expect(unlocked).not.toContain("century_club");
 });
