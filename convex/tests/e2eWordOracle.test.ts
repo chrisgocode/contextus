@@ -106,6 +106,17 @@ test("rejects words that are not plain letters", async () => {
   });
 });
 
+test("rejects wordN with leading zeroes", async () => {
+  const t = setupTest();
+  const { host, gameId } = await startedGame(t);
+  await expect(
+    asUser(t, host).action(api.guesses.submit, { gameId, word: "word00" }),
+  ).resolves.toMatchObject({
+    message: "I'm sorry, I don't know this word",
+    won: false,
+  });
+});
+
 test("guessing word0 wins the game", async () => {
   const t = setupTest();
   const { host, gameId } = await startedGame(t);

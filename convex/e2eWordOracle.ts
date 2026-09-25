@@ -1,7 +1,7 @@
 import type { WordOracle } from "./wordOracle";
 
 const ANSWER = "word0";
-const RANKED_WORD = /^word(\d+)$/;
+const RANKED_WORD = /^word(0|[1-9]\d*)$/;
 const PLAIN_WORD = /^[a-z]+$/;
 // Hints start at rank 299, so other words score beyond every hint rank a
 // Playwright run can reach.
