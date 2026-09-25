@@ -100,6 +100,11 @@ test("game completion credits participants beyond the first page", async () => {
       hostUserId: hostId,
       status: "active",
     });
+    await ctx.db.insert("roomMembers", {
+      roomId,
+      userId: hostId,
+      joinedAt: Date.now(),
+    });
     const gameId = await ctx.db.insert("games", {
       roomId,
       contextoGameId: 1336,

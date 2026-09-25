@@ -469,3 +469,49 @@ test("a solo room is not a reusable group", async () => {
 
   expect(groups).toEqual([]);
 });
+
+test("a non-host leaving keeps the host", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const other = await seedUser(t);
+  const { code, roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, other).mutation(api.rooms.join, { code });
+
+  await asUser(t, other).mutation(api.rooms.leave, { roomId });
+
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  expect(room).toMatchObject({ hostUserId: host, status: "active" });
+});
+
+test("a leaving host hands the room to the earliest remaining member", async () => {
+  vi.useFakeTimers();
+  const t = setupTest();
+  const host = await seedUser(t);
+  const first = await seedUser(t);
+  const second = await seedUser(t);
+  const { code, roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  vi.advanceTimersByTime(1000);
+  await asUser(t, first).mutation(api.rooms.join, { code });
+  vi.advanceTimersByTime(1000);
+  await asUser(t, second).mutation(api.rooms.join, { code });
+
+  await asUser(t, host).mutation(api.rooms.leave, { roomId });
+
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  expect(room).toMatchObject({ hostUserId: first, status: "active" });
+  await expect(
+    asUser(t, host).mutation(api.rooms.endRoom, { roomId }),
+  ).rejects.toThrow("Host only");
+  await asUser(t, first).mutation(api.rooms.endRoom, { roomId });
+});
+
+test("the last member leaving as host ends the room", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+
+  await asUser(t, host).mutation(api.rooms.leave, { roomId });
+
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  expect(room?.status).toBe("ended");
+});
