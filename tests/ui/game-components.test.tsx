@@ -304,8 +304,8 @@ describe("GameSetupCalendar", () => {
     const originalTimeZone = process.env.TZ;
     process.env.TZ = "Asia/Tokyo";
     vi.useFakeTimers({ toFake: ["Date"] });
-    // 12:00 on 2026-09-25 in Tokyo, still 2026-09-25 in UTC.
-    vi.setSystemTime(new Date("2026-09-25T03:00:00Z"));
+    // 00:05 on 2026-09-25 in Tokyo, still 2026-09-24 in UTC.
+    vi.setSystemTime(new Date("2026-09-24T15:05:00Z"));
     try {
       const start = vi.fn().mockResolvedValue({ gameId: "game" });
       convex.useMutation.mockReturnValue(start);
