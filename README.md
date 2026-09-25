@@ -4,6 +4,8 @@ Co-op multiplayer [Contexto](https://contexto.me). Create a room, share the six-
 
 **[Play at contextus.sh →](https://www.contextus.sh)** · [How to play](https://www.contextus.sh/how-to-play)
 
+![Two players in the same room guessing together until one finds the answer](https://25ka9rbhbh.ufs.sh/f/QXdPbNz3CXbYb16kXfmND4OLEXiV7ZAqBHh1oKRMxuly9wFm)
+
 ## Features
 
 - **Play instantly as a guest.** No account needed. Guests can create or join up to three active rooms at once and keep their progress for 30 days.
