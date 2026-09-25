@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { requireRegisteredUser, requireUser } from "./access";
 import {
@@ -159,7 +159,7 @@ export const updateProfile = mutation({
   },
 });
 
-export const backfillMissingUsernames = mutation({
+export const backfillMissingUsernames = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const batchSize = Math.min(
