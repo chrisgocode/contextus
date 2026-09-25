@@ -8,6 +8,7 @@ import {
   requireUser,
 } from "./access";
 import { generateRoomCode } from "./lib/code";
+import { loadPlayers } from "./lib/player";
 import { upsertRoomActivity } from "./lib/roomActivity";
 
 const MAX_CODE_RETRIES = 10;
@@ -206,18 +207,16 @@ export const getByCode = query({
             .query("roomMembers")
             .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
             .collect();
-    const memberDocs = await Promise.all(
-      members.map(async (m) => {
-        const user = await ctx.db.get("users", m.userId);
-        return {
-          userId: m.userId,
-          name: user?.name ?? user?.displayUsername ?? null,
-          image: user?.image ?? null,
-          joinedAt: m.joinedAt,
-          isHost: m.userId === room.hostUserId,
-        };
-      }),
+    const players = await loadPlayers(
+      ctx,
+      members.map((m) => m.userId),
     );
+    const memberDocs = members.map((m) => ({
+      userId: m.userId,
+      player: players.get(m.userId)!,
+      joinedAt: m.joinedAt,
+      isHost: m.userId === room.hostUserId,
+    }));
     memberDocs.sort((a, b) => a.joinedAt - b.joinedAt);
     return {
       room,
@@ -283,20 +282,15 @@ export const listRecentGroups = query({
             .take(101),
         ]);
         if (rows.length < 2 || rows.length > 100) return null;
-        const members = await Promise.all(
-          rows.map(async (member) => {
-            const user = await ctx.db.get("users", member.userId);
-            if (user === null || user.isAnonymous === true) return null;
-            return {
-              userId: user._id,
-              name: user.name ?? user.displayUsername ?? "Player",
-              image: user.avatarStorageId
-                ? await ctx.storage.getUrl(user.avatarStorageId)
-                : (user.image ?? null),
-              joinedAt: member.joinedAt,
-            };
-          }),
+        const players = await loadPlayers(
+          ctx,
+          rows.map((m) => m.userId),
         );
+        const members = rows.map((member) => {
+          const player = players.get(member.userId)!;
+          if (!player.exists || player.isGuest) return null;
+          return { userId: member.userId, player, joinedAt: member.joinedAt };
+        });
         if (members.some((member) => member === null)) return null;
         return {
           roomId,

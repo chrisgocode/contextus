@@ -62,8 +62,8 @@ const params = Promise.resolve({ code: "abcdef" });
 const room = {
   isViewerHost: true,
   members: [
-    { image: null, isHost: true, name: "Alex", userId: "user" },
-    { image: null, isHost: false, name: "Blair", userId: "friend" },
+    { player: { image: null, name: "Alex" }, isHost: true, userId: "user" },
+    { player: { image: null, name: "Blair" }, isHost: false, userId: "friend" },
   ],
   room: { _id: "room", code: "ABCDEF", status: "active" },
   viewerUserId: "user",

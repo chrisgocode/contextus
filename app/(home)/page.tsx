@@ -317,11 +317,11 @@ function RecentGroups() {
                 <AvatarGroup className="shrink-0">
                   {visibleMembers.map((member) => (
                     <Avatar key={member.userId} size="lg">
-                      {member.image && (
-                        <AvatarImage src={member.image} alt="" />
+                      {member.player.image && (
+                        <AvatarImage src={member.player.image} alt="" />
                       )}
                       <AvatarFallback>
-                        {member.name.slice(0, 1).toUpperCase()}
+                        {member.player.name.slice(0, 1).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                   ))}
@@ -331,7 +331,9 @@ function RecentGroups() {
                 </AvatarGroup>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">
-                    {group.members.map((member) => member.name).join(" + ")}
+                    {group.members
+                      .map((member) => member.player.name)
+                      .join(" + ")}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Last played{" "}

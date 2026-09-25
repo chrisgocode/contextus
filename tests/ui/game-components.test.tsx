@@ -220,8 +220,7 @@ describe("PendingRequestsSidebar", () => {
               _creationTime: 1,
               gameId: "game",
               requesterUserId: "user",
-              requesterName: "Alex",
-              requesterImage: null,
+              requester: { name: "Alex", image: null },
               type: "hint",
             },
           ] as never
@@ -261,8 +260,7 @@ describe("GuessList", () => {
         distance: 20,
         lemma: "pear",
         source: "hint",
-        userImage: null,
-        userName: "Alex",
+        player: { image: null, name: "Alex" },
       },
       sorted: [
         {
@@ -270,16 +268,14 @@ describe("GuessList", () => {
           distance: 20,
           lemma: "pear",
           source: "hint",
-          userImage: null,
-          userName: "Alex",
+          player: { image: null, name: "Alex" },
         },
         {
           _id: "guess-1",
           distance: 1800,
           lemma: "stone",
           source: "guess",
-          userImage: null,
-          userName: null,
+          player: { image: null, name: "Player" },
         },
       ],
     });

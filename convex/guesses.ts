@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { action, query } from "./_generated/server";
 import { tryMemberByGame } from "./access";
+import { loadPlayers } from "./lib/player";
 import { performTurn, type GuessResult } from "./turns";
 
 export const submit = action({
@@ -31,22 +32,14 @@ export const listForGame = query({
             return a._creationTime > b._creationTime ? a : b;
           });
 
-    const userIds = Array.from(new Set(sortedRaw.map((g) => g.userId)));
-    const userDocs = await Promise.all(
-      userIds.map((uid) => ctx.db.get("users", uid)),
+    const players = await loadPlayers(
+      ctx,
+      sortedRaw.map((g) => g.userId),
     );
-    const userMap = new Map<Id<"users">, Doc<"users">>();
-    userDocs.forEach((u, i) => {
-      if (u !== null) userMap.set(userIds[i], u);
+    const hydrate = (g: Doc<"gameGuesses">) => ({
+      ...g,
+      player: players.get(g.userId)!,
     });
-    const hydrate = (g: Doc<"gameGuesses">) => {
-      const u = userMap.get(g.userId);
-      return {
-        ...g,
-        userName: u?.name ?? u?.displayUsername ?? null,
-        userImage: u?.image ?? null,
-      };
-    };
     return {
       sorted: sortedRaw.map(hydrate),
       latest: latestRaw === null ? null : hydrate(latestRaw),

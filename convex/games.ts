@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
@@ -9,6 +9,7 @@ import {
   tryMemberByRoom,
 } from "./access";
 import { upsertRoomActivity } from "./lib/roomActivity";
+import { loadPlayers } from "./lib/player";
 
 export const start = mutation({
   args: { roomId: v.id("rooms"), contextoGameId: v.number() },
@@ -62,14 +63,16 @@ export const getById = query({
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return null;
     const { game } = access;
-    let winner: Doc<"users"> | null = null;
-    if (game.winnerUserId !== undefined) {
-      winner = await ctx.db.get("users", game.winnerUserId);
-    }
+    const players = await loadPlayers(
+      ctx,
+      game.winnerUserId === undefined ? [] : [game.winnerUserId],
+    );
     return {
       ...game,
-      winnerName: winner?.name ?? winner?.displayUsername ?? null,
-      winnerImage: winner?.image ?? null,
+      winner:
+        game.winnerUserId === undefined
+          ? null
+          : players.get(game.winnerUserId)!,
     };
   },
 });

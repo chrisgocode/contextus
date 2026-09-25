@@ -85,8 +85,7 @@ test("getById exposes winner details only to room members", async () => {
   await expect(
     asUser(t, other).query(api.games.getById, { gameId }),
   ).resolves.toMatchObject({
-    winnerName: "Host",
-    winnerImage: "winner.png",
+    winner: expect.objectContaining({ name: "Host", image: "winner.png" }),
   });
   const outsider = await seedUser(t);
   await expect(
@@ -111,7 +110,57 @@ test("getById falls back to display username when the winner has no name", async
 
   await expect(
     asUser(t, host).query(api.games.getById, { gameId }),
-  ).resolves.toMatchObject({ winnerName: "Winner", winnerImage: null });
+  ).resolves.toMatchObject({ winner: { name: "Winner", image: null } });
+});
+
+test("uploaded avatar appears on guesses, requests, and winner", async () => {
+  const t = setupTest();
+  const { host, other, roomId } = await createRoomWith(t);
+  const avatarStorageId = await t.run(async (ctx) =>
+    ctx.storage.store(new Blob(["avatar"], { type: "image/png" })),
+  );
+  await t.run(async (ctx) =>
+    ctx.db.patch("users", other, { avatarStorageId, image: "oauth.png" }),
+  );
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, other).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.insert("gameGuesses", {
+      gameId,
+      userId: other,
+      lemma: "apple",
+      distance: 42,
+      source: "guess",
+      createdAt: 1,
+    });
+    await ctx.db.patch("games", gameId, { status: "won", winnerUserId: other });
+  });
+
+  const guesses = await asUser(t, host).query(api.guesses.listForGame, {
+    gameId,
+  });
+  const requests = await asUser(t, host).query(api.requests.listPending, {
+    gameId,
+  });
+  const game = await asUser(t, host).query(api.games.getById, { gameId });
+  for (const player of [
+    guesses.sorted[0].player,
+    requests[0].requester,
+    game?.winner,
+  ]) {
+    expect(player).toMatchObject({
+      id: other,
+      name: "Other",
+      image: expect.stringContaining("/api/storage/"),
+      isGuest: false,
+    });
+  }
 });
 
 test("listFinished returns finished games newest first only to members", async () => {

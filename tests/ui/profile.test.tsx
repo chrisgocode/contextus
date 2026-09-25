@@ -35,6 +35,7 @@ const profile = {
   image: null,
   isCurrentUser: true,
   name: "Alex Doe",
+  player: { name: "Alex Doe", image: null },
   username: "alex",
 };
 
