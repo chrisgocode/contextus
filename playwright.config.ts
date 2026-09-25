@@ -12,14 +12,18 @@ export default defineConfig({
   workers: 4,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI
+    ? [["github"], ["list"], ["html", { open: "never" }]]
+    : "list",
   use: {
     ...devices["Desktop Chrome"],
     baseURL,
     trace: "on-first-retry",
   },
   webServer: {
-    command: "bun run dev:e2e",
+    // CI builds first and serves production output; `next dev` compiles
+    // routes on demand, which is slow and flaky on CI runners.
+    command: process.env.CI ? "bun run start:e2e" : "bun run dev:e2e",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

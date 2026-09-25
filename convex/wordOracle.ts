@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
+  env,
   internalMutation,
   internalQuery,
   type ActionCtx,
 } from "./_generated/server";
 import { contextoOracle } from "./contexto";
+import { e2eWordOracle } from "./e2eWordOracle";
 
 export type ScoredLemma = { lemma: string; distance: number };
 
@@ -28,6 +30,15 @@ export type WordOracle = {
 // The word oracle for one Contexto puzzle, with distances served from the
 // wordDistances cache when possible. Callers never see cache vs. fetch.
 export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
+  // E2E deployments use a deterministic fake and bypass the cache, so fake
+  // and real Contexto scores never mix on a shared deployment.
+  if (env.E2E_TEST === "1") {
+    return {
+      distance: (word: string) => e2eWordOracle.distance(contextoGameId, word),
+      tip: (distance: number) => e2eWordOracle.tip(contextoGameId, distance),
+      answer: () => e2eWordOracle.answer(contextoGameId),
+    };
+  }
   return {
     async distance(word: string): Promise<DistanceResult> {
       const cached: ScoredLemma | null = await ctx.runQuery(

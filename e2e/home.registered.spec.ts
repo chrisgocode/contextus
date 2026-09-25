@@ -3,18 +3,24 @@ import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
 test("makes Home inert while a room opens", async ({
   createRegisteredUser,
 }) => {
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!convexUrl) throw new Error("Missing NEXT_PUBLIC_CONVEX_URL");
+  const convexHost = new URL(convexUrl).host;
   const { page } = await createRegisteredUser();
   let createRequestBlocked = false;
-  await page.routeWebSocket(/convex\.cloud/, (webSocket) => {
-    const server = webSocket.connectToServer();
-    webSocket.onMessage((message) => {
-      if (message.toString().includes("rooms:create")) {
-        createRequestBlocked = true;
-        return;
-      }
-      server.send(message);
-    });
-  });
+  await page.routeWebSocket(
+    (url) => url.host === convexHost,
+    (webSocket) => {
+      const server = webSocket.connectToServer();
+      webSocket.onMessage((message) => {
+        if (message.toString().includes("rooms:create")) {
+          createRequestBlocked = true;
+          return;
+        }
+        server.send(message);
+      });
+    },
+  );
   await page.goto("/");
 
   const createButton = page

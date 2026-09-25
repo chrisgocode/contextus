@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "convex dev --start 'next dev'",
     "dev:e2e": "convex dev --once && next dev -p 3100",
+    "start:e2e": "next start -p 3100",
     "predev": "convex init && node setup.mjs --once",
     "build": "next build",
     "start": "next start",

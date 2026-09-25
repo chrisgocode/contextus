@@ -15,6 +15,7 @@ import type * as cleanup from "../cleanup.js";
 import type * as contexto from "../contexto.js";
 import type * as crons from "../crons.js";
 import type * as e2eCleanup from "../e2eCleanup.js";
+import type * as e2eWordOracle from "../e2eWordOracle.js";
 import type * as games from "../games.js";
 import type * as giveup from "../giveup.js";
 import type * as guesses from "../guesses.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   contexto: typeof contexto;
   crons: typeof crons;
   e2eCleanup: typeof e2eCleanup;
+  e2eWordOracle: typeof e2eWordOracle;
   games: typeof games;
   giveup: typeof giveup;
   guesses: typeof guesses;

@@ -30,6 +30,7 @@ flowchart LR
 | `guesses.ts`         | `submit` action: the guess pipeline (below)                                                      |
 | `gameTransitions.ts` | `applyGuess` / `applyGiveup`: the only mutations that change game state                          |
 | `contexto.ts`        | Internal actions wrapping Contexto's `game`, `tip`, and `giveup` endpoints                       |
+| `e2eWordOracle.ts`   | Deterministic stand-in for Contexto, used instead of it when `E2E_TEST=1`                        |
 | `hints.ts`           | Host hint action and hint execution                                                              |
 | `giveup.ts`          | Host give-up action and give-up execution                                                        |
 | `requests.ts`        | Non-host hint and give-up requests: create, deny, approve                                        |

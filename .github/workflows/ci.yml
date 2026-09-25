@@ -23,3 +23,58 @@ jobs:
       - run: bun run format:check
       - run: bun run typecheck
       - run: bun run test
+
+  # Playwright against a throwaway anonymous local Convex backend, so every run
+  # gets a fresh database and needs no secrets. Not a required check yet.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CONVEX_AGENT_MODE: anonymous
+      E2E_ACCOUNT_NAMESPACE: ci
+      E2E_PASSWORD: ci-e2e-password
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: bunx playwright install --with-deps chromium
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: bunx playwright install-deps chromium
+
+      # Writes NEXT_PUBLIC_CONVEX_URL to .env.local, which the build inlines.
+      # The `check` job already typechecks convex/.
+      - name: Start local Convex backend
+        run: |
+          bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+          for _ in $(seq 1 90); do
+            if grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/convex.log"
+          exit 1
+      - run: node scripts/setup-e2e-convex-env.mjs
+      - run: bun run build
+      - run: bun run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+            ${{ runner.temp }}/convex.log
+          retention-days: 14
