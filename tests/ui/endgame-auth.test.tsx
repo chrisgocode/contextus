@@ -58,8 +58,6 @@ beforeEach(() => {
         ],
       };
     if (name === "users:getGuestAccountPrompt") return null;
-    if (name === "games:getById")
-      return { winner: { name: "Alex", image: null } };
     throw new Error(`Unexpected query: ${name}`);
   });
 });
@@ -83,7 +81,6 @@ describe("EndGameBanner", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("apple")).toBeVisible();
-    expect(screen.getByText("Alex won")).toBeVisible();
   });
 
   it("reveals the answer after the group gives up", () => {
@@ -106,7 +103,6 @@ describe("EndGameBanner", () => {
       const name = getFunctionName(reference);
       if (name === "guesses:listForGame") return { sorted: [] };
       if (name === "users:getGuestAccountPrompt") return { messageIndex: 0 };
-      if (name === "games:getById") return { winner: null };
       throw new Error(`Unexpected query: ${name}`);
     });
     const user = userEvent.setup();
