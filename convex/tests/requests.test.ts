@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { api, internal } from "../_generated/api";
 import {
   asUser,
   mockContextoFetch,
@@ -187,4 +188,171 @@ test("approve rejects non-pending request", async () => {
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId: req!._id }),
   ).rejects.toThrow();
+});
+
+async function createRequest(
+  t: ReturnType<typeof setupTest>,
+  requester: Id<"users">,
+  gameId: Id<"games">,
+  type: "hint" | "giveup",
+) {
+  await asUser(t, requester).mutation(api.requests.create, { gameId, type });
+  const req = await t.run(async (ctx) =>
+    ctx.db
+      .query("pendingRequests")
+      .withIndex("by_game_status", (q) =>
+        q.eq("gameId", gameId).eq("status", "pending"),
+      )
+      .first(),
+  );
+  return req!._id;
+}
+
+async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
+  return await t.run(async (ctx) => ({
+    game: await ctx.db.get("games", gameId),
+    guesses: await ctx.db
+      .query("gameGuesses")
+      .withIndex("by_game_lemma", (q) => q.eq("gameId", gameId))
+      .collect(),
+  }));
+}
+
+test("hint approve path rejects a request denied mid-flight and writes nothing", async () => {
+  const t = setupTest();
+  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  const before = await snapshot(t, gameId);
+  // Approve passed its pending check; host denies while Contexto is fetching.
+  await asUser(t, host).mutation(api.requests.deny, { requestId });
+  await expect(
+    asUser(t, host).action(internal.hints._execute, {
+      gameId,
+      requesterUserId: other,
+      requestId,
+    }),
+  ).rejects.toThrow("Request not found or already handled");
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("denied");
+  expect(await snapshot(t, gameId)).toEqual(before);
+  expect(before.guesses).toHaveLength(0);
+});
+
+test("giveup approve path rejects a request denied mid-flight and leaves game in_progress", async () => {
+  const t = setupTest();
+  mockContextoFetch({ answers: { 1336: "answer" } });
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "giveup");
+  const before = await snapshot(t, gameId);
+  await asUser(t, host).mutation(api.requests.deny, { requestId });
+  await expect(
+    asUser(t, host).action(internal.giveup._execute, { gameId, requestId }),
+  ).rejects.toThrow("Request not found or already handled");
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("denied");
+  const after = await snapshot(t, gameId);
+  expect(after).toEqual(before);
+  expect(after.game?.status).toBe("in_progress");
+});
+
+test("second apply of the same hint request is rejected", async () => {
+  const t = setupTest();
+  mockContextoFetch({ tips: { 1336: { 299: "pomelo", 149: "lime" } } });
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  await asUser(t, host).action(api.requests.approve, { requestId });
+  await expect(
+    asUser(t, host).action(internal.hints._execute, {
+      gameId,
+      requesterUserId: other,
+      requestId,
+    }),
+  ).rejects.toThrow("Request not found or already handled");
+  const { guesses } = await snapshot(t, gameId);
+  expect(guesses.filter((g) => g.source === "hint")).toHaveLength(1);
+});
+
+test("second apply of the same hint request is rejected while the hint walk is active", async () => {
+  const t = setupTest();
+  mockContextoFetch({
+    guesses: { 1336: { close: 1 } },
+    tips: { 1336: { 2: "second", 3: "third" } },
+  });
+  const { host, other, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "close" });
+  const requestId = await createRequest(t, other, gameId, "hint");
+  const first = await asUser(t, host).action(api.requests.approve, {
+    requestId,
+  });
+  expect(first).toEqual({ lemma: "second", distance: 2 });
+  await expect(
+    asUser(t, host).action(internal.hints._execute, {
+      gameId,
+      requesterUserId: other,
+      requestId,
+    }),
+  ).rejects.toThrow("Request not found or already handled");
+  const { guesses } = await snapshot(t, gameId);
+  expect(guesses.filter((g) => g.source === "hint")).toHaveLength(1);
+});
+
+test("hint walk still retries for a pending request", async () => {
+  const t = setupTest();
+  mockContextoFetch({
+    guesses: { 1336: { close: 1, second: 2 } },
+    tips: { 1336: { 2: "second", 3: "third" } },
+  });
+  const { host, other, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "close" });
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "second" });
+  const requestId = await createRequest(t, other, gameId, "hint");
+  const result = await asUser(t, host).action(api.requests.approve, {
+    requestId,
+  });
+  expect(result).toEqual({ lemma: "third", distance: 3 });
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("approved");
+});
+
+test("closeRequestId from a different game is rejected and neither game changes", async () => {
+  const t = setupTest();
+  mockContextoFetch({
+    tips: { 1336: { 299: "pomelo" } },
+    answers: { 1336: "answer" },
+  });
+  const a = await startedGame(t);
+  const b = await startedGame(t);
+  const hintRequestId = await createRequest(t, a.other, a.gameId, "hint");
+  const giveupRequestId = await createRequest(t, a.other, a.gameId, "giveup");
+  const beforeA = await snapshot(t, a.gameId);
+  const beforeB = await snapshot(t, b.gameId);
+  await expect(
+    asUser(t, b.host).action(internal.hints._execute, {
+      gameId: b.gameId,
+      requesterUserId: b.other,
+      requestId: hintRequestId,
+    }),
+  ).rejects.toThrow("Request not found or already handled");
+  await expect(
+    asUser(t, b.host).action(internal.giveup._execute, {
+      gameId: b.gameId,
+      requestId: giveupRequestId,
+    }),
+  ).rejects.toThrow("Request not found or already handled");
+  expect(await snapshot(t, a.gameId)).toEqual(beforeA);
+  expect(await snapshot(t, b.gameId)).toEqual(beforeB);
+  const rows = await t.run(async (ctx) =>
+    Promise.all([
+      ctx.db.get("pendingRequests", hintRequestId),
+      ctx.db.get("pendingRequests", giveupRequestId),
+    ]),
+  );
+  expect(rows.map((r) => r?.status)).toEqual(["pending", "pending"]);
 });

@@ -1,11 +1,26 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { internalMutation, type MutationCtx } from "./_generated/server";
 import { recordAcceptedGuessForAchievements } from "./achievements";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { upsertRoomActivity } from "./lib/roomActivity";
+
+// Re-read the request in the same transaction that closes it, so a concurrent
+// deny or a second approve can't be overwritten after the action's preflight.
+async function requirePendingRequest(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  requestId: Id<"pendingRequests"> | undefined,
+) {
+  if (requestId === undefined) return;
+  const req = await ctx.db.get("pendingRequests", requestId);
+  if (req === null || req.status !== "pending" || req.gameId !== gameId) {
+    throw new ConvexError("Request not found or already handled");
+  }
+}
 
 export const applyGuess = internalMutation({
   args: {
@@ -24,6 +39,7 @@ export const applyGuess = internalMutation({
     won: boolean;
     unlockedAchievementIds: AchievementId[];
   }> => {
+    await requirePendingRequest(ctx, gameId, closeRequestId);
     const game = await ctx.db.get("games", gameId);
     if (game === null) throw new ConvexError("Game not found");
     const existingGuess = await ctx.db
@@ -106,6 +122,7 @@ export const applyGiveup = internalMutation({
     closeRequestId: v.optional(v.id("pendingRequests")),
   },
   handler: async (ctx, { gameId, answerLemma, closeRequestId }) => {
+    await requirePendingRequest(ctx, gameId, closeRequestId);
     const game = await ctx.db.get("games", gameId);
     if (game === null) throw new ConvexError("Game not found");
     const decision = decideGiveup(
