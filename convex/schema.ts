@@ -141,6 +141,9 @@ export default defineSchema({
     contextoGameId: v.number(),
     lemma: v.string(),
     distance: v.number(),
+    // Set when `lemma` is a raw input Contexto maps to a different lemma.
+    // Absent means `lemma` is its own canonical lemma.
+    canonicalLemma: v.optional(v.string()),
   })
     .index("by_game_lemma", ["contextoGameId", "lemma"])
     .index("by_game_distance", ["contextoGameId", "distance"]),

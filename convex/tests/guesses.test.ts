@@ -271,3 +271,84 @@ test("listForGame returns sorted asc + latest", async () => {
   expect(sorted.map((g) => g.lemma)).toEqual(["peach", "apple", "hello"]);
   expect(latest?.lemma).toBe("peach");
 });
+
+test("submit: canonicalized input is cached, no second fetch call", async () => {
+  const t = setupTest();
+  const fetchMock = mockContextoFetch({
+    guesses: { 1336: { dog: 321 } },
+    canonical: { 1336: { dogs: "dog" } },
+  });
+  const { host, other, gameId } = await startedGame(t);
+  const first = await asUser(t, host).action(api.guesses.submit, {
+    gameId,
+    word: "Dogs",
+  });
+  expect(first).toMatchObject({ lemma: "dog", distance: 321, won: false });
+  expect(first.alreadyGuessed).toBeUndefined();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  for (const user of [host, other]) {
+    const res = await asUser(t, user).action(api.guesses.submit, {
+      gameId,
+      word: "Dogs",
+    });
+    expect(res).toEqual({
+      lemma: "dog",
+      distance: 321,
+      won: false,
+      alreadyGuessed: true,
+      message: "The word was already guessed.",
+      unlockedAchievementIds: [],
+    });
+  }
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  const rows = await t.run(async (ctx) =>
+    ctx.db
+      .query("gameGuesses")
+      .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
+      .collect(),
+  );
+  expect(rows.map((r) => r.lemma)).toEqual(["dog"]);
+});
+
+test("submit: canonicalized input after canonical already guessed is cached", async () => {
+  const t = setupTest();
+  const fetchMock = mockContextoFetch({
+    guesses: { 1336: { dog: 321 } },
+    canonical: { 1336: { dogs: "dog" } },
+  });
+  const { host, other, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "dog" });
+  const first = await asUser(t, other).action(api.guesses.submit, {
+    gameId,
+    word: "dogs",
+  });
+  expect(first).toMatchObject({ lemma: "dog", alreadyGuessed: true });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const second = await asUser(t, other).action(api.guesses.submit, {
+    gameId,
+    word: "dogs",
+  });
+  expect(second).toMatchObject({ lemma: "dog", alreadyGuessed: true });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("submit: legacy cache rows without canonical lemma are served", async () => {
+  const t = setupTest();
+  const fetchMock = mockContextoFetch({ guesses: { 1336: {} } });
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) =>
+    ctx.db.insert("wordDistances", {
+      contextoGameId: 1336,
+      lemma: "legacy",
+      distance: 77,
+    }),
+  );
+  const res = await asUser(t, host).action(api.guesses.submit, {
+    gameId,
+    word: "Legacy",
+  });
+  expect(res).toMatchObject({ lemma: "legacy", distance: 77, won: false });
+  expect(fetchMock).not.toHaveBeenCalled();
+});
