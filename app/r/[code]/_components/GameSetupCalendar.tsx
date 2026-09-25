@@ -11,6 +11,7 @@ import {
   launchDate,
   todayLocalMidnight,
 } from "@/lib/contexto";
+import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 
 export function GameSetupCalendar({
@@ -77,7 +78,9 @@ export function GameSetupCalendar({
           try {
             await start({ roomId, contextoGameId: gameId });
           } catch (e) {
-            const message = "Could not start the game. Try again.";
+            const message =
+              expectedClientErrorMessage(e, "game.start") ??
+              "Could not start the game. Try again.";
             setError(message);
             reportClientError(e, {
               userMessage: message,

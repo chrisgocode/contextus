@@ -120,6 +120,19 @@ describe("GuessInput", () => {
       expect.objectContaining({ context: "guess.submit" }),
     );
   });
+
+  it("shows a game-ended race inline", async () => {
+    convex.useAction.mockReturnValue(
+      vi.fn().mockRejectedValue({ data: "Game is no longer in progress" }),
+    );
+    const user = userEvent.setup();
+    render(<GuessInput gameId={"game" as never} />);
+    await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This game has already ended.",
+    );
+  });
 });
 
 describe("HintGiveupBar", () => {
@@ -157,6 +170,20 @@ describe("HintGiveupBar", () => {
       expect.any(Error),
       expect.objectContaining({ context: "request.giveup" }),
     );
+  });
+
+  it("shows an exhausted hint pool inline", async () => {
+    convex.useAction
+      .mockReturnValueOnce(
+        vi.fn().mockRejectedValue({ data: "Could not find an unguessed hint" }),
+      )
+      .mockReturnValueOnce(vi.fn());
+    convex.useMutation.mockReturnValue(vi.fn());
+    convex.useQuery.mockReturnValue([]);
+    const user = userEvent.setup();
+    render(<HintGiveupBar gameId={"game" as never} isHost />);
+    await user.click(screen.getByRole("button", { name: "Get hint" }));
+    expect(await screen.findByText("No unguessed hints remain.")).toBeVisible();
   });
 });
 
@@ -280,5 +307,18 @@ describe("GameSetupCalendar", () => {
       expect.any(Error),
       expect.objectContaining({ context: "game.start" }),
     );
+  });
+
+  it("shows an already-started game inline", async () => {
+    convex.useMutation.mockReturnValue(
+      vi.fn().mockRejectedValue({ data: "A game is already in progress" }),
+    );
+    convex.useQuery.mockReturnValue([]);
+    const user = userEvent.setup();
+    render(<GameSetupCalendar roomId={"room" as never} isHost />);
+    await user.click(screen.getByRole("button", { name: "Start game" }));
+    expect(
+      await screen.findByText("A game is already in progress."),
+    ).toBeVisible();
   });
 });

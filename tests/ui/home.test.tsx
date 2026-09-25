@@ -145,4 +145,23 @@ describe("Home", () => {
       expect.objectContaining({ context: "room.join" }),
     );
   });
+
+  it("shows a mistyped room code", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "users:getUser") return { isAnonymous: true };
+      if (name === "rooms:listMine") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    mocks.join.mockRejectedValue({ data: "Room not found" });
+    const user = userEvent.setup();
+    render(<Home />);
+    await user.type(screen.getByPlaceholderText("ABCDEF"), "missing");
+    await user.click(screen.getByRole("button", { name: "Join" }));
+    expect(await screen.findByText("Room not found.")).toBeVisible();
+  });
 });
