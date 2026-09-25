@@ -1,5 +1,5 @@
-import { ConvexError, v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { ConvexError } from "convex/values";
+import type { WordOracle } from "./wordOracle";
 
 const BASE = "https://api.contexto.me/machado/en";
 const UNAVAILABLE_MESSAGE = "Contexto is unavailable, please try again";
@@ -40,14 +40,10 @@ function parseScoredLemma(body: ContextoBody): {
   return { lemma: body.lemma, distance: body.distance };
 }
 
-export const fetchGuess = internalAction({
-  args: { contextoGameId: v.number(), word: v.string() },
-  handler: async (
-    _ctx,
-    { contextoGameId, word },
-  ): Promise<
-    { ok: true; lemma: string; distance: number } | { ok: false; error: string }
-  > => {
+// Contexto adapter for the word oracle. Plain functions, not actions: they
+// run inside whichever action performs the Game turn.
+export const contextoOracle: WordOracle = {
+  async distance(contextoGameId, word) {
     const url = `${BASE}/game/${contextoGameId}/${encodeURIComponent(word)}`;
     const { ok, body } = await request(url);
     // Contexto answers unknown words with a 404 and an `{ error }` body.
@@ -56,24 +52,15 @@ export const fetchGuess = internalAction({
     if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
     return { ok: true, ...parseScoredLemma(body) };
   },
-});
 
-export const fetchTip = internalAction({
-  args: { contextoGameId: v.number(), distance: v.number() },
-  handler: async (
-    _ctx,
-    { contextoGameId, distance },
-  ): Promise<{ lemma: string; distance: number }> => {
+  async tip(contextoGameId, distance) {
     const url = `${BASE}/tip/${contextoGameId}/${distance}`;
     const { ok, body } = await request(url);
     if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
     return parseScoredLemma(body);
   },
-});
 
-export const fetchAnswer = internalAction({
-  args: { contextoGameId: v.number() },
-  handler: async (_ctx, { contextoGameId }): Promise<{ lemma: string }> => {
+  async answer(contextoGameId) {
     const url = `${BASE}/giveup/${contextoGameId}`;
     const { ok, body } = await request(url);
     if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
@@ -82,4 +69,4 @@ export const fetchAnswer = internalAction({
     }
     return { lemma: body.lemma };
   },
-});
+};

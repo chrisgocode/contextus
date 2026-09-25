@@ -3,7 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -118,7 +118,7 @@ test("create allows different types from same requester", async () => {
 
 test("create rejects when game not in_progress", async () => {
   const t = setupTest();
-  mockContextoFetch({ answers: { 1336: "answer" } });
+  fakeWordOracle({ answers: { 1336: "answer" } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   await expect(
@@ -160,7 +160,7 @@ test("deny patches status to denied", async () => {
 
 test("approve requires host", async () => {
   const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
   const { other, gameId } = await startedGame(t);
   await asUser(t, other).mutation(api.requests.create, {
     gameId,
@@ -220,16 +220,16 @@ async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
 
 test("hint approve path rejects a request denied mid-flight and writes nothing", async () => {
   const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
   const { host, other, gameId } = await startedGame(t);
   const requestId = await createRequest(t, other, gameId, "hint");
   const before = await snapshot(t, gameId);
   // Approve passed its pending check; host denies while Contexto is fetching.
   await asUser(t, host).mutation(api.requests.deny, { requestId });
   await expect(
-    asUser(t, host).action(internal.hints._execute, {
+    asUser(t, host).mutation(internal.turns._apply, {
       gameId,
-      requesterUserId: other,
+      turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId,
     }),
   ).rejects.toThrow("Request not found or already handled");
@@ -243,13 +243,17 @@ test("hint approve path rejects a request denied mid-flight and writes nothing",
 
 test("giveup approve path rejects a request denied mid-flight and leaves game in_progress", async () => {
   const t = setupTest();
-  mockContextoFetch({ answers: { 1336: "answer" } });
+  fakeWordOracle({ answers: { 1336: "answer" } });
   const { host, other, gameId } = await startedGame(t);
   const requestId = await createRequest(t, other, gameId, "giveup");
   const before = await snapshot(t, gameId);
   await asUser(t, host).mutation(api.requests.deny, { requestId });
   await expect(
-    asUser(t, host).action(internal.giveup._execute, { gameId, requestId }),
+    asUser(t, host).mutation(internal.turns._apply, {
+      gameId,
+      turn: { kind: "giveup", answerLemma: "answer" },
+      requestId,
+    }),
   ).rejects.toThrow("Request not found or already handled");
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
@@ -262,14 +266,14 @@ test("giveup approve path rejects a request denied mid-flight and leaves game in
 
 test("second apply of the same hint request is rejected", async () => {
   const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo", 149: "lime" } } });
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo", 149: "lime" } } });
   const { host, other, gameId } = await startedGame(t);
   const requestId = await createRequest(t, other, gameId, "hint");
   await asUser(t, host).action(api.requests.approve, { requestId });
   await expect(
-    asUser(t, host).action(internal.hints._execute, {
+    asUser(t, host).mutation(internal.turns._apply, {
       gameId,
-      requesterUserId: other,
+      turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId,
     }),
   ).rejects.toThrow("Request not found or already handled");
@@ -279,7 +283,7 @@ test("second apply of the same hint request is rejected", async () => {
 
 test("second apply of the same hint request is rejected while the hint walk is active", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { close: 1 } },
     tips: { 1336: { 2: "second", 3: "third" } },
   });
@@ -291,9 +295,9 @@ test("second apply of the same hint request is rejected while the hint walk is a
   });
   expect(first).toEqual({ lemma: "second", distance: 2 });
   await expect(
-    asUser(t, host).action(internal.hints._execute, {
+    asUser(t, host).mutation(internal.turns._apply, {
       gameId,
-      requesterUserId: other,
+      turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId,
     }),
   ).rejects.toThrow("Request not found or already handled");
@@ -303,7 +307,7 @@ test("second apply of the same hint request is rejected while the hint walk is a
 
 test("hint walk still retries for a pending request", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { close: 1, second: 2 } },
     tips: { 1336: { 2: "second", 3: "third" } },
   });
@@ -323,7 +327,7 @@ test("hint walk still retries for a pending request", async () => {
 
 test("closeRequestId from a different game is rejected and neither game changes", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     tips: { 1336: { 299: "pomelo" } },
     answers: { 1336: "answer" },
   });
@@ -334,15 +338,16 @@ test("closeRequestId from a different game is rejected and neither game changes"
   const beforeA = await snapshot(t, a.gameId);
   const beforeB = await snapshot(t, b.gameId);
   await expect(
-    asUser(t, b.host).action(internal.hints._execute, {
+    asUser(t, b.host).mutation(internal.turns._apply, {
       gameId: b.gameId,
-      requesterUserId: b.other,
+      turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId: hintRequestId,
     }),
   ).rejects.toThrow("Request not found or already handled");
   await expect(
-    asUser(t, b.host).action(internal.giveup._execute, {
+    asUser(t, b.host).mutation(internal.turns._apply, {
       gameId: b.gameId,
+      turn: { kind: "giveup", answerLemma: "answer" },
       requestId: giveupRequestId,
     }),
   ).rejects.toThrow("Request not found or already handled");

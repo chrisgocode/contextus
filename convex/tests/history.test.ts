@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -14,7 +14,7 @@ afterEach(() => {
 
 test("history upsert is per-user per-gameId (no dupes)", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 100 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 100 } } });
   const host = await seedUser(t);
   const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
   const { gameId } = await asUser(t, host).mutation(api.games.start, {
@@ -54,7 +54,7 @@ test("replay same date allowed; history stays single", async () => {
     roomId,
     contextoGameId: 1336,
   });
-  mockContextoFetch({ answers: { 1336: "persimmon" } });
+  fakeWordOracle({ answers: { 1336: "persimmon" } });
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   await asUser(t, host).mutation(api.games.start, {
     roomId,

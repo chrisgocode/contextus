@@ -3,6 +3,7 @@ import { register as registerPresence } from "@convex-dev/presence/test";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
 import type { Id } from "./_generated/dataModel";
+import { contextoOracle } from "./contexto";
 import schema from "./schema";
 
 export function setupTest() {
@@ -64,58 +65,46 @@ export async function asUserWithSession(
   });
 }
 
-export type ContextoMock = {
+export type WordOracleMock = {
   guesses?: Record<number, Record<string, number>>; // gameId -> word -> distance
   canonical?: Record<number, Record<string, string>>; // gameId -> input -> lemma
   tips?: Record<number, Record<number, string>>; // gameId -> distance -> word
   answers?: Record<number, string>; // gameId -> answer lemma
 };
 
-export function mockContextoFetch(mock: ContextoMock) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
-    const guessMatch = url.match(/\/game\/(\d+)\/([^/?#]+)/);
-    if (guessMatch) {
-      const gameId = Number(guessMatch[1]);
-      const word = decodeURIComponent(guessMatch[2]);
-      const lemma = mock.canonical?.[gameId]?.[word] ?? word;
-      const distance = mock.guesses?.[gameId]?.[lemma];
-      if (distance === undefined) {
-        return jsonResponse(
-          { error: "I'm sorry, I don't know this word" },
-          404,
-        );
-      }
-      return jsonResponse({ distance, lemma, word });
-    }
-    const tipMatch = url.match(/\/tip\/(\d+)\/(\d+)/);
-    if (tipMatch) {
-      const gameId = Number(tipMatch[1]);
-      const distance = Number(tipMatch[2]);
-      const word = mock.tips?.[gameId]?.[distance];
-      if (word === undefined) {
-        throw new Error(`tip mock missing for gameId=${gameId} d=${distance}`);
-      }
-      return jsonResponse({ distance, lemma: word, word });
-    }
-    const giveupMatch = url.match(/\/giveup\/(\d+)/);
-    if (giveupMatch) {
-      const gameId = Number(giveupMatch[1]);
-      const word = mock.answers?.[gameId];
-      if (word === undefined) {
-        throw new Error(`giveup mock missing for gameId=${gameId}`);
-      }
-      return jsonResponse({ distance: 0, lemma: word, word });
-    }
-    throw new Error(`Unmatched fetch URL in test: ${url}`);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+// Fakes the word oracle beneath the wordDistances cache, so each spy call is
+// one cache miss that would have hit Contexto.
+export function fakeWordOracle(mock: WordOracleMock) {
+  return {
+    distance: vi
+      .spyOn(contextoOracle, "distance")
+      .mockImplementation(async (contextoGameId, word) => {
+        const lemma = mock.canonical?.[contextoGameId]?.[word] ?? word;
+        const distance = mock.guesses?.[contextoGameId]?.[lemma];
+        if (distance === undefined) {
+          return { ok: false, error: "I'm sorry, I don't know this word" };
+        }
+        return { ok: true, lemma, distance };
+      }),
+    tip: vi
+      .spyOn(contextoOracle, "tip")
+      .mockImplementation(async (contextoGameId, distance) => {
+        const lemma = mock.tips?.[contextoGameId]?.[distance];
+        if (lemma === undefined) {
+          throw new Error(
+            `tip mock missing for gameId=${contextoGameId} d=${distance}`,
+          );
+        }
+        return { lemma, distance };
+      }),
+    answer: vi
+      .spyOn(contextoOracle, "answer")
+      .mockImplementation(async (contextoGameId) => {
+        const lemma = mock.answers?.[contextoGameId];
+        if (lemma === undefined) {
+          throw new Error(`giveup mock missing for gameId=${contextoGameId}`);
+        }
+        return { lemma };
+      }),
+  };
 }

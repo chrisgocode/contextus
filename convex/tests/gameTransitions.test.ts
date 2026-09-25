@@ -6,7 +6,6 @@ const userA = "u_a" as unknown as Id<"users">;
 const userB = "u_b" as unknown as Id<"users">;
 const gameId = "g_1" as unknown as Id<"games">;
 const roomId = "r_1" as unknown as Id<"rooms">;
-const requestId = "p_1" as unknown as Id<"pendingRequests">;
 
 function mkGame(overrides: Partial<Doc<"games">> = {}): Doc<"games"> {
   return {
@@ -45,7 +44,6 @@ describe("decideGuess", () => {
         lemma: "apple",
         distance: 5,
         source: "guess",
-        closeRequestId: null,
       },
     );
     expect(d).toEqual({ kind: "reject", reason: "not_in_progress" });
@@ -59,7 +57,6 @@ describe("decideGuess", () => {
         lemma: "apple",
         distance: 5,
         source: "guess",
-        closeRequestId: null,
       },
     );
     expect(d).toEqual({ kind: "reject", reason: "duplicate" });
@@ -73,7 +70,6 @@ describe("decideGuess", () => {
         lemma: "apple",
         distance: 7,
         source: "guess",
-        closeRequestId: null,
       },
     );
     expect(d.kind).toBe("record");
@@ -90,7 +86,6 @@ describe("decideGuess", () => {
     });
     expect(d.lastActivityAt).toBe(2000);
     expect(d.upsertHistoryForUserId).toBe(userA);
-    expect(d.closeRequestId).toBeNull();
   });
 
   test("records winning guess (distance 0, source=guess): patches game to won", () => {
@@ -101,7 +96,6 @@ describe("decideGuess", () => {
         lemma: "answer",
         distance: 0,
         source: "guess",
-        closeRequestId: null,
       },
     );
     expect(d.kind).toBe("record");
@@ -123,7 +117,6 @@ describe("decideGuess", () => {
         lemma: "answer",
         distance: 0,
         source: "hint",
-        closeRequestId: null,
       },
     );
     expect(d.kind).toBe("record");
@@ -131,29 +124,13 @@ describe("decideGuess", () => {
     expect(d.won).toBe(false);
     expect(d.gamePatch).toBeNull();
   });
-
-  test("passes closeRequestId through when provided", () => {
-    const d = decideGuess(
-      { game: mkGame(), existingGuess: null, now: 2000 },
-      {
-        userId: userA,
-        lemma: "x",
-        distance: 4,
-        source: "hint",
-        closeRequestId: requestId,
-      },
-    );
-    expect(d.kind).toBe("record");
-    if (d.kind !== "record") return;
-    expect(d.closeRequestId).toBe(requestId);
-  });
 });
 
 describe("decideGiveup", () => {
   test("rejects when game not in_progress", () => {
     const d = decideGiveup(
       { game: mkGame({ status: "given_up" }), now: 4000 },
-      { answerLemma: "answer", closeRequestId: null },
+      { answerLemma: "answer" },
     );
     expect(d).toEqual({ kind: "reject", reason: "not_in_progress" });
   });
@@ -161,7 +138,7 @@ describe("decideGiveup", () => {
   test("finalizes: patches game to given_up with answer + endedAt", () => {
     const d = decideGiveup(
       { game: mkGame(), now: 4000 },
-      { answerLemma: "answer", closeRequestId: null },
+      { answerLemma: "answer" },
     );
     expect(d.kind).toBe("finalize");
     if (d.kind !== "finalize") return;
@@ -171,15 +148,5 @@ describe("decideGiveup", () => {
       endedAt: 4000,
     });
     expect(d.lastActivityAt).toBe(4000);
-    expect(d.closeRequestId).toBeNull();
-  });
-
-  test("passes closeRequestId through", () => {
-    const d = decideGiveup(
-      { game: mkGame(), now: 4000 },
-      { answerLemma: "answer", closeRequestId: requestId },
-    );
-    if (d.kind !== "finalize") throw new Error("expected finalize");
-    expect(d.closeRequestId).toBe(requestId);
   });
 });

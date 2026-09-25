@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -27,7 +27,7 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
 
 test("submit: returns unknown word message", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: {} } });
+  fakeWordOracle({ guesses: { 1336: {} } });
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" }),
@@ -42,7 +42,7 @@ test("submit: updates roomActivity", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { host, roomId, gameId } = await startedGame(t);
   const before = await t.run(async (ctx) =>
     ctx.db
@@ -64,7 +64,7 @@ test("submit: updates roomActivity", async () => {
 
 test("submit: success returns distance and writes guess + cache", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { host, gameId } = await startedGame(t);
   const res = await asUser(t, host).action(api.guesses.submit, {
     gameId,
@@ -96,7 +96,7 @@ test("submit: success returns distance and writes guess + cache", async () => {
 
 test("submit: anonymous room member can guess", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { guestword: 1234 } } });
+  fakeWordOracle({ guesses: { 1336: { guestword: 1234 } } });
   const host = await seedUser(t, { name: "Host" });
   const guest = await seedUser(t, {
     name: "Guest",
@@ -128,7 +128,7 @@ test("guest account prompt is due after every third completed game", async () =>
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const { roomId } = await asUser(t, guest).mutation(api.rooms.create, {});
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: Object.fromEntries(
       Array.from({ length: 6 }, (_, i) => [i + 1, { winner: 0 }]),
     ),
@@ -170,7 +170,7 @@ test("guest account prompt is due after every third completed game", async () =>
 
 test("submit: duplicate lemma in same game returns already guessed result", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
   const res = await asUser(t, other).action(api.guesses.submit, {
@@ -189,22 +189,22 @@ test("submit: duplicate lemma in same game returns already guessed result", asyn
 
 test("submit: second player hits cache, no second fetch call", async () => {
   const t = setupTest();
-  const fetchMock = mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  const oracle = fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  // dedup returns without fetching because the distance is cached.
+  expect(oracle.distance).toHaveBeenCalledTimes(1);
+  // dedup returns without asking the oracle because the distance is cached.
   const res = await asUser(t, other).action(api.guesses.submit, {
     gameId,
     word: "hello",
   });
   expect(res.alreadyGuessed).toBe(true);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(oracle.distance).toHaveBeenCalledTimes(1);
 });
 
 test("submit: distance 0 ends game with winner", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { persimmon: 0 } } });
+  fakeWordOracle({ guesses: { 1336: { persimmon: 0 } } });
   const { host, gameId } = await startedGame(t);
   const res = await asUser(t, host).action(api.guesses.submit, {
     gameId,
@@ -220,7 +220,7 @@ test("submit: distance 0 ends game with winner", async () => {
 
 test("submit: rejected on ended game", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { persimmon: 0, apple: 5 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -235,7 +235,7 @@ test("submit: rejected on ended game", async () => {
 
 test("submit: non-member rejected", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { gameId } = await startedGame(t);
   const outsider = await seedUser(t);
   await expect(
@@ -245,7 +245,7 @@ test("submit: non-member rejected", async () => {
 
 test("listForGame returns empty for ex-member after leaving room", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { hello: 42591 } } });
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
   const { host, other, roomId, gameId } = await startedGame(t);
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
   await asUser(t, other).mutation(api.rooms.leave, { roomId });
@@ -257,7 +257,7 @@ test("listForGame returns empty for ex-member after leaving room", async () => {
 
 test("listForGame returns sorted asc + latest", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { hello: 42591, apple: 100, peach: 10 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -274,7 +274,7 @@ test("listForGame returns sorted asc + latest", async () => {
 
 test("submit: canonicalized input is cached, no second fetch call", async () => {
   const t = setupTest();
-  const fetchMock = mockContextoFetch({
+  const oracle = fakeWordOracle({
     guesses: { 1336: { dog: 321 } },
     canonical: { 1336: { dogs: "dog" } },
   });
@@ -285,7 +285,7 @@ test("submit: canonicalized input is cached, no second fetch call", async () => 
   });
   expect(first).toMatchObject({ lemma: "dog", distance: 321, won: false });
   expect(first.alreadyGuessed).toBeUndefined();
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(oracle.distance).toHaveBeenCalledTimes(1);
 
   for (const user of [host, other]) {
     const res = await asUser(t, user).action(api.guesses.submit, {
@@ -301,7 +301,7 @@ test("submit: canonicalized input is cached, no second fetch call", async () => 
       unlockedAchievementIds: [],
     });
   }
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(oracle.distance).toHaveBeenCalledTimes(1);
 
   const rows = await t.run(async (ctx) =>
     ctx.db
@@ -314,7 +314,7 @@ test("submit: canonicalized input is cached, no second fetch call", async () => 
 
 test("submit: canonicalized input after canonical already guessed is cached", async () => {
   const t = setupTest();
-  const fetchMock = mockContextoFetch({
+  const oracle = fakeWordOracle({
     guesses: { 1336: { dog: 321 } },
     canonical: { 1336: { dogs: "dog" } },
   });
@@ -325,18 +325,18 @@ test("submit: canonicalized input after canonical already guessed is cached", as
     word: "dogs",
   });
   expect(first).toMatchObject({ lemma: "dog", alreadyGuessed: true });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(oracle.distance).toHaveBeenCalledTimes(2);
   const second = await asUser(t, other).action(api.guesses.submit, {
     gameId,
     word: "dogs",
   });
   expect(second).toMatchObject({ lemma: "dog", alreadyGuessed: true });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(oracle.distance).toHaveBeenCalledTimes(2);
 });
 
 test("submit: legacy cache rows without canonical lemma are served", async () => {
   const t = setupTest();
-  const fetchMock = mockContextoFetch({ guesses: { 1336: {} } });
+  const oracle = fakeWordOracle({ guesses: { 1336: {} } });
   const { host, gameId } = await startedGame(t);
   await t.run(async (ctx) =>
     ctx.db.insert("wordDistances", {
@@ -350,5 +350,5 @@ test("submit: legacy cache rows without canonical lemma are served", async () =>
     word: "Legacy",
   });
   expect(res).toMatchObject({ lemma: "legacy", distance: 77, won: false });
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(oracle.distance).not.toHaveBeenCalled();
 });
