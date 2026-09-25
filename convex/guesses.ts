@@ -1,7 +1,12 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, internalQuery, query } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  query,
+} from "./_generated/server";
 import { requireMemberByGame, requireUser, tryMemberByGame } from "./access";
 import type { AchievementId } from "./lib/achievements";
 
@@ -35,8 +40,38 @@ export const _preflight = internalQuery({
     return {
       contextoGameId: game.contextoGameId,
       roomId: game.roomId,
-      cached: cached?.distance ?? null,
+      cached:
+        cached === null
+          ? null
+          : {
+              lemma: cached.canonicalLemma ?? cached.lemma,
+              distance: cached.distance,
+            },
     };
+  },
+});
+
+export const _cacheCanonical = internalMutation({
+  args: {
+    contextoGameId: v.number(),
+    input: v.string(),
+    canonicalLemma: v.string(),
+    distance: v.number(),
+  },
+  handler: async (ctx, { contextoGameId, input, canonicalLemma, distance }) => {
+    const existing = await ctx.db
+      .query("wordDistances")
+      .withIndex("by_game_lemma", (q) =>
+        q.eq("contextoGameId", contextoGameId).eq("lemma", input),
+      )
+      .unique();
+    if (existing !== null) return;
+    await ctx.db.insert("wordDistances", {
+      contextoGameId,
+      lemma: input,
+      distance,
+      canonicalLemma,
+    });
   },
 });
 
@@ -44,23 +79,25 @@ export const submit = action({
   args: { gameId: v.id("games"), word: v.string() },
   handler: async (ctx, { gameId, word }): Promise<SubmitResult> => {
     const userId = await requireUser(ctx);
-    const lemma = normalizeWord(word);
-    if (lemma.length === 0) throw new ConvexError("Empty word");
+    const input = normalizeWord(word);
+    if (input.length === 0) throw new ConvexError("Empty word");
 
-    const pre: { contextoGameId: number; cached: number | null } =
-      await ctx.runQuery(internal.guesses._preflight, {
-        gameId,
-        lemma,
-      });
+    const pre: {
+      contextoGameId: number;
+      cached: { lemma: string; distance: number } | null;
+    } = await ctx.runQuery(internal.guesses._preflight, {
+      gameId,
+      lemma: input,
+    });
 
+    let lemma: string;
     let distance: number;
-    let canonicalLemma = lemma;
     if (pre.cached !== null) {
-      distance = pre.cached;
+      ({ lemma, distance } = pre.cached);
     } else {
       const result = await ctx.runAction(internal.contexto.fetchGuess, {
         contextoGameId: pre.contextoGameId,
-        word: lemma,
+        word: input,
       });
       if (!result.ok) {
         return {
@@ -69,39 +106,17 @@ export const submit = action({
           unlockedAchievementIds: [],
         };
       }
-      distance = result.distance;
-      canonicalLemma = result.lemma;
+      ({ lemma, distance } = result);
+      if (lemma !== input) {
+        await ctx.runMutation(internal.guesses._cacheCanonical, {
+          contextoGameId: pre.contextoGameId,
+          input,
+          canonicalLemma: lemma,
+          distance,
+        });
+      }
     }
 
-    if (canonicalLemma !== lemma) {
-      const result: {
-        status: "recorded" | "duplicate";
-        won: boolean;
-        unlockedAchievementIds: AchievementId[];
-      } = await ctx.runMutation(internal.gameTransitions.applyGuess, {
-        gameId,
-        userId,
-        lemma: canonicalLemma,
-        distance,
-        source: "guess",
-      });
-      if (result.status === "duplicate") {
-        return {
-          lemma: canonicalLemma,
-          distance,
-          won: false,
-          alreadyGuessed: true,
-          message: ALREADY_GUESSED_MESSAGE,
-          unlockedAchievementIds: [],
-        };
-      }
-      return {
-        lemma: canonicalLemma,
-        distance,
-        won: result.won,
-        unlockedAchievementIds: result.unlockedAchievementIds,
-      };
-    }
     const result: {
       status: "recorded" | "duplicate";
       won: boolean;

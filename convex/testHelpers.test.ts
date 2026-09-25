@@ -66,6 +66,7 @@ export async function asUserWithSession(
 
 export type ContextoMock = {
   guesses?: Record<number, Record<string, number>>; // gameId -> word -> distance
+  canonical?: Record<number, Record<string, string>>; // gameId -> input -> lemma
   tips?: Record<number, Record<number, string>>; // gameId -> distance -> word
   answers?: Record<number, string>; // gameId -> answer lemma
 };
@@ -77,11 +78,12 @@ export function mockContextoFetch(mock: ContextoMock) {
     if (guessMatch) {
       const gameId = Number(guessMatch[1]);
       const word = decodeURIComponent(guessMatch[2]);
-      const distance = mock.guesses?.[gameId]?.[word];
+      const lemma = mock.canonical?.[gameId]?.[word] ?? word;
+      const distance = mock.guesses?.[gameId]?.[lemma];
       if (distance === undefined) {
         return jsonResponse({ error: "I'm sorry, I don't know this word" });
       }
-      return jsonResponse({ distance, lemma: word, word });
+      return jsonResponse({ distance, lemma, word });
     }
     const tipMatch = url.match(/\/tip\/(\d+)\/(\d+)/);
     if (tipMatch) {
