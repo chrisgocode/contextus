@@ -140,7 +140,9 @@ describe("GuessInput", () => {
       vi.fn().mockRejectedValue({ data: "Game is no longer in progress" }),
     );
     const user = userEvent.setup();
-    render(<GuessInput gameId={"game" as never} />);
+    render(
+      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+    );
     await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
