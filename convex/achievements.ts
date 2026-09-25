@@ -211,11 +211,13 @@ function createConvexAchievementRepository(
     },
 
     async listActiveGuessers(gameId) {
-      const rows = await ctx.db
+      const userIds: Id<"users">[] = [];
+      for await (const row of ctx.db
         .query("gamePlayerStats")
-        .withIndex("by_game_user", (q) => q.eq("gameId", gameId))
-        .take(500);
-      return rows.map((row) => row.userId);
+        .withIndex("by_game_user", (q) => q.eq("gameId", gameId))) {
+        userIds.push(row.userId);
+      }
+      return userIds;
     },
 
     async markSolvedOnce(userId, gameId, contextoGameId, now) {
