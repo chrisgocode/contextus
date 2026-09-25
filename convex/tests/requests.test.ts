@@ -218,21 +218,21 @@ async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
   }));
 }
 
-test("hint approve path rejects a request denied mid-flight and writes nothing", async () => {
+test("approve rejects a hint request denied while Contexto is fetching and writes nothing", async () => {
   const t = setupTest();
-  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
+  const oracle = fakeWordOracle({});
   const { host, other, gameId } = await startedGame(t);
   const requestId = await createRequest(t, other, gameId, "hint");
   const before = await snapshot(t, gameId);
-  // Approve passed its pending check; host denies while Contexto is fetching.
-  await asUser(t, host).mutation(api.requests.deny, { requestId });
+  // Approve has passed its pending check; the host denies mid-fetch.
+  oracle.tip.mockImplementationOnce(async () => {
+    await asUser(t, host).mutation(api.requests.deny, { requestId });
+    return { lemma: "pomelo", distance: 299 };
+  });
   await expect(
-    asUser(t, host).mutation(internal.turns._apply, {
-      gameId,
-      turn: { kind: "hint", lemma: "pomelo", distance: 299 },
-      requestId,
-    }),
+    asUser(t, host).action(api.requests.approve, { requestId }),
   ).rejects.toThrow("Request not found or already handled");
+  expect(oracle.tip).toHaveBeenCalledTimes(1);
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
   );
@@ -241,20 +241,20 @@ test("hint approve path rejects a request denied mid-flight and writes nothing",
   expect(before.guesses).toHaveLength(0);
 });
 
-test("giveup approve path rejects a request denied mid-flight and leaves game in_progress", async () => {
+test("approve rejects a give-up request denied while Contexto is fetching and leaves game in_progress", async () => {
   const t = setupTest();
-  fakeWordOracle({ answers: { 1336: "answer" } });
+  const oracle = fakeWordOracle({});
   const { host, other, gameId } = await startedGame(t);
   const requestId = await createRequest(t, other, gameId, "giveup");
   const before = await snapshot(t, gameId);
-  await asUser(t, host).mutation(api.requests.deny, { requestId });
+  oracle.answer.mockImplementationOnce(async () => {
+    await asUser(t, host).mutation(api.requests.deny, { requestId });
+    return { lemma: "answer" };
+  });
   await expect(
-    asUser(t, host).mutation(internal.turns._apply, {
-      gameId,
-      turn: { kind: "giveup", answerLemma: "answer" },
-      requestId,
-    }),
+    asUser(t, host).action(api.requests.approve, { requestId }),
   ).rejects.toThrow("Request not found or already handled");
+  expect(oracle.answer).toHaveBeenCalledTimes(1);
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
   );
