@@ -63,7 +63,7 @@ bun run test:e2e:ui    # Playwright UI mode
 
 Playwright starts `bun run dev:e2e` if nothing is already running on the base URL (in CI it serves a production build with `bun run start:e2e`). Global setup and teardown purge the test accounts through `e2eCleanup.purgeAccount`. Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
 
-With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` instead of calling Contexto: `wordN` is at distance N, `word0` is the answer, hints return `wordN`, and other plain words get a stable distance of 1000 or more. Any deployment with `E2E_TEST=1`, including your dev deployment, plays with fake distances.
+With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` instead of calling Contexto, and skips the `wordDistances` cache so fake and real scores never mix: `wordN` is at distance N, `word0` is the answer, hints return `wordN`, and other plain words get a stable distance of 1000 or more. Any deployment with `E2E_TEST=1`, including your dev deployment, plays with fake distances.
 
 > **Do not set `E2E_TEST` on a production deployment.** It enables password sign-in, shortens guest lifetimes to one hour, and replaces Contexto with the fake word oracle.
 

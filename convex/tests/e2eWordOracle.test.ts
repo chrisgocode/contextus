@@ -127,6 +127,35 @@ test("hints return the wordN lemma for the requested distance", async () => {
   ]);
 });
 
+test("ignores Contexto scores already in the distance cache", async () => {
+  const t = setupTest();
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("wordDistances", {
+      contextoGameId: 1336,
+      lemma: "word0",
+      distance: 812,
+    });
+  });
+  await expect(
+    asUser(t, host).action(api.guesses.submit, { gameId, word: "word0" }),
+  ).resolves.toMatchObject({ lemma: "word0", distance: 0, won: true });
+});
+
+test("leaves the distance cache untouched", async () => {
+  const t = setupTest();
+  const game = await startedGame(t);
+  await asUser(t, game.host).action(api.guesses.submit, {
+    gameId: game.gameId,
+    word: "house",
+  });
+  await approveRequest(t, game, "hint");
+  const cached = await t.run(async (ctx) =>
+    ctx.db.query("wordDistances").collect(),
+  );
+  expect(cached).toEqual([]);
+});
+
 test("giving up reveals word0", async () => {
   const t = setupTest();
   const game = await startedGame(t);

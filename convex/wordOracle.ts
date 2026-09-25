@@ -27,14 +27,18 @@ export type WordOracle = {
   answer(contextoGameId: number): Promise<{ lemma: string }>;
 };
 
-// E2E deployments swap Contexto for a deterministic fake.
-function sourceOracle(): WordOracle {
-  return env.E2E_TEST === "1" ? e2eWordOracle : contextoOracle;
-}
-
 // The word oracle for one Contexto puzzle, with distances served from the
 // wordDistances cache when possible. Callers never see cache vs. fetch.
 export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
+  // E2E deployments use a deterministic fake and bypass the cache, so fake
+  // and real Contexto scores never mix on a shared deployment.
+  if (env.E2E_TEST === "1") {
+    return {
+      distance: (word: string) => e2eWordOracle.distance(contextoGameId, word),
+      tip: (distance: number) => e2eWordOracle.tip(contextoGameId, distance),
+      answer: () => e2eWordOracle.answer(contextoGameId),
+    };
+  }
   return {
     async distance(word: string): Promise<DistanceResult> {
       const cached: ScoredLemma | null = await ctx.runQuery(
@@ -42,7 +46,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
         { contextoGameId, word },
       );
       if (cached !== null) return { ok: true, ...cached };
-      const result = await sourceOracle().distance(contextoGameId, word);
+      const result = await contextoOracle.distance(contextoGameId, word);
       if (result.ok) {
         await ctx.runMutation(internal.wordOracle._cacheDistance, {
           contextoGameId,
@@ -55,7 +59,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
     },
 
     async tip(distance: number): Promise<ScoredLemma> {
-      const tip = await sourceOracle().tip(contextoGameId, distance);
+      const tip = await contextoOracle.tip(contextoGameId, distance);
       await ctx.runMutation(internal.wordOracle._cacheDistance, {
         contextoGameId,
         input: tip.lemma,
@@ -66,7 +70,7 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
     },
 
     async answer(): Promise<{ lemma: string }> {
-      return await sourceOracle().answer(contextoGameId);
+      return await contextoOracle.answer(contextoGameId);
     },
   };
 }
