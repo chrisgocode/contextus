@@ -2,7 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../lib/cleanup";
 import type { Id } from "../_generated/dataModel";
-import { asUser, seedUser, setupTest } from "../testHelpers.test";
+import {
+  asUser,
+  fakeWordOracle,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 
 const host = "u_host" as unknown as Id<"users">;
 const other = "u_other" as unknown as Id<"users">;
@@ -136,6 +141,171 @@ describe("cleanup.tick", () => {
   });
 });
 
+async function backdateRoomActivity(
+  t: ReturnType<typeof setupTest>,
+  roomId: Id<"rooms">,
+) {
+  await t.run(async (ctx) => {
+    const activity = await ctx.db
+      .query("roomActivity")
+      .withIndex("by_room", (q) => q.eq("roomId", roomId))
+      .unique();
+    if (activity === null) throw new Error("missing roomActivity");
+    await ctx.db.patch("roomActivity", activity._id, {
+      lastActivityAt: Date.now() - IDLE_TIMEOUT_MS - 1000,
+    });
+  });
+}
+
+async function goOnline(
+  t: ReturnType<typeof setupTest>,
+  roomId: Id<"rooms">,
+  userId: Id<"users">,
+) {
+  await asUser(t, userId).mutation(api.presence.heartbeat, {
+    roomId,
+    userId,
+    sessionId: `s-${userId}`,
+    interval: 10000,
+  });
+}
+
+describe("cleanup._cleanupRoom", () => {
+  test("keeps an idle room active when a member joins before cleanup runs", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const joiner = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await backdateRoomActivity(t, roomId);
+
+    await asUser(t, joiner).mutation(api.rooms.join, { code });
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const state = await t.run(async (ctx) => ({
+      room: await ctx.db.get("rooms", roomId),
+      members: await ctx.db
+        .query("roomMembers")
+        .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+        .collect(),
+    }));
+    expect(state.room?.status).toBe("active");
+    expect(state.members.every((m) => m.active === true)).toBe(true);
+  });
+
+  test("keeps an idle room active when a guess lands before cleanup runs", async () => {
+    const t = setupTest();
+    fakeWordOracle({ guesses: { 1337: { close: 50 } } });
+    const hostUser = await seedUser(t);
+    const { roomId } = await asUser(t, hostUser).mutation(api.rooms.create, {});
+    const { gameId } = await asUser(t, hostUser).mutation(api.games.start, {
+      roomId,
+      contextoGameId: 1337,
+    });
+    await backdateRoomActivity(t, roomId);
+
+    await asUser(t, hostUser).action(api.guesses.submit, {
+      gameId,
+      word: "close",
+    });
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room?.status).toBe("active");
+  });
+
+  test("ends a room that is still idle", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const { roomId } = await asUser(t, hostUser).mutation(api.rooms.create, {});
+    await backdateRoomActivity(t, roomId);
+
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room?.status).toBe("ended");
+  });
+
+  test("keeps the host when the host comes back online", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    await goOnline(t, roomId, member);
+
+    await goOnline(t, roomId, hostUser);
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room?.hostUserId).toBe(hostUser);
+  });
+
+  test("keeps a newer host assignment", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const member = await seedUser(t);
+    const laterMember = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    await asUser(t, laterMember).mutation(api.rooms.join, { code });
+    await goOnline(t, roomId, member);
+    await goOnline(t, roomId, laterMember);
+
+    await t.run(async (ctx) =>
+      ctx.db.patch("rooms", roomId, { hostUserId: laterMember }),
+    );
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room?.hostUserId).toBe(laterMember);
+  });
+
+  test("never promotes a member who left", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    await goOnline(t, roomId, member);
+
+    await asUser(t, member).mutation(api.rooms.leave, { roomId });
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room?.hostUserId).toBe(hostUser);
+  });
+
+  test("leaves an ended room untouched", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    await goOnline(t, roomId, member);
+
+    await asUser(t, hostUser).mutation(api.rooms.endRoom, { roomId });
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room).toMatchObject({ status: "ended", hostUserId: hostUser });
+  });
+});
+
 test("room activity backfill inserts only missing activity rows", async () => {
   const t = setupTest();
   const hostUser = await seedUser(t);
@@ -149,13 +319,6 @@ test("room activity backfill inserts only missing activity rows", async () => {
     await ctx.db.delete("roomActivity", activity._id);
   });
 
-  const before = await t.query(
-    internal.cleanup._listActiveRoomsWithMembers,
-    {},
-  );
-  expect(before).toContainEqual(
-    expect.objectContaining({ _id: roomId, lastActivityAt: 0 }),
-  );
   await expect(
     t.mutation(internal.cleanup._backfillRoomActivity, {}),
   ).resolves.toEqual({ inserted: 1, scanned: 1 });

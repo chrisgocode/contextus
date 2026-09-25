@@ -11,57 +11,57 @@ import { decideRoomCleanup } from "./lib/cleanup";
 import { deleteUserOwnedRows } from "./lib/userRows";
 import { onlineUserIdsForRoom } from "./presence";
 
-export const _listActiveRoomsWithMembers = internalQuery({
+export const _listActiveRoomIds = internalQuery({
   args: {},
   handler: async (ctx) => {
     const rooms = await ctx.db
       .query("rooms")
       .withIndex("by_status", (q) => q.eq("status", "active"))
       .collect();
-    return await Promise.all(
-      rooms.map(async (r) => {
-        const [members, activity] = await Promise.all([
-          ctx.db
-            .query("roomMembers")
-            .withIndex("by_room_user", (q) => q.eq("roomId", r._id))
-            .collect(),
-          ctx.db
-            .query("roomActivity")
-            .withIndex("by_room", (q) => q.eq("roomId", r._id))
-            .unique(),
-        ]);
-        return {
-          _id: r._id,
-          hostUserId: r.hostUserId,
-          lastActivityAt: activity?.lastActivityAt ?? 0,
-          members: members.map((m) => ({
-            userId: m.userId,
-            joinedAt: m.joinedAt,
-          })),
-        };
-      }),
-    );
+    return rooms.map((r) => r._id);
   },
 });
 
-export const _migrateHost = internalMutation({
-  args: { roomId: v.id("rooms"), newHostUserId: v.id("users") },
-  handler: async (ctx, { roomId, newHostUserId }) => {
-    await ctx.db.patch("rooms", roomId, { hostUserId: newHostUserId });
-  },
-});
-
-export const _endRoom = internalMutation({
+// Decides and writes in one transaction so a join, guess, host change, or
+// returning host between the read and the write can't be overwritten.
+export const _cleanupRoom = internalMutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
-    await ctx.db.patch("rooms", roomId, { status: "ended" });
-    const members = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
-      .collect();
-    for (const member of members) {
-      await ctx.db.patch("roomMembers", member._id, { active: false });
+    const room = await ctx.db.get("rooms", roomId);
+    if (room === null || room.status !== "active") return { kind: "noop" };
+    const [members, activity, online] = await Promise.all([
+      ctx.db
+        .query("roomMembers")
+        .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+        .collect(),
+      ctx.db
+        .query("roomActivity")
+        .withIndex("by_room", (q) => q.eq("roomId", roomId))
+        .unique(),
+      onlineUserIdsForRoom(ctx, roomId),
+    ]);
+    const decision = decideRoomCleanup({
+      room: {
+        hostUserId: room.hostUserId,
+        lastActivityAt: activity?.lastActivityAt ?? 0,
+      },
+      members: members
+        .filter((m) => m.active !== false)
+        .map((m) => ({ userId: m.userId, joinedAt: m.joinedAt })),
+      onlineUserIds: online,
+      now: Date.now(),
+    });
+    if (decision.kind === "migrateHost") {
+      await ctx.db.patch("rooms", roomId, {
+        hostUserId: decision.newHostUserId,
+      });
+    } else if (decision.kind === "endRoom") {
+      await ctx.db.patch("rooms", roomId, { status: "ended" });
+      for (const member of members) {
+        await ctx.db.patch("roomMembers", member._id, { active: false });
+      }
     }
+    return decision;
   },
 });
 
@@ -176,27 +176,9 @@ async function deleteGuestAuthData(ctx: MutationCtx, guestUserId: Id<"users">) {
 export const tick = internalAction({
   args: {},
   handler: async (ctx) => {
-    const rooms = await ctx.runQuery(
-      internal.cleanup._listActiveRoomsWithMembers,
-      {},
-    );
-    const now = Date.now();
-    for (const r of rooms) {
-      const online: Set<Id<"users">> = await onlineUserIdsForRoom(ctx, r._id);
-      const decision = decideRoomCleanup({
-        room: { hostUserId: r.hostUserId, lastActivityAt: r.lastActivityAt },
-        members: r.members,
-        onlineUserIds: online,
-        now,
-      });
-      if (decision.kind === "migrateHost") {
-        await ctx.runMutation(internal.cleanup._migrateHost, {
-          roomId: r._id,
-          newHostUserId: decision.newHostUserId,
-        });
-      } else if (decision.kind === "endRoom") {
-        await ctx.runMutation(internal.cleanup._endRoom, { roomId: r._id });
-      }
+    const roomIds = await ctx.runQuery(internal.cleanup._listActiveRoomIds, {});
+    for (const roomId of roomIds) {
+      await ctx.runMutation(internal.cleanup._cleanupRoom, { roomId });
     }
   },
 });
