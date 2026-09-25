@@ -5,9 +5,9 @@ import { action, internalQuery, mutation, query } from "./_generated/server";
 import {
   requireHostByRoom,
   requireMemberByGame,
-  requireUser,
   tryMemberByGame,
 } from "./access";
+import { performTurn } from "./turns";
 
 const REQUEST_TYPE = v.union(v.literal("hint"), v.literal("giveup"));
 
@@ -100,25 +100,26 @@ export const approve = action({
     ctx,
     { requestId },
   ): Promise<{ lemma: string; distance?: number }> => {
-    await requireUser(ctx);
     const req: Doc<"pendingRequests"> | null = await ctx.runQuery(
       internal.requests._read,
       { requestId },
     );
-    if (req === null || req.status !== "pending") {
+    if (req === null) {
       throw new ConvexError("Request not found or already handled");
     }
+    const { gameId } = req;
     switch (req.type) {
       case "hint":
-        return await ctx.runAction(internal.hints._execute, {
+        return await performTurn(ctx, {
+          gameId,
           requestId,
-          gameId: req.gameId,
-          requesterUserId: req.requesterUserId,
+          turn: { kind: "hint" },
         });
       case "giveup":
-        return await ctx.runAction(internal.giveup._execute, {
+        return await performTurn(ctx, {
+          gameId,
           requestId,
-          gameId: req.gameId,
+          turn: { kind: "giveup" },
         });
     }
   },

@@ -1,12 +1,7 @@
 import { ConvexError } from "convex/values";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
-import {
-  asUser,
-  mockContextoFetch,
-  seedUser,
-  setupTest,
-} from "../testHelpers.test";
+import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -141,7 +136,13 @@ test("give-up with a malformed answer payload leaves the Game in_progress", asyn
 
 test("unknown-word 404 from the guess endpoint is returned, not thrown", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: {} } });
+  stubFetch(
+    () =>
+      new Response(
+        JSON.stringify({ error: "I'm sorry, I don't know this word" }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      ),
+  );
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" }),

@@ -1,8 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -26,7 +26,7 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
 
 test("hostHint shortcut works with no pending row", async () => {
   const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
   const { host, gameId } = await startedGame(t);
   const result = await asUser(t, host).action(api.hints.hostHint, { gameId });
   expect(result.lemma).toBe("pomelo");
@@ -34,7 +34,7 @@ test("hostHint shortcut works with no pending row", async () => {
 
 test("hint target reflects best score", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { onion: 100 } },
     tips: { 1336: { 50: "garlic" } },
   });
@@ -50,7 +50,7 @@ test("hint target reflects best score", async () => {
 
 test("hint walks past already-guessed when best=1", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { close: 1, second: 2 } },
     tips: { 1336: { 2: "second", 3: "third" } },
   });
@@ -62,9 +62,9 @@ test("hint walks past already-guessed when best=1", async () => {
   expect(result.distance).toBe(3);
 });
 
-test("_execute attributes guess to requester and marks request approved atomically", async () => {
+test("approve attributes hint to requester and marks request approved atomically", async () => {
   const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, other).mutation(api.requests.create, {
     gameId,
@@ -92,15 +92,4 @@ test("_execute attributes guess to requester and marks request approved atomical
     ctx.db.get("pendingRequests", req!._id),
   );
   expect(reqRow?.status).toBe("approved");
-});
-
-test("_execute internal action direct invocation works for host path", async () => {
-  const t = setupTest();
-  mockContextoFetch({ tips: { 1336: { 299: "pomelo" } } });
-  const { host, gameId } = await startedGame(t);
-  const result = await asUser(t, host).action(internal.hints._execute, {
-    gameId,
-    requesterUserId: host,
-  });
-  expect(result.lemma).toBe("pomelo");
 });

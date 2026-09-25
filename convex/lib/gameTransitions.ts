@@ -18,7 +18,6 @@ export type GuessEvent = {
   lemma: string;
   distance: number;
   source: "guess" | "hint";
-  closeRequestId: Id<"pendingRequests"> | null;
 };
 
 export type GuessSnapshot = {
@@ -35,7 +34,6 @@ export type GuessDecision =
       gamePatch: GamePatch | null;
       lastActivityAt: number;
       upsertHistoryForUserId: Id<"users">;
-      closeRequestId: Id<"pendingRequests"> | null;
       won: boolean;
     };
 
@@ -70,14 +68,12 @@ export function decideGuess(
       : null,
     lastActivityAt: snapshot.now,
     upsertHistoryForUserId: event.userId,
-    closeRequestId: event.closeRequestId,
     won,
   };
 }
 
 export type GiveupEvent = {
   answerLemma: string;
-  closeRequestId: Id<"pendingRequests"> | null;
 };
 
 export type GiveupSnapshot = {
@@ -91,7 +87,6 @@ export type GiveupDecision =
       kind: "finalize";
       gamePatch: GamePatch;
       lastActivityAt: number;
-      closeRequestId: Id<"pendingRequests"> | null;
     };
 
 export function decideGiveup(
@@ -109,6 +104,5 @@ export function decideGiveup(
       endedAt: snapshot.now,
     },
     lastActivityAt: snapshot.now,
-    closeRequestId: event.closeRequestId,
   };
 }

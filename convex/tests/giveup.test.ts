@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -26,7 +26,7 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
 
 test("approve via requests dispatcher ends game with answer + marks approved", async () => {
   const t = setupTest();
-  mockContextoFetch({ answers: { 1336: "persimmon" } });
+  fakeWordOracle({ answers: { 1336: "persimmon" } });
   const { host, other, gameId } = await startedGame(t);
   await asUser(t, other).mutation(api.requests.create, {
     gameId,
@@ -50,7 +50,7 @@ test("approve via requests dispatcher ends game with answer + marks approved", a
 
 test("hostGiveup shortcut works with no pending row", async () => {
   const t = setupTest();
-  mockContextoFetch({ answers: { 1336: "persimmon" } });
+  fakeWordOracle({ answers: { 1336: "persimmon" } });
   const { host, gameId } = await startedGame(t);
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   const game = await t.run(async (ctx) => ctx.db.get("games", gameId));
@@ -59,7 +59,7 @@ test("hostGiveup shortcut works with no pending row", async () => {
 
 test("hostGiveup rejects a game that has already ended", async () => {
   const t = setupTest();
-  mockContextoFetch({ answers: { 1336: "persimmon" } });
+  fakeWordOracle({ answers: { 1336: "persimmon" } });
   const { host, gameId } = await startedGame(t);
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
 
@@ -72,7 +72,7 @@ test("given-up games count toward guest account prompts after a real guess", asy
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const { roomId } = await asUser(t, guest).mutation(api.rooms.create, {});
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1: { try: 500 }, 2: { try: 500 }, 3: { try: 500 } },
     answers: { 1: "one", 2: "two", 3: "three" },
   });
@@ -120,12 +120,12 @@ test("game completion credits participants beyond the first page", async () => {
         updatedAt: Date.now(),
       });
     }
-    return { gameId, first: ids[0], last: ids.at(-1) };
+    return { hostId, gameId, first: ids[0], last: ids.at(-1) };
   });
 
-  await t.mutation(internal.gameTransitions.applyGiveup, {
+  await asUser(t, participantIds.hostId).mutation(internal.turns._apply, {
     gameId: participantIds.gameId,
-    answerLemma: "persimmon",
+    turn: { kind: "giveup", answerLemma: "persimmon" },
   });
 
   const credited = await t.run(async (ctx) => ({

@@ -3,7 +3,7 @@ import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
   asUser,
-  mockContextoFetch,
+  fakeWordOracle,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -53,7 +53,7 @@ async function statsFor(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
 
 test("submitted real guesses unlock the matching first color achievements", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: {
       1336: { ember: 2000, amber: 1000, moss: 300 },
     },
@@ -75,7 +75,7 @@ test("submitted real guesses unlock the matching first color achievements", asyn
 
 test("first qualifying guess returns newly unlocked achievement ids", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { ember: 2000 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -90,7 +90,7 @@ test("first qualifying guess returns newly unlocked achievement ids", async () =
 
 test("already unlocked achievements are not returned again", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { ember: 2000, cinder: 2100 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -106,7 +106,7 @@ test("already unlocked achievements are not returned again", async () => {
 
 test("duplicate guesses and hints do not unlock or increment achievements", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { ember: 2000 } },
     tips: { 1336: { 299: "amber" } },
   });
@@ -130,7 +130,7 @@ test("duplicate guesses and hints do not unlock or increment achievements", asyn
 
 test("duplicate guesses return no newly unlocked achievement ids", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { ember: 2000 } },
   });
   const { host, other, gameId } = await startedGame(t);
@@ -146,7 +146,7 @@ test("duplicate guesses return no newly unlocked achievement ids", async () => {
 
 test("lifetime color counters unlock at threshold boundaries", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { red: 2000, yellow: 301, green: 300 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -171,7 +171,7 @@ test("lifetime color counters unlock at threshold boundaries", async () => {
 
 test("a winning guess credits the winner quality achievements and active guessers", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { opener: 500, answer: 0 } },
   });
   const { host, other, gameId } = await startedGame(t);
@@ -195,7 +195,7 @@ test("a winning guess credits the winner quality achievements and active guesser
 
 test("winning guesses can return multiple new achievement ids for the submitter", async () => {
   const t = setupTest();
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { answer: 0 } },
   });
   const { host, gameId } = await startedGame(t);
@@ -224,7 +224,7 @@ test("the same contexto puzzle only counts once for lifetime solve totals", asyn
   const t = setupTest();
   const host = await seedUser(t, { name: "Host" });
   const other = await seedUser(t, { name: "Other" });
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { answer: 0, repeat: 0 } },
   });
   const first = await startedGame(t, 1336, { host, other });
@@ -248,7 +248,7 @@ test("first-attempt achievements require the user's first-ever attempt for that 
   const t = setupTest();
   const host = await seedUser(t, { name: "Host" });
   const other = await seedUser(t, { name: "Other" });
-  mockContextoFetch({
+  fakeWordOracle({
     guesses: { 1336: { cold: 2000, second: 1, answer: 0 } },
   });
   const first = await startedGame(t, 1336, { host, other });
@@ -284,7 +284,7 @@ test("personal puzzle achievements use the user's own real guess sequence", asyn
   guesses.step3 = 30;
   guesses.step2 = 20;
   guesses.step1 = 0;
-  mockContextoFetch({ guesses: { 1336: guesses, 1337: guesses } });
+  fakeWordOracle({ guesses: { 1336: guesses, 1337: guesses } });
   const { host, gameId } = await startedGame(t, 1336);
   const second = await startedGame(t, 1337, { host });
 
@@ -319,7 +319,7 @@ test("comeback kid unlocks when the winner solves after more than 100 own guesse
     guesses[`miss${i}`] = 2000 + i;
   }
   guesses.answer = 0;
-  mockContextoFetch({ guesses: { 1336: guesses } });
+  fakeWordOracle({ guesses: { 1336: guesses } });
   const { host, gameId } = await startedGame(t, 1336);
 
   for (let i = 1; i <= 100; i += 1) {
@@ -459,7 +459,7 @@ test("listForProfile reveals unlocked hidden achievements", async () => {
 
 test("timezone and streak achievements stay disabled in v1", async () => {
   const t = setupTest();
-  mockContextoFetch({ guesses: { 1336: { answer: 0 } } });
+  fakeWordOracle({ guesses: { 1336: { answer: 0 } } });
   const { host, gameId } = await startedGame(t);
 
   await asUser(t, host).action(api.guesses.submit, { gameId, word: "answer" });
