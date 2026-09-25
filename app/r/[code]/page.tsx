@@ -12,7 +12,7 @@ import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-me
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import { getErrorData } from "@/lib/client-errors";
+import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
@@ -83,7 +83,8 @@ export default function RoomPage({
           const isRoomLimit = getErrorData(err) === "Guest room limit reached";
           const message = isRoomLimit
             ? "Guest room limit reached"
-            : "Could not join room. Try again.";
+            : (expectedClientErrorMessage(err, "room.autojoin") ??
+              "Could not join room. Try again.");
           setJoinError(message);
           if (!isRoomLimit) {
             reportClientError(err, {
@@ -153,7 +154,7 @@ export default function RoomPage({
   if (!isMember && joinError !== null) {
     return (
       <Centered>
-        <p>Could not join room. Try again.</p>
+        <p>{joinError}</p>
         <Button onClick={() => window.location.reload()}>Retry</Button>
         <Button variant="outline" onClick={() => router.push("/")}>
           Home

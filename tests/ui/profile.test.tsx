@@ -126,4 +126,15 @@ describe("ProfileClient", () => {
       expect.objectContaining({ context: "profile.update" }),
     );
   });
+
+  it("shows a username conflict inline", async () => {
+    mocks.updateProfile.mockRejectedValue({
+      data: "Username is already taken.",
+    });
+    const user = userEvent.setup();
+    render(<ProfileClient username="alex" />);
+    await user.click(screen.getByRole("button", { name: "Edit Profile" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Username is already taken.")).toBeVisible();
+  });
 });

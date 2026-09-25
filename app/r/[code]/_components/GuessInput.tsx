@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 
 // Unsent guesses live in sessionStorage so a reload (e.g. from the new-version
@@ -73,7 +74,9 @@ export function GuessInput({
             }
             if (res.won) toast.success(`You got it: ${res.lemma}!`);
           } catch (err) {
-            const message = "Could not submit guess. Try again.";
+            const message =
+              expectedClientErrorMessage(err, "guess.submit") ??
+              "Could not submit guess. Try again.";
             setError(message);
             reportClientError(err, {
               userMessage: message,

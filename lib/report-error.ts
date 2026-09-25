@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
+import { expectedClientErrorMessage } from "./client-errors";
 
 export function reportClientError(
   err: unknown,
@@ -10,8 +11,11 @@ export function reportClientError(
     showToast?: boolean;
   },
 ): void {
-  Sentry.captureException(err, {
-    tags: { surface: opts.context ?? "unknown", ...opts.tags },
-  });
-  if (opts.showToast !== false) toast.error(opts.userMessage);
+  const expectedMessage = expectedClientErrorMessage(err, opts.context);
+  if (expectedMessage === null)
+    Sentry.captureException(err, {
+      tags: { surface: opts.context ?? "unknown", ...opts.tags },
+    });
+  if (opts.showToast !== false)
+    toast.error(expectedMessage ?? opts.userMessage);
 }

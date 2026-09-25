@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
-import { getErrorData } from "@/lib/client-errors";
+import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
@@ -221,7 +221,8 @@ function JoinRoom({
               getErrorData(err) === "Guest room limit reached";
             const message = isRoomLimit
               ? "Guest room limit reached"
-              : "Could not join room. Check the code and try again.";
+              : (expectedClientErrorMessage(err, "room.join") ??
+                "Could not join room. Check the code and try again.");
             setError(message);
             if (!isRoomLimit) {
               reportClientError(err, {

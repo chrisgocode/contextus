@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { reportClientError } from "@/lib/report-error";
+import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
 
@@ -212,6 +213,7 @@ export function ProfileClient({ username }: { username: string }) {
       }
     } catch (caught) {
       const message =
+        expectedClientErrorMessage(caught, "profile.update") ??
         "Could not save profile. Check your details and try again.";
       setError(message);
       reportClientError(caught, {
