@@ -30,6 +30,7 @@ import type * as lib_gameTransitions from "../lib/gameTransitions.js";
 import type * as lib_guestEngagement from "../lib/guestEngagement.js";
 import type * as lib_guestMerge from "../lib/guestMerge.js";
 import type * as lib_hint from "../lib/hint.js";
+import type * as lib_player from "../lib/player.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
 import type * as lib_userRows from "../lib/userRows.js";
 import type * as lib_usernames from "../lib/usernames.js";
@@ -70,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   "lib/guestEngagement": typeof lib_guestEngagement;
   "lib/guestMerge": typeof lib_guestMerge;
   "lib/hint": typeof lib_hint;
+  "lib/player": typeof lib_player;
   "lib/roomActivity": typeof lib_roomActivity;
   "lib/userRows": typeof lib_userRows;
   "lib/usernames": typeof lib_usernames;
