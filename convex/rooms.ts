@@ -101,6 +101,26 @@ export const join = mutation({
   },
 });
 
+// The Host must stay a member: hand the room to the longest-standing
+// remaining member, or end it when nobody is left.
+// Returns whether the room is still active afterwards.
+async function handOffHost(
+  ctx: Pick<MutationCtx, "db">,
+  room: Doc<"rooms">,
+): Promise<boolean> {
+  const remaining = await ctx.db
+    .query("roomMembers")
+    .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
+    .collect();
+  const next = remaining.sort((a, b) => a.joinedAt - b.joinedAt)[0];
+  if (next === undefined) {
+    await ctx.db.patch("rooms", room._id, { status: "ended" });
+    return false;
+  }
+  await ctx.db.patch("rooms", room._id, { hostUserId: next.userId });
+  return room.status === "active";
+}
+
 export const leave = mutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
@@ -115,7 +135,12 @@ export const leave = mutation({
       await ctx.db.delete("roomMembers", member._id);
     }
     const room = await ctx.db.get("rooms", roomId);
-    if (room !== null && room.status === "active") {
+    if (room === null) return null;
+    const stillActive =
+      room.hostUserId === userId
+        ? await handOffHost(ctx, room)
+        : room.status === "active";
+    if (stillActive) {
       await upsertRoomActivity(ctx, roomId, Date.now());
     }
     return null;

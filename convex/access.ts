@@ -75,6 +75,15 @@ async function isMember(
   return m !== null;
 }
 
+// A Host who has left the room keeps no Host privileges.
+async function isHost(
+  ctx: DbCtx,
+  room: Doc<"rooms">,
+  userId: Id<"users">,
+): Promise<boolean> {
+  return room.hostUserId === userId && (await isMember(ctx, room._id, userId));
+}
+
 export async function requireMemberByGame(
   ctx: DbCtx,
   args: ByGame,
@@ -130,7 +139,7 @@ export async function requireHostByGame(
   if (userId === null) throw new ConvexError("Not authenticated");
   if (game === null) throw new ConvexError("Game not found");
   if (room === null) throw new ConvexError("Room not found");
-  if (room.hostUserId !== userId) throw new ConvexError("Host only");
+  if (!(await isHost(ctx, room, userId))) throw new ConvexError("Host only");
   return { userId, room, game };
 }
 
@@ -140,7 +149,7 @@ export async function tryHostByGame(
 ): Promise<GameAccess | null> {
   const { userId, game, room } = await loadByGame(ctx, args);
   if (userId === null || game === null || room === null) return null;
-  if (room.hostUserId !== userId) return null;
+  if (!(await isHost(ctx, room, userId))) return null;
   return { userId, room, game };
 }
 
@@ -151,7 +160,7 @@ export async function requireHostByRoom(
   const { userId, room } = await loadByRoom(ctx, args);
   if (userId === null) throw new ConvexError("Not authenticated");
   if (room === null) throw new ConvexError("Room not found");
-  if (room.hostUserId !== userId) throw new ConvexError("Host only");
+  if (!(await isHost(ctx, room, userId))) throw new ConvexError("Host only");
   return { userId, room };
 }
 
@@ -161,6 +170,6 @@ export async function tryHostByRoom(
 ): Promise<RoomAccess | null> {
   const { userId, room } = await loadByRoom(ctx, args);
   if (userId === null || room === null) return null;
-  if (room.hostUserId !== userId) return null;
+  if (!(await isHost(ctx, room, userId))) return null;
   return { userId, room };
 }

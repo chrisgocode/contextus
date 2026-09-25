@@ -221,6 +221,48 @@ describe("requireHostByRoom", () => {
   });
 });
 
+describe("host checks require a current membership", () => {
+  async function removeHostMembership(s: Setup) {
+    await s.t.run(async (ctx) => {
+      const membership = await ctx.db
+        .query("roomMembers")
+        .withIndex("by_room_user", (q) =>
+          q.eq("roomId", s.roomId).eq("userId", s.host),
+        )
+        .unique();
+      await ctx.db.delete("roomMembers", membership!._id);
+    });
+  }
+
+  test("require helpers throw for a host without membership", async () => {
+    const s = await seedRoomWithGame();
+    await removeHostMembership(s);
+    await expect(
+      asUser(s.t, s.host).run((ctx) =>
+        requireHostByRoom(ctx, { roomId: s.roomId }),
+      ),
+    ).rejects.toThrow("Host only");
+    await expect(
+      asUser(s.t, s.host).run((ctx) =>
+        requireHostByGame(ctx, { gameId: s.gameId }),
+      ),
+    ).rejects.toThrow("Host only");
+  });
+
+  test("try helpers return null for a host without membership", async () => {
+    const s = await seedRoomWithGame();
+    await removeHostMembership(s);
+    const byRoom = await asUser(s.t, s.host).run((ctx) =>
+      tryHostByRoom(ctx, { roomId: s.roomId }),
+    );
+    const byGame = await asUser(s.t, s.host).run((ctx) =>
+      tryHostByGame(ctx, { gameId: s.gameId }),
+    );
+    expect(byRoom).toBeNull();
+    expect(byGame).toBeNull();
+  });
+});
+
 describe("tryHostByRoom", () => {
   test("payload for host, null otherwise", async () => {
     const s = await seedRoomWithGame();
