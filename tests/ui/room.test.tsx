@@ -2,7 +2,8 @@
 
 import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
 import RoomPage from "@/app/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
 import { act, render, screen, userEvent, waitFor } from "./test-utils";
@@ -109,6 +110,8 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("RoomPage", () => {
   it("shows winning guess unlocks after the active game disappears", async () => {
     let resolveSubmit!: (value: unknown) => void;
@@ -141,6 +144,7 @@ describe("RoomPage", () => {
         <RoomPage params={params} />
       </Suspense>,
     );
+    vi.useFakeTimers();
     await act(async () =>
       resolveSubmit({
         message: null,
@@ -153,13 +157,12 @@ describe("RoomPage", () => {
     expect(
       screen.getByText("Diamond achievement unlocked: One and Done"),
     ).toBeVisible();
-    await waitFor(
-      () =>
-        expect(
-          screen.getByText("Bronze achievement unlocked: Bullseye"),
-        ).toBeVisible(),
-      { timeout: 5000 },
+    await act(async () =>
+      vi.advanceTimersByTime(ACHIEVEMENT_UNLOCK_DISPLAY_MS),
     );
+    expect(
+      screen.getByText("Bronze achievement unlocked: Bullseye"),
+    ).toBeVisible();
   });
 
   it("renders an active member room and performs host room controls", async () => {
