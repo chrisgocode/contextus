@@ -1,13 +1,8 @@
 "use client";
 
 import { useAction } from "convex/react";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  AchievementUnlockQueue,
-  type AchievementUnlockQueueItem,
-} from "@/app/_components/AchievementUnlockQueue";
-import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
@@ -38,20 +33,20 @@ function loadDraft(gameId: Id<"games">) {
   }
 }
 
-export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
+export function GuessInput({
+  gameId,
+  onAchievementsUnlocked,
+}: {
+  gameId: Id<"games">;
+  onAchievementsUnlocked: (ids: string[]) => void;
+}) {
   const submit = useAction(api.guesses.submit);
   // Only mounted once the game has loaded on the client, so reading storage
   // here can't cause a hydration mismatch.
   const [word, setWord] = useState(() => loadDraft(gameId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [achievementUnlocks, setAchievementUnlocks] = useState<
-    AchievementUnlockQueueItem[]
-  >([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dismissAchievementUnlock = useCallback(() => {
-    setAchievementUnlocks((items) => items.slice(1));
-  }, []);
 
   function updateWord(next: string) {
     setWord(next);
@@ -75,24 +70,7 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
             }
             updateWord("");
             if (res.unlockedAchievementIds.length > 0) {
-              const unlockedAt = Date.now();
-              const items = res.unlockedAchievementIds.flatMap((id, index) => {
-                const metadata = getUnlockedAchievementMetadata(id);
-                if (metadata === null) return [];
-                return [
-                  {
-                    key: `${id}-${unlockedAt}-${index}`,
-                    achievementName: metadata.achievement.name,
-                    category: metadata.achievement.category,
-                    categoryLabel: metadata.group.label,
-                    trophy: metadata.trophy,
-                    trophyAlt: `${metadata.group.label} trophy`,
-                  },
-                ];
-              });
-              if (items.length > 0) {
-                setAchievementUnlocks((current) => [...current, ...items]);
-              }
+              onAchievementsUnlocked(res.unlockedAchievementIds);
             }
             if (res.won) toast.success(`You got it: ${res.lemma}!`);
           } catch (err) {
@@ -139,10 +117,6 @@ export function GuessInput({ gameId }: { gameId: Id<"games"> }) {
           </p>
         )}
       </form>
-      <AchievementUnlockQueue
-        items={achievementUnlocks}
-        onItemDone={dismissAchievementUnlock}
-      />
     </>
   );
 }

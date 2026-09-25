@@ -241,6 +241,34 @@ export function createAchievementService(deps: {
         if (isNewSolve) {
           await applySolveTotals(participantUserId, event.now, unlockForUser);
         }
+        if (participantUserId !== event.userId) {
+          for (const rule of matchingEventRules({
+            distance: event.distance,
+            hasSolvedPuzzleBefore: true,
+            isFirstEverAttemptForPuzzle: false,
+            playerStats,
+            teamGuessCount,
+            won: true,
+          })) {
+            if (
+              rule.predicateId !== "winnerTeamGuessesUnder50" &&
+              rule.predicateId !== "winnerTeamGuessesUnder25" &&
+              rule.predicateId !== "winnerTeamGuessesUnder5"
+            )
+              continue;
+            await updateProgress(
+              participantUserId,
+              rule.achievementId,
+              rule.progress,
+              event.now,
+            );
+            await unlockForUser(
+              participantUserId,
+              rule.achievementId,
+              event.now,
+            );
+          }
+        }
       }
     }
     await applyEventRules(

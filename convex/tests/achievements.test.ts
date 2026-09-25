@@ -159,7 +159,31 @@ test("a winning guess credits the winner quality achievements and active guesser
   await expect(achievementIds(t, host)).resolves.not.toContain(
     "no_backtracking",
   );
-  await expect(achievementIds(t, other)).resolves.toContain("bullseye");
+  await expect(achievementIds(t, other)).resolves.toEqual(
+    expect.arrayContaining([
+      "bullseye",
+      "sharp_mind",
+      "mind_reader",
+      "psychic",
+    ]),
+  );
+  await expect(achievementIds(t, other)).resolves.not.toContain("one_and_done");
+  await expect(achievementIds(t, other)).resolves.not.toContain(
+    "no_backtracking",
+  );
+  await expect(achievementIds(t, other)).resolves.not.toContain("comeback_kid");
+  await expect(achievementIds(t, other)).resolves.not.toContain("lucky_shot");
+  await expect(statsFor(t, other)).resolves.toMatchObject({ uniqueSolves: 1 });
+});
+
+test("a teammate without a real guess gets no win achievements", async () => {
+  const t = setupTest();
+  fakeWordOracle({ guesses: { 1336: { answer: 0 } } });
+  const { host, other, gameId } = await startedGame(t);
+
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "answer" });
+
+  await expect(achievementIds(t, other)).resolves.toEqual([]);
 });
 
 test("winning guesses can return multiple new achievement ids for the submitter", async () => {
