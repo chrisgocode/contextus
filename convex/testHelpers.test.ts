@@ -79,7 +79,10 @@ export function mockContextoFetch(mock: ContextoMock) {
       const word = decodeURIComponent(guessMatch[2]);
       const distance = mock.guesses?.[gameId]?.[word];
       if (distance === undefined) {
-        return jsonResponse({ error: "I'm sorry, I don't know this word" });
+        return jsonResponse(
+          { error: "I'm sorry, I don't know this word" },
+          404,
+        );
       }
       return jsonResponse({ distance, lemma: word, word });
     }
@@ -108,9 +111,9 @@ export function mockContextoFetch(mock: ContextoMock) {
   return fetchMock;
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }
