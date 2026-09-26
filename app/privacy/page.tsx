@@ -23,7 +23,9 @@ export default function Privacy() {
       <p>
         Sentry helps us find errors and measure web performance. Both services
         receive technical data needed to operate, such as your browser and page
-        URL.
+        URL. Sentry may also receive your IP address and request details, and it
+        records session replays for 10% of visits and for every visit with an
+        error. Replays mask all text and block images and media.
       </p>
     </main>
   );
