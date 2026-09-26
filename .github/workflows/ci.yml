@@ -22,6 +22,14 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run typecheck
+
+      # Holds Vitest's UI dep pre-bundle and its results cache (past durations,
+      # which order slow files first). A stale bundle is rebuilt, not used.
+      - name: Cache Vitest dependency pre-bundle
+        uses: actions/cache@v6
+        with:
+          path: node_modules/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('bun.lock', 'vitest.config.ts') }}
       - run: bun run test
 
   # Playwright against a throwaway anonymous local Convex backend, so every run
