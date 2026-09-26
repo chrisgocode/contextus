@@ -1,5 +1,7 @@
 # Contextus
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/chrisgocode/contextus/badge)](https://scorecard.dev/viewer/?uri=github.com/chrisgocode/contextus)
+
 Co-op multiplayer [Contexto](https://contexto.me). Create a room, share the six-letter code, and solve the daily word puzzle together.
 
 **[Play at contextus.sh →](https://www.contextus.sh)** · [How to play](https://www.contextus.sh/how-to-play)
