@@ -10,6 +10,7 @@ import {
 } from "./access";
 import { upsertRoomActivity } from "./lib/roomActivity";
 import { loadPlayers } from "./lib/player";
+import { track } from "./analytics";
 
 export const start = mutation({
   args: { roomId: v.id("rooms"), contextoGameId: v.number() },
@@ -30,6 +31,11 @@ export const start = mutation({
     if (existing !== null) {
       throw new ConvexError("A game is already in progress");
     }
+    const previous = await ctx.db
+      .query("games")
+      .withIndex("by_room_started", (q) => q.eq("roomId", roomId))
+      .order("desc")
+      .first();
     const now = Date.now();
     const gameId = await ctx.db.insert("games", {
       roomId,
@@ -39,6 +45,15 @@ export const start = mutation({
     });
     await upsertHistory(ctx, userId, contextoGameId);
     await upsertRoomActivity(ctx, roomId, now);
+    await track(ctx, userId, {
+      name: "game_started",
+      properties: {
+        game_id: gameId,
+        room_id: roomId,
+        contexto_game_id: contextoGameId,
+        play_again: previous !== null,
+      },
+    });
     return { gameId };
   },
 });
