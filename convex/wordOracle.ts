@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
   env,
@@ -6,12 +6,9 @@ import {
   internalQuery,
   type ActionCtx,
 } from "./_generated/server";
-import { contextoOracle } from "./contexto";
+import type { EventProperties } from "./analytics";
+import { contextoOracle, UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
 import { e2eWordOracle } from "./e2eWordOracle";
-import { track } from "./analytics";
-import { UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
-import { ConvexError } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 
 export type ScoredLemma = { lemma: string; distance: number };
 
@@ -33,47 +30,41 @@ export type WordOracle = {
 
 // The word oracle for one Contexto puzzle, with distances served from the
 // wordDistances cache when possible. Callers never see cache vs. fetch.
+export type ContextoRequest = EventProperties<"contexto_request">;
+
 export function puzzleWordOracle(
   ctx: ActionCtx,
   contextoGameId: number,
-  userId: Id<"users">,
+  onRequest: (request: ContextoRequest) => void,
 ) {
-  async function measured<T>(
-    endpoint: "distance" | "tip" | "answer",
-    run: () => Promise<T>,
-    cache?: "hit" | "miss",
-    startedAt = Date.now(),
+  // Times and classifies only the Contexto call itself, so cache reads and
+  // writes neither inflate its latency nor count as Contexto being down.
+  async function timed<T>(
+    endpoint: ContextoRequest["endpoint"],
+    call: () => Promise<T>,
+    classify: (result: T) => ContextoRequest["outcome"] = () => "ok",
   ): Promise<T> {
-    let outcome: "ok" | "unknown_word" | "unavailable" | "unexpected_payload" =
-      "ok";
+    const startedAt = Date.now();
+    let outcome: ContextoRequest["outcome"] = "unavailable";
     try {
-      const result = await run();
-      if (
-        endpoint === "distance" &&
-        typeof result === "object" &&
-        result !== null &&
-        "ok" in result &&
-        result.ok === false
-      ) {
-        outcome = "unknown_word";
-      }
+      const result = await call();
+      outcome = classify(result);
       return result;
     } catch (error) {
-      outcome =
+      if (
         error instanceof ConvexError &&
         error.data === UNEXPECTED_PAYLOAD_MESSAGE
-          ? "unexpected_payload"
-          : "unavailable";
+      ) {
+        outcome = "unexpected_payload";
+      }
       throw error;
     } finally {
-      await track(ctx, userId, {
-        name: "contexto_request",
-        properties: {
-          endpoint,
-          duration_ms: Math.max(0, Date.now() - startedAt),
-          outcome,
-          ...(cache ? { cache } : {}),
-        },
+      onRequest({
+        endpoint,
+        duration_ms: Math.max(0, Date.now() - startedAt),
+        outcome,
+        // Cache hits never reach Contexto, so a timed distance is a miss.
+        ...(endpoint === "distance" ? { cache: "miss" as const } : {}),
       });
     }
   }
@@ -93,43 +84,46 @@ export function puzzleWordOracle(
         internal.wordOracle._cachedDistance,
         { contextoGameId, word },
       );
-      return await measured(
+      if (cached !== null) {
+        onRequest({
+          endpoint: "distance",
+          duration_ms: Math.max(0, Date.now() - startedAt),
+          outcome: "ok",
+          cache: "hit",
+        });
+        return { ok: true, ...cached };
+      }
+      const result = await timed(
         "distance",
-        async () => {
-          if (cached !== null) return { ok: true, ...cached };
-          const result = await contextoOracle.distance(contextoGameId, word);
-          if (result.ok) {
-            await ctx.runMutation(internal.wordOracle._cacheDistance, {
-              contextoGameId,
-              input: word,
-              lemma: result.lemma,
-              distance: result.distance,
-            });
-          }
-          return result;
-        },
-        cached === null ? "miss" : "hit",
-        startedAt,
+        () => contextoOracle.distance(contextoGameId, word),
+        (result) => (result.ok ? "ok" : "unknown_word"),
       );
+      if (result.ok) {
+        await ctx.runMutation(internal.wordOracle._cacheDistance, {
+          contextoGameId,
+          input: word,
+          lemma: result.lemma,
+          distance: result.distance,
+        });
+      }
+      return result;
     },
 
     async tip(distance: number): Promise<ScoredLemma> {
-      return await measured("tip", async () => {
-        const tip = await contextoOracle.tip(contextoGameId, distance);
-        await ctx.runMutation(internal.wordOracle._cacheDistance, {
-          contextoGameId,
-          input: tip.lemma,
-          lemma: tip.lemma,
-          distance: tip.distance,
-        });
-        return tip;
+      const tip = await timed("tip", () =>
+        contextoOracle.tip(contextoGameId, distance),
+      );
+      await ctx.runMutation(internal.wordOracle._cacheDistance, {
+        contextoGameId,
+        input: tip.lemma,
+        lemma: tip.lemma,
+        distance: tip.distance,
       });
+      return tip;
     },
 
     async answer(): Promise<{ lemma: string }> {
-      return await measured("answer", () =>
-        contextoOracle.answer(contextoGameId),
-      );
+      return await timed("answer", () => contextoOracle.answer(contextoGameId));
     },
   };
 }

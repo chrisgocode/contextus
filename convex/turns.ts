@@ -17,9 +17,22 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { requireHostByGame, requireMemberByGame } from "./access";
+import {
+  GAME_NOT_FOUND_MESSAGE,
+  HOST_ONLY_MESSAGE,
+  NOT_AUTHENTICATED_MESSAGE,
+  NOT_MEMBER_MESSAGE,
+  requireHostByGame,
+  requireMemberByGame,
+  ROOM_NOT_FOUND_MESSAGE,
+} from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
-import { analyticsEnabled, track } from "./analytics";
+import {
+  analyticsEnabled,
+  type AnalyticsEvent,
+  type EventProperties,
+  track,
+} from "./analytics";
 import { UNAVAILABLE_MESSAGE, UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
@@ -27,11 +40,18 @@ import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
 import { upsertRoomActivity } from "./lib/roomActivity";
-import { puzzleWordOracle, type ScoredLemma } from "./wordOracle";
+import {
+  type ContextoRequest,
+  puzzleWordOracle,
+  type ScoredLemma,
+} from "./wordOracle";
 
 const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
 const REQUEST_HANDLED_MESSAGE = "Request not found or already handled";
 const NOT_IN_PROGRESS_MESSAGE = "Game is no longer in progress";
+const EMPTY_WORD_MESSAGE = "Empty word";
+const HINT_DUPLICATE_MESSAGE = "Hint lemma already guessed";
+const HINT_EXHAUSTED_MESSAGE = "Could not find an unguessed hint";
 
 type TurnKind = "guess" | "hint" | "giveup";
 
@@ -398,6 +418,14 @@ export async function performTurn(
   const startedAt = Date.now();
   let userId: Id<"users"> | null = null;
   let tipsTried = 0;
+  // Oracle metrics wait until the turn is done, so it never waits on them.
+  const contextoRequests: ContextoRequest[] = [];
+  const send = async (userId: Id<"users">, turnEvent: AnalyticsEvent) => {
+    for (const properties of contextoRequests) {
+      await track(ctx, userId, { name: "contexto_request", properties });
+    }
+    await track(ctx, userId, turnEvent);
+  };
   try {
     const pre: {
       contextoGameId: number;
@@ -409,7 +437,9 @@ export async function performTurn(
       requestId,
     });
     userId = pre.userId;
-    const oracle = puzzleWordOracle(ctx, pre.contextoGameId, userId);
+    const oracle = puzzleWordOracle(ctx, pre.contextoGameId, (request) =>
+      contextoRequests.push(request),
+    );
     let result: GuessResult | ScoredLemma | { lemma: string };
     let outcome: "recorded" | "duplicate" | "won" | "unknown_word" = "recorded";
     switch (turn.kind) {
@@ -426,7 +456,7 @@ export async function performTurn(
         break;
       }
       case "hint": {
-        const hint = await performHint(
+        result = await performHint(
           ctx,
           gameId,
           oracle,
@@ -434,8 +464,6 @@ export async function performTurn(
           requestId,
           () => tipsTried++,
         );
-        result = hint.tip;
-        tipsTried = hint.tipsTried;
         break;
       }
       case "giveup": {
@@ -449,7 +477,7 @@ export async function performTurn(
         break;
       }
     }
-    await track(ctx, userId, {
+    await send(userId, {
       name: "turn_completed",
       properties: {
         game_id: gameId,
@@ -464,7 +492,7 @@ export async function performTurn(
     userId ??= await getAuthUserId(ctx);
     if (userId !== null) {
       const category = turnErrorCategory(error);
-      await track(ctx, userId, {
+      await send(userId, {
         name: "turn_failed",
         properties: {
           game_id: gameId,
@@ -483,34 +511,34 @@ export async function performTurn(
   }
 }
 
-function turnErrorCategory(error: unknown): string {
+function turnErrorCategory(
+  error: unknown,
+): EventProperties<"turn_failed">["error_category"] {
   const message = error instanceof ConvexError ? error.data : null;
   switch (message) {
     case UNAVAILABLE_MESSAGE:
       return "contexto_unavailable";
     case UNEXPECTED_PAYLOAD_MESSAGE:
       return "contexto_unexpected_payload";
-    case "Empty word":
+    case EMPTY_WORD_MESSAGE:
       return "empty_word";
-    case ALREADY_GUESSED_MESSAGE:
-      return "duplicate";
     case REQUEST_HANDLED_MESSAGE:
       return "request_handled";
     case NOT_IN_PROGRESS_MESSAGE:
       return "game_ended";
-    case "Not authenticated":
+    case NOT_AUTHENTICATED_MESSAGE:
       return "not_authenticated";
-    case "Not a member of this room":
+    case NOT_MEMBER_MESSAGE:
       return "not_member";
-    case "Game not found":
+    case GAME_NOT_FOUND_MESSAGE:
       return "game_not_found";
-    case "Room not found":
+    case ROOM_NOT_FOUND_MESSAGE:
       return "room_not_found";
-    case "Host only":
+    case HOST_ONLY_MESSAGE:
       return "not_host";
-    case "Hint lemma already guessed":
+    case HINT_DUPLICATE_MESSAGE:
       return "hint_duplicate";
-    case "Could not find an unguessed hint":
+    case HINT_EXHAUSTED_MESSAGE:
       return "hint_exhausted";
     default:
       return "unexpected";
@@ -526,7 +554,7 @@ async function performGuess(
   word: string,
 ): Promise<GuessResult> {
   const input = word.trim().toLowerCase();
-  if (input.length === 0) throw new ConvexError("Empty word");
+  if (input.length === 0) throw new ConvexError(EMPTY_WORD_MESSAGE);
   const scored = await oracle.distance(input);
   if (!scored.ok) {
     return { message: scored.error, won: false, unlockedAchievementIds: [] };
@@ -563,7 +591,7 @@ async function performHint(
   best: number | null,
   requestId: Id<"pendingRequests"> | undefined,
   onTip: () => void,
-): Promise<{ tip: ScoredLemma; tipsTried: number }> {
+): Promise<ScoredLemma> {
   let target = initialHintTarget(best);
   const walking = best === 1;
   for (let i = 0; i < MAX_WALK_ITERATIONS; i++) {
@@ -574,9 +602,9 @@ async function performHint(
       turn: { kind: "hint", lemma: tip.lemma, distance: tip.distance },
       requestId,
     });
-    if (result.status === "recorded") return { tip, tipsTried: i + 1 };
-    if (!walking) throw new ConvexError("Hint lemma already guessed");
+    if (result.status === "recorded") return tip;
+    if (!walking) throw new ConvexError(HINT_DUPLICATE_MESSAGE);
     target += 1;
   }
-  throw new ConvexError("Could not find an unguessed hint");
+  throw new ConvexError(HINT_EXHAUSTED_MESSAGE);
 }
