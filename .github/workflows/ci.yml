@@ -22,6 +22,14 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run typecheck
+
+      # Vitest pre-bundles the UI project's barrel deps here. Vitest also checks
+      # its own hash inside the folder, so a stale restore is rebuilt, not used.
+      - name: Cache Vitest dependency pre-bundle
+        uses: actions/cache@v6
+        with:
+          path: node_modules/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('bun.lock', 'vitest.config.ts') }}
       - run: bun run test
 
   # Playwright against a throwaway anonymous local Convex backend, so every run
