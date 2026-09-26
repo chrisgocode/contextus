@@ -114,3 +114,5 @@ Defined in `crons.ts`:
 Sentry is configured for the client, server, and edge runtimes (`instrumentation*.ts`, `sentry.*.config.ts`). Browser events go through the `/monitoring` tunnel route so ad blockers don't drop them.
 
 PostHog records browser pageviews (`instrumentation-client.ts`) and identifies each player by Convex user ID with an `is_guest` flag, resetting on sign-out (`components/PostHogIdentity.tsx`). Like Sentry, it loads once the page is idle and only on production and preview Vercel deployments, and its events go through the `/ingest` rewrite. Events carry a `deployment_environment` property so previews can be filtered out.
+
+Convex functions record server-side domain events through `track` (`convex/analytics.ts`), which schedules sends via the `@posthog/convex` component so analytics never blocks or fails a mutation. It is a no-op unless `POSTHOG_ENVIRONMENT` is `production` or `preview`.
