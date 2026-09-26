@@ -53,6 +53,7 @@ async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
 }
 
 test("a duplicate Guess and a win record their Game outcomes once", async () => {
+  vi.useFakeTimers();
   const t = setupTest();
   const { other, gameId } = await startedGame(t);
   vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
@@ -71,6 +72,9 @@ test("a duplicate Guess and a win record their Game outcomes once", async () => 
     gameId,
     turn: { kind: "guess", lemma: "persimmon", distance: 0 },
   });
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
+  vi.useRealTimers();
 
   expect(capture.mock.calls.map(([, event]) => event.event)).toEqual([
     "guess_recorded",
@@ -95,6 +99,7 @@ test("a duplicate Guess and a win record their Game outcomes once", async () => 
 });
 
 test("approved hint and give-up requests record the committed outcomes", async () => {
+  vi.useFakeTimers();
   const t = setupTest();
   const { host, other, gameId } = await startedGame(t);
   const hintRequestId = await createRequest(t, other, gameId, "hint");
@@ -113,19 +118,22 @@ test("approved hint and give-up requests record the committed outcomes", async (
     turn: { kind: "giveup", answerLemma: "persimmon" },
     requestId: giveupRequestId,
   });
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
+  vi.useRealTimers();
 
   expect(capture.mock.calls.map(([, event]) => event.event)).toEqual([
     "guess_recorded",
     "hint_given",
     "request_approved",
-    "game_given_up",
     "request_approved",
+    "game_given_up",
   ]);
   expect(capture.mock.calls[1][1]).toMatchObject({
     distinctId: host,
     properties: { game_id: gameId, source: "request" },
   });
-  expect(capture.mock.calls[3][1]).toMatchObject({
+  expect(capture.mock.calls[4][1]).toMatchObject({
     properties: {
       game_id: gameId,
       guess_count: 0,
@@ -134,6 +142,39 @@ test("approved hint and give-up requests record the committed outcomes", async (
       duration_ms: expect.any(Number),
     },
   });
+});
+
+test("a Game outcome counts Guesses beyond one page", async () => {
+  vi.useFakeTimers();
+  const t = setupTest();
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 1001; i++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: host,
+        lemma: `word${i}`,
+        distance: i + 1,
+        source: "guess",
+        createdAt: Date.now(),
+      });
+    }
+  });
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  await asUser(t, host).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "giveup", answerLemma: "answer" },
+  });
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
+  vi.useRealTimers();
+  expect(
+    capture.mock.calls.find(
+      ([, event]) => event.event === "game_given_up",
+    )?.[1],
+  ).toMatchObject({ properties: { guess_count: 1001 } });
 });
 
 test("apply rejects a hint turn from a non-host member", async () => {
