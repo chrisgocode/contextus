@@ -1,4 +1,4 @@
-// This file configures the initialization of Sentry on the client.
+// This file configures the initialization of Sentry and PostHog on the client.
 // The added config here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 //
@@ -11,10 +11,13 @@ import { sentryEnabled } from "@/lib/sentry";
 import { loadSentry } from "@/lib/sentry-client";
 
 const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-if (process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT && posthogToken) {
+const posthogEnvironment = process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT;
+if (posthogEnvironment && posthogToken) {
+  // Pageviews only: interaction capture, replay, and errors (Sentry's job)
+  // stay off. Loaded on idle like Sentry below.
   const start = () => {
     void import("posthog-js")
-      .then(({ default: posthog }) =>
+      .then(({ default: posthog }) => {
         posthog.init(posthogToken, {
           api_host:
             process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
@@ -25,8 +28,11 @@ if (process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT && posthogToken) {
           rageclick: false,
           disable_session_recording: true,
           capture_exceptions: false,
-        }),
-      )
+        });
+        // Tag browser events like server events so previews can be filtered.
+        posthog.register({ deployment_environment: posthogEnvironment });
+      })
+      // Analytics is best-effort and must never break the page.
       .catch(() => {});
   };
   const startWhenIdle = () =>

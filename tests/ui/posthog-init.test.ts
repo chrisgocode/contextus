@@ -1,12 +1,16 @@
 import { expect, it, vi } from "vitest";
 
-const init = vi.hoisted(() => vi.fn());
-vi.mock("posthog-js", () => ({ default: { init } }));
+const { init, register } = vi.hoisted(() => ({
+  init: vi.fn(),
+  register: vi.fn(),
+}));
+vi.mock("posthog-js", () => ({ default: { init, register } }));
 vi.mock("@/lib/sentry", () => ({ sentryEnabled: false }));
 
 it("waits until idle and captures pageviews without interaction telemetry", async () => {
   vi.resetModules();
   init.mockClear();
+  register.mockClear();
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_ENVIRONMENT", "preview");
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "test-token");
   const idle = vi.fn();
@@ -30,6 +34,9 @@ it("waits until idle and captures pageviews without interaction telemetry", asyn
       capture_exceptions: false,
     }),
   );
+  expect(register).toHaveBeenCalledWith({
+    deployment_environment: "preview",
+  });
 });
 
 it("does not load PostHog outside production and preview", async () => {
