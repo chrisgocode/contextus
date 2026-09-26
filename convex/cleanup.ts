@@ -9,6 +9,8 @@ import { expireGuest } from "./lib/accountLifecycle";
 import { decideRoomCleanup } from "./lib/cleanup";
 import { onlineUserIdsForRoom } from "./presence";
 
+const GUEST_CLEANUP_ROW_BUDGET = 100;
+
 export const _listActiveRoomIds = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -95,15 +97,20 @@ export const removeExpiredGuests = internalMutation({
         q.eq("isAnonymous", true).lte("guestExpiresAt", now),
       )
       .take(50);
+    let remaining = GUEST_CLEANUP_ROW_BUDGET;
+    let removed = 0;
     for (const guest of guests) {
-      await expireGuest(ctx, guest._id);
+      const result = await expireGuest(ctx, guest._id, remaining);
+      remaining -= result.deleted;
+      if (result.done) removed++;
+      if (!result.done || remaining === 0) break;
     }
-    if (guests.length === 50) {
+    if (remaining === 0 || guests.length === 50) {
       await ctx.scheduler.runAfter(0, internal.cleanup.removeExpiredGuests, {
         now,
       });
     }
-    return { removed: guests.length };
+    return { removed };
   },
 });
 
