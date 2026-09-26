@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Figtree, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { SITE_URL } from "@/lib/site";
@@ -10,8 +10,6 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 });
-
-const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -33,15 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={cn(
-        "dark font-sans",
-        figtree.variable,
-        "font-mono",
-        jetbrainsMono.variable,
-      )}
-    >
+    <html lang="en" className={cn("dark font-mono", jetbrainsMono.variable)}>
       <body className="antialiased">
         {children}
         <Toaster richColors position="top-center" />
