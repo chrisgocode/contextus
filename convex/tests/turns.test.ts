@@ -1,7 +1,8 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
+import { posthog } from "../posthog";
 
 async function startedGame(t: ReturnType<typeof setupTest>) {
   const host = await seedUser(t, { name: "Host" });
@@ -50,6 +51,90 @@ async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
       .collect(),
   }));
 }
+
+test("a duplicate Guess and a win record their Game outcomes once", async () => {
+  const t = setupTest();
+  const { other, gameId } = await startedGame(t);
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+
+  await asUser(t, other).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "guess", lemma: "orange", distance: 42 },
+  });
+  await asUser(t, other).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "guess", lemma: "orange", distance: 42 },
+  });
+  await asUser(t, other).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "guess", lemma: "persimmon", distance: 0 },
+  });
+
+  expect(capture.mock.calls.map(([, event]) => event.event)).toEqual([
+    "guess_recorded",
+    "guess_recorded",
+    "guess_recorded",
+    "game_won",
+  ]);
+  expect(capture.mock.calls[1][1]).toMatchObject({
+    distinctId: other,
+    properties: { lemma: "orange", distance: 42, duplicate: true },
+  });
+  expect(capture.mock.calls[3][1]).toMatchObject({
+    distinctId: other,
+    properties: {
+      game_id: gameId,
+      guess_count: 2,
+      hint_count: 0,
+      member_count: 2,
+      duration_ms: expect.any(Number),
+    },
+  });
+});
+
+test("approved hint and give-up requests record the committed outcomes", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  const hintRequestId = await createRequest(t, other, gameId, "hint");
+  const giveupRequestId = await createRequest(t, other, gameId, "giveup");
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+
+  await asUser(t, host).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "hint", lemma: "orange", distance: 42 },
+    requestId: hintRequestId,
+  });
+  await asUser(t, host).mutation(internal.turns._apply, {
+    gameId,
+    turn: { kind: "giveup", answerLemma: "persimmon" },
+    requestId: giveupRequestId,
+  });
+
+  expect(capture.mock.calls.map(([, event]) => event.event)).toEqual([
+    "guess_recorded",
+    "hint_given",
+    "request_approved",
+    "game_given_up",
+    "request_approved",
+  ]);
+  expect(capture.mock.calls[1][1]).toMatchObject({
+    distinctId: host,
+    properties: { game_id: gameId, source: "request" },
+  });
+  expect(capture.mock.calls[3][1]).toMatchObject({
+    properties: {
+      game_id: gameId,
+      guess_count: 0,
+      hint_count: 1,
+      member_count: 2,
+      duration_ms: expect.any(Number),
+    },
+  });
+});
 
 test("apply rejects a hint turn from a non-host member", async () => {
   const t = setupTest();
