@@ -66,10 +66,20 @@ jobs:
               exit 0
             }
             bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
-            for _ in $(seq 1 180); do
-              if grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
-                node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1
-                finish $?
+            configured=0
+            for i in $(seq 1 180); do
+              if [ "$configured" -eq 0 ] && [ -f .env.local ] && grep -q "^CONVEX_DEPLOYMENT=" .env.local; then
+                node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1 || finish 1
+                configured=1
+              fi
+              if [ "$configured" -eq 1 ] && grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
+                finish 0
+              fi
+              # The first push can beat the env script and fail on the missing
+              # POSTHOG_PROJECT_TOKEN, and convex dev can miss the env change
+              # that follows. A file change always makes it push again.
+              if [ "$configured" -eq 1 ] && [ $((i % 10)) -eq 0 ] && grep -q "MissingEnvironmentVariables" "$RUNNER_TEMP/convex.log"; then
+                touch convex/schema.ts
               fi
               sleep 0.5
             done

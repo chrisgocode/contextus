@@ -31,6 +31,8 @@ type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly E2E_TEST: string | undefined;
+  readonly POSTHOG_ENVIRONMENT: string | undefined;
+  readonly POSTHOG_PROJECT_TOKEN: string;
 };
 
 /**

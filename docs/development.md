@@ -94,7 +94,7 @@ Linting uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (`.oxlintrc.json`)
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.
 
-**PostHog:** set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` in Vercel's environment variables for production and preview.
+**PostHog:** set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` in Vercel's environment variables for production and preview. On the production Convex deployment, set `POSTHOG_PROJECT_TOKEN` to the project token and `POSTHOG_ENVIRONMENT` to `production`; `convex deploy` fails without `POSTHOG_PROJECT_TOKEN`, so dev and e2e deployments use the value `disabled`.
 
 ## Contributing
 
