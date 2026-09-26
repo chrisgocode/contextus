@@ -8,8 +8,16 @@ import type { NextConfig } from "next";
 const appVersion =
   process.env.VERCEL_DEPLOYMENT_ID ?? `build-${Date.now().toString(36)}`;
 
+// Sentry reports only from Vercel deployments, tagged "production" or
+// "preview". Local builds and e2e runs (which talk to the dev Convex
+// deployment) leave this empty, so they never report (see lib/sentry.ts).
+const sentryEnvironment = process.env.VERCEL_ENV ?? "";
+
 const nextConfig: NextConfig = {
-  env: { NEXT_PUBLIC_APP_VERSION: appVersion },
+  env: {
+    NEXT_PUBLIC_APP_VERSION: appVersion,
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
+  },
 };
 
 export default withSentryConfig(nextConfig, {
