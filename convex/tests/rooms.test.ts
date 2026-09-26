@@ -61,6 +61,44 @@ test("PostHog scheduling failures do not prevent Room creation", async () => {
   ).resolves.toEqual(expect.objectContaining({ roomId: expect.any(String) }));
 });
 
+test("Room join, Host handoff, and end record their committed outcomes", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const host = await seedUser(t);
+  const other = await seedUser(t);
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  capture.mockClear();
+
+  await asUser(t, other).mutation(api.rooms.join, { code });
+  await asUser(t, host).mutation(api.rooms.leave, { roomId });
+  await asUser(t, other).mutation(api.rooms.endRoom, { roomId });
+  await asUser(t, other).mutation(api.rooms.endRoom, { roomId });
+
+  expect(capture.mock.calls.map(([, event]) => event)).toEqual([
+    expect.objectContaining({
+      distinctId: other,
+      event: "room_joined",
+      properties: expect.objectContaining({ room_id: roomId, member_count: 2 }),
+    }),
+    expect.objectContaining({
+      distinctId: host,
+      event: "room_left",
+      properties: expect.objectContaining({
+        room_id: roomId,
+        host_moved: true,
+        room_ended: false,
+      }),
+    }),
+    expect.objectContaining({
+      distinctId: other,
+      event: "room_ended",
+      properties: expect.objectContaining({ room_id: roomId }),
+    }),
+  ]);
+});
+
 test("anonymous users can create and host rooms", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
