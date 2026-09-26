@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TimeZoneSync } from "@/app/_components/TimeZoneSync";
 import { render, waitFor } from "./test-utils";

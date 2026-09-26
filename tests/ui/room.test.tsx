@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileClient } from "@/app/(app)/user/[username]/_components/ProfileClient";
