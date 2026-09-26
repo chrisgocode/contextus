@@ -52,16 +52,21 @@ jobs:
       - name: Start local Convex backend
         run: |
           nohup bash -c '
+            # Renamed into place so the wait step never reads a half-written file.
+            finish() {
+              echo "$1" > "$RUNNER_TEMP/convex.done.tmp"
+              mv "$RUNNER_TEMP/convex.done.tmp" "$RUNNER_TEMP/convex.done"
+              exit 0
+            }
             bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
             for _ in $(seq 1 180); do
               if grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
                 node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1
-                echo $? > "$RUNNER_TEMP/convex.done"
-                exit 0
+                finish $?
               fi
               sleep 0.5
             done
-            echo 1 > "$RUNNER_TEMP/convex.done"
+            finish 1
           ' > /dev/null 2>&1 &
 
       # Only the headless shell: Playwright's default for headless Chromium.
