@@ -46,6 +46,11 @@ type Policy<T extends TableNames> = {
   // Deletes a row and anything that only exists through it. Defaults to
   // deleting just the row.
   remove?: (ctx: LifecycleCtx, row: Doc<T>) => Promise<void>;
+  expireRemove?: (
+    ctx: LifecycleCtx,
+    row: Doc<T>,
+    limit: number,
+  ) => Promise<number>;
   // How a guest's rows reach the account:
   // - `phase`: moved in bounded batches during that phase.
   // - `atFinalize`: combined in the merge's last transaction, once every
@@ -117,9 +122,20 @@ function policy<T extends TableNames>(p: Policy<T>) {
       if (merge !== "removeWithGuest") return;
       await forEachRow(ctx, guest, (row) => remove(ctx, row));
     },
-    runExpire: async (ctx: LifecycleCtx, guest: UserId) => {
-      if (p.expire === "keep") return;
-      await forEachRow(ctx, guest, (row) => remove(ctx, row));
+    runExpire: async (ctx: LifecycleCtx, guest: UserId, limit: number) => {
+      if (p.expire === "keep") return 0;
+      let deleted = 0;
+      const rows = await p.rows(ctx, guest).take(limit);
+      for (const row of rows) {
+        if (p.expireRemove) {
+          deleted += await p.expireRemove(ctx, row, limit - deleted);
+        } else {
+          await remove(ctx, row);
+          deleted++;
+        }
+        if (deleted === limit) break;
+      }
+      return deleted;
     },
     runPurge: async (ctx: LifecycleCtx, userId: UserId) => {
       await forEachRow(ctx, userId, (row) =>
@@ -142,6 +158,7 @@ export const USER_KEYED_TABLES = [
         .query("authAccounts")
         .withIndex("userIdAndProvider", (q) => q.eq("userId", userId)),
     remove: deleteAuthAccount,
+    expireRemove: deleteAuthAccountBatch,
     merge: "removeWithGuest",
     expire: "delete",
     purge: "delete",
@@ -154,6 +171,7 @@ export const USER_KEYED_TABLES = [
         .query("authSessions")
         .withIndex("userId", (q) => q.eq("userId", userId)),
     remove: deleteAuthSession,
+    expireRemove: deleteAuthSessionBatch,
     merge: "removeWithGuest",
     expire: "delete",
     purge: "delete",
@@ -331,8 +349,19 @@ export async function deleteMergedGuest(
 
 // Guests are anonymized rather than deleted so the rows kept for shared Room
 // history still point at a user.
-export async function expireGuest(ctx: LifecycleCtx, guestUserId: UserId) {
-  for (const p of USER_KEYED_TABLES) await p.runExpire(ctx, guestUserId);
+export async function expireGuest(
+  ctx: LifecycleCtx,
+  guestUserId: UserId,
+  budget: number,
+) {
+  let remaining = budget;
+  for (const p of USER_KEYED_TABLES) {
+    remaining -= await p.runExpire(ctx, guestUserId, remaining);
+    if (remaining === 0) {
+      await ctx.db.patch("users", guestUserId, { guestCleanupStarted: true });
+      return { deleted: budget, done: false };
+    }
+  }
   await ctx.db.patch("users", guestUserId, {
     name: "Former Guest",
     image: undefined,
@@ -343,7 +372,9 @@ export async function expireGuest(ctx: LifecycleCtx, guestUserId: UserId) {
     guestCompletedGames: undefined,
     guestPromptedGames: undefined,
     guestExpiresAt: undefined,
+    guestCleanupStarted: undefined,
   });
+  return { deleted: budget - remaining, done: true };
 }
 
 export async function deleteAccount(
@@ -374,6 +405,22 @@ async function deleteAuthAccount(
   await ctx.db.delete("authAccounts", account._id);
 }
 
+async function deleteAuthAccountBatch(
+  ctx: LifecycleCtx,
+  account: Doc<"authAccounts">,
+  limit: number,
+) {
+  const codes = await ctx.db
+    .query("authVerificationCodes")
+    .withIndex("accountId", (q) => q.eq("accountId", account._id))
+    .take(limit);
+  for (const code of codes)
+    await ctx.db.delete("authVerificationCodes", code._id);
+  if (codes.length === limit) return codes.length;
+  await ctx.db.delete("authAccounts", account._id);
+  return codes.length + 1;
+}
+
 async function deleteAuthSession(
   ctx: LifecycleCtx,
   session: Doc<"authSessions">,
@@ -386,6 +433,22 @@ async function deleteAuthSession(
     await ctx.db.delete("authRefreshTokens", token._id);
   }
   await ctx.db.delete("authSessions", session._id);
+}
+
+async function deleteAuthSessionBatch(
+  ctx: LifecycleCtx,
+  session: Doc<"authSessions">,
+  limit: number,
+) {
+  const tokens = await ctx.db
+    .query("authRefreshTokens")
+    .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
+    .take(limit);
+  for (const token of tokens)
+    await ctx.db.delete("authRefreshTokens", token._id);
+  if (tokens.length === limit) return tokens.length;
+  await ctx.db.delete("authSessions", session._id);
+  return tokens.length + 1;
 }
 
 async function deleteRoom(ctx: LifecycleCtx, room: Doc<"rooms">) {

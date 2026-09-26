@@ -56,7 +56,12 @@ export async function startGuestMerge(
     ctx.db.get("users", guestUserId),
     ctx.db.get("users", targetUserId),
   ]);
-  if (guest?.isAnonymous !== true || target === null) return null;
+  if (
+    guest?.isAnonymous !== true ||
+    guest.guestCleanupStarted === true ||
+    target === null
+  )
+    return null;
   const existing = await ctx.db
     .query("guestMerges")
     .withIndex("by_guest_user", (q) => q.eq("guestUserId", guestUserId))

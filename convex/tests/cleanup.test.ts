@@ -423,6 +423,111 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
   expect(result.guesses).toHaveLength(1);
 });
 
+test("expired guest stays eligible until all progress and auth rows are deleted", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, {
+    isAnonymous: true,
+    guestExpiresAt: Date.now() - 1,
+  });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 120; i++) {
+      await ctx.db.insert("userGameHistory", {
+        userId: guest,
+        contextoGameId: i,
+        firstPlayedAt: i,
+      });
+    }
+    const accountId = await ctx.db.insert("authAccounts", {
+      userId: guest,
+      provider: "password",
+      providerAccountId: "guest",
+    });
+    for (let i = 0; i < 120; i++) {
+      await ctx.db.insert("authVerificationCodes", {
+        accountId,
+        provider: "password",
+        code: `test-${i}`,
+        expirationTime: Date.now() + 60_000,
+      });
+    }
+    const sessionId = await ctx.db.insert("authSessions", {
+      userId: guest,
+      expirationTime: Date.now() + 60_000,
+    });
+    await ctx.db.insert("authRefreshTokens", {
+      sessionId,
+      expirationTime: Date.now() + 60_000,
+    });
+  });
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+  expect(await t.run(async (ctx) => ctx.db.get("users", guest))).toMatchObject({
+    isAnonymous: true,
+  });
+  vi.useFakeTimers();
+  try {
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  } finally {
+    vi.useRealTimers();
+  }
+  const remaining = await t.run(async (ctx) => ({
+    user: await ctx.db.get("users", guest),
+    history: await ctx.db.query("userGameHistory").collect(),
+    accounts: await ctx.db.query("authAccounts").collect(),
+    codes: await ctx.db.query("authVerificationCodes").collect(),
+    sessions: await ctx.db.query("authSessions").collect(),
+    tokens: await ctx.db.query("authRefreshTokens").collect(),
+  }));
+  expect(remaining).toMatchObject({
+    user: { name: "Former Guest", isAnonymous: false },
+    history: [],
+    accounts: [],
+    codes: [],
+    sessions: [],
+    tokens: [],
+  });
+});
+
+test("expired guests share a row budget and all eventually finish", async () => {
+  const t = setupTest();
+  const guests = await Promise.all([
+    seedUser(t, { isAnonymous: true, guestExpiresAt: Date.now() - 1 }),
+    seedUser(t, { isAnonymous: true, guestExpiresAt: Date.now() - 1 }),
+  ]);
+  await t.run(async (ctx) => {
+    for (const guest of guests) {
+      for (let i = 0; i < 60; i++) {
+        await ctx.db.insert("userGameHistory", {
+          userId: guest,
+          contextoGameId: i,
+          firstPlayedAt: i,
+        });
+      }
+    }
+  });
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+  const first = await t.run(async (ctx) =>
+    Promise.all(guests.map((guest) => ctx.db.get("users", guest))),
+  );
+  expect(first.some((guest) => guest?.isAnonymous)).toBe(true);
+  vi.useFakeTimers();
+  try {
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  } finally {
+    vi.useRealTimers();
+  }
+  const result = await t.run(async (ctx) => ({
+    users: await Promise.all(guests.map((guest) => ctx.db.get("users", guest))),
+    history: await ctx.db.query("userGameHistory").collect(),
+  }));
+  expect(result.users).toEqual([
+    expect.objectContaining({ name: "Former Guest", isAnonymous: false }),
+    expect.objectContaining({ name: "Former Guest", isAnonymous: false }),
+  ]);
+  expect(result.history).toEqual([]);
+});
+
 test("E2E account cleanup removes its complete data graph", async () => {
   vi.stubEnv("E2E_TEST", "1");
   const t = setupTest();
