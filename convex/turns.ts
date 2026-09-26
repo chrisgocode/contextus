@@ -5,17 +5,20 @@
 // `_apply` re-runs authorization and the Pending request check in the same
 // transaction that changes the Game, so no caller can skip them.
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
+  internalAction,
   type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { requireHostByGame, requireMemberByGame } from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
+import { analyticsEnabled, track } from "./analytics";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
@@ -136,7 +139,7 @@ export const _apply = internalMutation({
     );
     const outcome =
       turn.kind === "giveup"
-        ? await applyGiveup(ctx, game, turn.answerLemma)
+        ? await applyGiveup(ctx, game, turn.answerLemma, userId)
         : await applyScoredLemma(ctx, game, {
             // An approved hint belongs to the member who asked for it.
             userId: request?.requesterUserId ?? userId,
@@ -144,9 +147,23 @@ export const _apply = internalMutation({
             distance: turn.distance,
             source: turn.kind,
           });
+    if (turn.kind === "hint" && outcome.status === "recorded") {
+      await track(ctx, userId, {
+        name: "hint_given",
+        properties: { game_id: gameId, source: request ? "request" : "host" },
+      });
+    }
     if (request !== null && outcome.status === "recorded") {
       await ctx.db.patch("pendingRequests", request._id, {
         status: "approved",
+      });
+      await track(ctx, userId, {
+        name: "request_approved",
+        properties: {
+          request_id: request._id,
+          game_id: gameId,
+          request_type: request.type,
+        },
       });
     }
     return outcome;
@@ -174,6 +191,16 @@ async function applyScoredLemma(
     if (decision.reason === "not_in_progress") {
       throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
     }
+    await track(ctx, event.userId, {
+      name: "guess_recorded",
+      properties: {
+        game_id: game._id,
+        lemma: event.lemma,
+        distance: event.distance,
+        duplicate: true,
+        source: event.source,
+      },
+    });
     return { status: "duplicate", won: false, unlockedAchievementIds: [] };
   }
 
@@ -199,6 +226,25 @@ async function applyScoredLemma(
   if (decision.won) {
     await recordGuestGameCompletion(ctx, game._id);
   }
+  await track(ctx, event.userId, {
+    name: "guess_recorded",
+    properties: {
+      game_id: game._id,
+      lemma: event.lemma,
+      distance: event.distance,
+      duplicate: false,
+      source: event.source,
+    },
+  });
+  if (decision.won) {
+    await scheduleGameOutcome(
+      ctx,
+      game,
+      event.userId,
+      "game_won",
+      decision.lastActivityAt,
+    );
+  }
   return { status: "recorded", won: decision.won, unlockedAchievementIds };
 }
 
@@ -206,6 +252,7 @@ async function applyGiveup(
   ctx: MutationCtx,
   game: Doc<"games">,
   answerLemma: string,
+  userId: Id<"users">,
 ): Promise<ApplyResult> {
   const decision = decideGiveup({ game, now: Date.now() }, { answerLemma });
   if (decision.kind === "reject") {
@@ -214,8 +261,98 @@ async function applyGiveup(
   await ctx.db.patch("games", game._id, decision.gamePatch);
   await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
   await recordGuestGameCompletion(ctx, game._id);
+  await scheduleGameOutcome(
+    ctx,
+    game,
+    userId,
+    "game_given_up",
+    decision.lastActivityAt,
+  );
   return { status: "recorded", won: false, unlockedAchievementIds: [] };
 }
+
+async function scheduleGameOutcome(
+  ctx: MutationCtx,
+  game: Doc<"games">,
+  userId: Id<"users">,
+  event: "game_won" | "game_given_up",
+  endedAt: number,
+) {
+  if (!analyticsEnabled()) return;
+  // Counted here, not in the action, so later joins and leaves don't skew it.
+  // Capped like playAgain's Room size limit; 101 means "over 100".
+  const members = await ctx.db
+    .query("roomMembers")
+    .withIndex("by_room_user", (q) => q.eq("roomId", game.roomId))
+    .take(101);
+  try {
+    await ctx.scheduler.runAfter(0, internal.turns._trackGameOutcome, {
+      gameId: game._id,
+      userId,
+      event,
+      durationMs: Math.max(0, endedAt - game.startedAt),
+      memberCount: members.filter((member) => member.active !== false).length,
+    });
+  } catch (error) {
+    console.warn("Game outcome analytics could not be scheduled", error);
+  }
+}
+
+export const _outcomeCounts = internalQuery({
+  args: { gameId: v.id("games"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { gameId, paginationOpts }) => {
+    const page = await ctx.db
+      .query("gameGuesses")
+      .withIndex("by_game_created", (q) => q.eq("gameId", gameId))
+      .paginate(paginationOpts);
+    return {
+      guessCount: page.page.filter((guess) => guess.source === "guess").length,
+      hintCount: page.page.filter((guess) => guess.source === "hint").length,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+export const _trackGameOutcome = internalAction({
+  args: {
+    gameId: v.id("games"),
+    userId: v.id("users"),
+    event: v.union(v.literal("game_won"), v.literal("game_given_up")),
+    durationMs: v.number(),
+    memberCount: v.number(),
+  },
+  handler: async (ctx, { gameId, userId, event, durationMs, memberCount }) => {
+    let guessCount = 0;
+    let hintCount = 0;
+    let cursor: string | null = null;
+    while (true) {
+      const page: {
+        guessCount: number;
+        hintCount: number;
+        isDone: boolean;
+        continueCursor: string;
+      } = await ctx.runQuery(internal.turns._outcomeCounts, {
+        gameId,
+        paginationOpts: { cursor, numItems: 1000 },
+      });
+      guessCount += page.guessCount;
+      hintCount += page.hintCount;
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    await track(ctx, userId, {
+      name: event,
+      properties: {
+        game_id: gameId,
+        guess_count: guessCount,
+        hint_count: hintCount,
+        member_count: memberCount,
+        duration_ms: durationMs,
+      },
+    });
+  },
+});
 
 type TurnArgs =
   | { gameId: Id<"games">; turn: { kind: "guess"; word: string } }
