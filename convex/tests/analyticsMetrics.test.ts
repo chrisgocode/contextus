@@ -147,3 +147,38 @@ test("a walked hint reports tips tried", async () => {
     properties: { kind: "hint", outcome: "recorded", tips_tried: 2 },
   });
 });
+
+test("a cache write failure is not reported as Contexto being unavailable", async () => {
+  // Contexto answers, but the malformed distance fails the cache write.
+  vi.spyOn(contextoOracle, "distance").mockResolvedValue({
+    ok: true,
+    lemma: "orange",
+    distance: "42" as unknown as number,
+  });
+  const { t, host, gameId, capture } = await game();
+  await expect(
+    asUser(t, host).action(api.guesses.submit, { gameId, word: "orange" }),
+  ).rejects.toThrow();
+  const events = capture.mock.calls.map(([, event]) => event);
+  expect(
+    events.filter((event) => event.event === "contexto_request"),
+  ).toMatchObject([{ properties: { outcome: "ok", cache: "miss" } }]);
+  expect(events.filter((event) => event.event === "turn_failed")).toMatchObject(
+    [{ properties: { outcome: "failed", error_category: "unexpected" } }],
+  );
+});
+
+test("a turn by a non-member reports a rejected turn", async () => {
+  fakeWordOracle({ guesses: { 1336: { orange: 42 } } });
+  const { t, gameId, capture } = await game();
+  const stranger = await seedUser(t);
+  await expect(
+    asUser(t, stranger).action(api.guesses.submit, { gameId, word: "orange" }),
+  ).rejects.toThrow("Not a member of this room");
+  expect(
+    capture.mock.calls.find(([, event]) => event.event === "turn_failed")?.[1],
+  ).toMatchObject({
+    distinctId: stranger,
+    properties: { outcome: "rejected", error_category: "not_member" },
+  });
+});

@@ -63,7 +63,20 @@ type EventCatalog = {
     game_id: Id<"games">;
     kind: "guess" | "hint" | "giveup";
     outcome: "rejected" | "failed";
-    error_category: string;
+    error_category:
+      | "contexto_unavailable"
+      | "contexto_unexpected_payload"
+      | "empty_word"
+      | "request_handled"
+      | "game_ended"
+      | "not_authenticated"
+      | "not_member"
+      | "game_not_found"
+      | "room_not_found"
+      | "not_host"
+      | "hint_duplicate"
+      | "hint_exhausted"
+      | "unexpected";
     duration_ms: number;
     tips_tried?: number;
   };
@@ -82,6 +95,9 @@ type EventCatalog = {
     account_user_id: Id<"users">;
   };
 };
+
+export type EventProperties<Name extends keyof EventCatalog> =
+  EventCatalog[Name];
 
 export type AnalyticsEvent = {
   [Name in keyof EventCatalog]: {

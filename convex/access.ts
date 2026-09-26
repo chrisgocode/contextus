@@ -3,13 +3,19 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 
+export const NOT_AUTHENTICATED_MESSAGE = "Not authenticated";
+export const NOT_MEMBER_MESSAGE = "Not a member of this room";
+export const GAME_NOT_FOUND_MESSAGE = "Game not found";
+export const ROOM_NOT_FOUND_MESSAGE = "Room not found";
+export const HOST_ONLY_MESSAGE = "Host only";
+
 type DbCtx = Pick<QueryCtx, "db" | "auth"> | Pick<MutationCtx, "db" | "auth">;
 type AnyCtx = QueryCtx | MutationCtx | ActionCtx;
 
 export async function requireUser(ctx: AnyCtx): Promise<Id<"users">> {
   const userId = await getAuthUserId(ctx);
   if (userId === null) {
-    throw new ConvexError("Not authenticated");
+    throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
   }
   return userId;
 }
@@ -17,7 +23,7 @@ export async function requireUser(ctx: AnyCtx): Promise<Id<"users">> {
 export async function requireRegisteredUser(ctx: DbCtx): Promise<Id<"users">> {
   const userId = await getAuthUserId(ctx);
   if (userId === null) {
-    throw new ConvexError("Not authenticated");
+    throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
   }
   const user = await ctx.db.get("users", userId);
   if (user === null || user.isAnonymous === true) {
@@ -89,11 +95,11 @@ export async function requireMemberByGame(
   args: ByGame,
 ): Promise<GameAccess> {
   const { userId, game, room } = await loadByGame(ctx, args);
-  if (userId === null) throw new ConvexError("Not authenticated");
-  if (game === null) throw new ConvexError("Game not found");
-  if (room === null) throw new ConvexError("Room not found");
+  if (userId === null) throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
+  if (game === null) throw new ConvexError(GAME_NOT_FOUND_MESSAGE);
+  if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
   if (!(await isMember(ctx, room._id, userId))) {
-    throw new ConvexError("Not a member of this room");
+    throw new ConvexError(NOT_MEMBER_MESSAGE);
   }
   return { userId, room, game };
 }
@@ -113,10 +119,10 @@ export async function requireMemberByRoom(
   args: ByRoom,
 ): Promise<RoomAccess> {
   const { userId, room } = await loadByRoom(ctx, args);
-  if (userId === null) throw new ConvexError("Not authenticated");
-  if (room === null) throw new ConvexError("Room not found");
+  if (userId === null) throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
+  if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
   if (!(await isMember(ctx, room._id, userId))) {
-    throw new ConvexError("Not a member of this room");
+    throw new ConvexError(NOT_MEMBER_MESSAGE);
   }
   return { userId, room };
 }
@@ -136,10 +142,11 @@ export async function requireHostByGame(
   args: ByGame,
 ): Promise<GameAccess> {
   const { userId, game, room } = await loadByGame(ctx, args);
-  if (userId === null) throw new ConvexError("Not authenticated");
-  if (game === null) throw new ConvexError("Game not found");
-  if (room === null) throw new ConvexError("Room not found");
-  if (!(await isHost(ctx, room, userId))) throw new ConvexError("Host only");
+  if (userId === null) throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
+  if (game === null) throw new ConvexError(GAME_NOT_FOUND_MESSAGE);
+  if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
+  if (!(await isHost(ctx, room, userId)))
+    throw new ConvexError(HOST_ONLY_MESSAGE);
   return { userId, room, game };
 }
 
@@ -158,9 +165,10 @@ export async function requireHostByRoom(
   args: ByRoom,
 ): Promise<RoomAccess> {
   const { userId, room } = await loadByRoom(ctx, args);
-  if (userId === null) throw new ConvexError("Not authenticated");
-  if (room === null) throw new ConvexError("Room not found");
-  if (!(await isHost(ctx, room, userId))) throw new ConvexError("Host only");
+  if (userId === null) throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
+  if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
+  if (!(await isHost(ctx, room, userId)))
+    throw new ConvexError(HOST_ONLY_MESSAGE);
   return { userId, room };
 }
 
