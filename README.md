@@ -40,8 +40,12 @@ bun run dev
 | `E2E_PASSWORD`                      | `.env.local`                                 | E2E tests          | Password for the generated test accounts                                                      |
 | `CONVEX_DEPLOY_KEY`                 | Vercel / GitHub secrets                      | Production deploys | See [development guide](docs/development.md#deployment)                                       |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Vercel env vars                              | Browser analytics  | PostHog project token. Analytics loads only on production and preview deployments             |
+| `POSTHOG_PROJECT_TOKEN`             | Convex env                                   | All deployments    | Use `disabled` in dev and e2e; set the PostHog project token in production and preview        |
+| `POSTHOG_ENVIRONMENT`               | Convex env                                   | Analytics          | `production` or `preview`; leave unset in dev and e2e                                         |
 
 See [`.env.example`](.env.example) for the full list.
+
+Before the first local Convex push, run `npx convex env set POSTHOG_PROJECT_TOKEN disabled` on your dev deployment. The `POSTHOG_ENVIRONMENT` gate keeps local analytics off.
 
 ## Scripts
 

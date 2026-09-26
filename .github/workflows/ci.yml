@@ -66,10 +66,14 @@ jobs:
               exit 0
             }
             bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+            configured=0
             for _ in $(seq 1 180); do
-              if grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
-                node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1
-                finish $?
+              if [ "$configured" -eq 0 ] && [ -f .env.local ] && grep -q "^CONVEX_DEPLOYMENT=" .env.local; then
+                node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1 || finish 1
+                configured=1
+              fi
+              if [ "$configured" -eq 1 ] && grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; then
+                finish 0
               fi
               sleep 0.5
             done

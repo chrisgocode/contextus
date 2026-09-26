@@ -8,6 +8,7 @@ import {
   requireUser,
 } from "./access";
 import { generateRoomCode } from "./lib/code";
+import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
 import { upsertRoomActivity } from "./lib/roomActivity";
 
@@ -65,6 +66,10 @@ export const create = mutation({
       active: true,
     });
     await upsertRoomActivity(ctx, roomId, now);
+    await track(ctx, userId, {
+      name: "room_created",
+      properties: { room_id: roomId },
+    });
     return { code, roomId };
   },
 });

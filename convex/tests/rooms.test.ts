@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import { loadPlayers } from "../lib/player";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
+import { posthog } from "../posthog";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -10,6 +11,54 @@ afterEach(() => {
 test("create requires auth", async () => {
   const t = setupTest();
   await expect(t.mutation(api.rooms.create, {})).rejects.toThrow();
+});
+
+test("creating a Room records one analytics event", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const userId = await seedUser(t);
+
+  const { roomId } = await asUser(t, userId).mutation(api.rooms.create, {});
+
+  expect(capture).toHaveBeenCalledOnce();
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: userId,
+    event: "room_created",
+    properties: { room_id: roomId, deployment_environment: "production" },
+  });
+});
+
+test.each([
+  ["disabled", "production"],
+  ["test-token", ""],
+])(
+  "Room creation skips analytics with token %s in %s",
+  async (token, environment) => {
+    vi.stubEnv("POSTHOG_PROJECT_TOKEN", token);
+    vi.stubEnv("POSTHOG_ENVIRONMENT", environment);
+    const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+    const t = setupTest();
+    const userId = await seedUser(t);
+
+    await asUser(t, userId).mutation(api.rooms.create, {});
+
+    expect(capture).not.toHaveBeenCalled();
+  },
+);
+
+test("PostHog scheduling failures do not prevent Room creation", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  vi.spyOn(posthog, "capture").mockRejectedValue(new Error("PostHog down"));
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const t = setupTest();
+  const userId = await seedUser(t);
+
+  await expect(
+    asUser(t, userId).mutation(api.rooms.create, {}),
+  ).resolves.toEqual(expect.objectContaining({ roomId: expect.any(String) }));
 });
 
 test("anonymous users can create and host rooms", async () => {
