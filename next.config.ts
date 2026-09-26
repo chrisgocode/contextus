@@ -18,6 +18,11 @@ const sentryEnvironment =
   vercelEnv === "production" || vercelEnv === "preview" ? vercelEnv : "";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Tailwind's CSS is small (~12 KB compressed), so shipping it inside the
+    // HTML beats a render-blocking stylesheet request on first load.
+    inlineCss: true,
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
