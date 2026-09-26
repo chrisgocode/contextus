@@ -17,7 +17,7 @@ updates:
         patterns: ["*"]
       next:
         applies-to: version-updates
-        patterns: ["next", "eslint-config-next", "@next/*"]
+        patterns: ["next", "@next/*"]
       # vitest and its plugins must share a version; bumping one alone
       # breaks coverage collection.
       vitest:
@@ -28,10 +28,6 @@ updates:
         update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
-      # eslint-plugin-react (via eslint-config-next) doesn't support ESLint 10
-      # yet. Revisit when eslint-config-next adds support.
-      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"

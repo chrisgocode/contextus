@@ -177,7 +177,8 @@ export type SolveRuleContext = {
 };
 
 export type SolvePredicateId =
-  "solvedBetweenMidnightAnd4am" | "solvedWithin10MinutesOfRelease";
+  | "solvedBetweenMidnightAnd4am"
+  | "solvedWithin10MinutesOfRelease";
 
 export const solvePredicates = {
   solvedBetweenMidnightAnd4am: (ctx: SolveRuleContext) =>

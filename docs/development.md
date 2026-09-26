@@ -80,7 +80,7 @@ The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwa
 | Types      | `bun run typecheck`    | CI             |
 | Tests      | `bun run test`         | CI             |
 
-ESLint includes `@convex-dev/eslint-plugin`. Before changing Convex code, read `convex/_generated/ai/guidelines.md`.
+Linting uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (`.oxlintrc.json`) and formatting uses [oxfmt](https://oxc.rs/docs/guide/usage/formatter) (`.oxfmtrc.json`). Run `bun run format` to fix formatting. oxlint loads `@convex-dev/eslint-plugin` as a JS plugin for files under `convex/`. Before changing Convex code, read `convex/_generated/ai/guidelines.md`.
 
 ## CI
 
