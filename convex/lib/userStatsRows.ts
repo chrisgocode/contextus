@@ -69,3 +69,38 @@ export async function deleteUserStatsAndMemberships(
     await ctx.db.delete("userAchievementStats", userAchievementStats._id);
   }
 }
+
+// Deletes a user's auth graph: accounts with their verification codes and
+// sessions with their refresh tokens. Shared by guest expiry, guest merge and
+// E2E account cleanup.
+export async function deleteUserAuthData(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+) {
+  const accounts = await ctx.db
+    .query("authAccounts")
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId))
+    .collect();
+  for (const account of accounts) {
+    const codes = await ctx.db
+      .query("authVerificationCodes")
+      .withIndex("accountId", (q) => q.eq("accountId", account._id))
+      .collect();
+    for (const code of codes)
+      await ctx.db.delete("authVerificationCodes", code._id);
+    await ctx.db.delete("authAccounts", account._id);
+  }
+  const sessions = await ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", userId))
+    .collect();
+  for (const session of sessions) {
+    const tokens = await ctx.db
+      .query("authRefreshTokens")
+      .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const token of tokens)
+      await ctx.db.delete("authRefreshTokens", token._id);
+    await ctx.db.delete("authSessions", session._id);
+  }
+}

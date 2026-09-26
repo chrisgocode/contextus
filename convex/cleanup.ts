@@ -8,7 +8,10 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { decideRoomCleanup } from "./lib/cleanup";
-import { deleteUserStatsAndMemberships } from "./lib/userStatsRows";
+import {
+  deleteUserAuthData,
+  deleteUserStatsAndMemberships,
+} from "./lib/userStatsRows";
 import { onlineUserIdsForRoom } from "./presence";
 
 export const _listActiveRoomIds = internalQuery({
@@ -92,7 +95,7 @@ export const removeMergedGuest = internalMutation({
   handler: async (ctx, { guestUserId }) => {
     const guest = await ctx.db.get("users", guestUserId);
     if (guest?.isAnonymous !== true) return null;
-    await deleteGuestAuthData(ctx, guestUserId);
+    await deleteUserAuthData(ctx, guestUserId);
     await ctx.db.delete("users", guestUserId);
     return null;
   },
@@ -125,7 +128,7 @@ async function anonymizeExpiredGuest(
   guestUserId: Id<"users">,
 ) {
   await deleteUserStatsAndMemberships(ctx, guestUserId);
-  await deleteGuestAuthData(ctx, guestUserId);
+  await deleteUserAuthData(ctx, guestUserId);
   await ctx.db.patch("users", guestUserId, {
     name: "Former Guest",
     image: undefined,
@@ -137,35 +140,6 @@ async function anonymizeExpiredGuest(
     guestPromptedGames: undefined,
     guestExpiresAt: undefined,
   });
-}
-
-async function deleteGuestAuthData(ctx: MutationCtx, guestUserId: Id<"users">) {
-  const accounts = await ctx.db
-    .query("authAccounts")
-    .withIndex("userIdAndProvider", (q) => q.eq("userId", guestUserId))
-    .collect();
-  for (const account of accounts) {
-    const codes = await ctx.db
-      .query("authVerificationCodes")
-      .withIndex("accountId", (q) => q.eq("accountId", account._id))
-      .collect();
-    for (const code of codes)
-      await ctx.db.delete("authVerificationCodes", code._id);
-    await ctx.db.delete("authAccounts", account._id);
-  }
-  const sessions = await ctx.db
-    .query("authSessions")
-    .withIndex("userId", (q) => q.eq("userId", guestUserId))
-    .collect();
-  for (const session of sessions) {
-    const tokens = await ctx.db
-      .query("authRefreshTokens")
-      .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-    for (const token of tokens)
-      await ctx.db.delete("authRefreshTokens", token._id);
-    await ctx.db.delete("authSessions", session._id);
-  }
 }
 
 export const tick = internalAction({
