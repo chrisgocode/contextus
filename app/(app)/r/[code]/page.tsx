@@ -15,7 +15,10 @@ import { api } from "@/convex/_generated/api";
 import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
-import { GameSetupCalendar } from "./_components/GameSetupCalendar";
+import {
+  GameSetupCalendar,
+  preloadCalendar,
+} from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
@@ -289,6 +292,9 @@ function RoomLoaded({
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
+  useEffect(() => {
+    if (isViewerHost) preloadCalendar();
+  }, [isViewerHost]);
   const dismissAchievementUnlock = useCallback(() => {
     setAchievementUnlocks((items) => items.slice(1));
   }, []);

@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -13,6 +14,20 @@ import {
 } from "@/lib/contexto";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
+
+// react-day-picker is most of this component's weight and only hosts
+// between games see it, so it loads separately. The room page preloads it
+// for hosts (see preloadCalendar) so it's usually ready by the time the
+// game list resolves.
+const loadCalendar = () =>
+  import("@/components/ui/calendar").then((mod) => mod.Calendar);
+const Calendar = dynamic(loadCalendar, {
+  loading: () => <Skeleton className="h-[291px] w-62" />,
+});
+
+export function preloadCalendar() {
+  void loadCalendar();
+}
 
 export function GameSetupCalendar({
   roomId,
