@@ -33,7 +33,6 @@ test("completed Guest merge records conversion and joins analytics identities", 
   vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
   vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
   const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
-  const alias = vi.spyOn(posthog, "alias").mockResolvedValue(undefined);
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const account = await seedUser(t);
@@ -49,9 +48,12 @@ test("completed Guest merge records conversion and joins analytics identities", 
       deployment_environment: "production",
     },
   });
-  expect(alias).toHaveBeenCalledWith(expect.anything(), {
+  // The browser already identified the Guest, and PostHog refuses to alias an
+  // identified person, so the merge has to be forced.
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
     distinctId: account,
-    alias: guest,
+    event: "$merge_dangerously",
+    properties: { alias: guest },
   });
 });
 
