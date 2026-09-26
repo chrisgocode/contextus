@@ -12,9 +12,9 @@ export const HOST_ONLY_MESSAGE = "Host only";
 type DbCtx = Pick<QueryCtx, "db" | "auth"> | Pick<MutationCtx, "db" | "auth">;
 
 // The caller's user, or null when signed out. Convex Auth reads the user from
-// the access token alone, so a token issued before guest expiry would keep
-// working until it expires. Expiry deletes the session row, and marks the
-// guest before that, so both are checked here.
+// the access token alone, so a token outlives its session by up to an hour.
+// Guest expiry deletes the session row, and marks the guest before that, so
+// the session and the mark are both checked here.
 export async function getCurrentUserId(
   ctx: DbCtx,
 ): Promise<Id<"users"> | null> {
@@ -29,7 +29,13 @@ export async function getCurrentUserId(
     ctx.db.get("authSessions", sessionId),
     ctx.db.get("users", userId),
   ]);
-  if (session?.userId !== userId) return null;
+  if (
+    session === null ||
+    session.userId !== userId ||
+    session.expirationTime <= Date.now()
+  ) {
+    return null;
+  }
   if (user === null || user.guestCleanupStarted === true) return null;
   return userId;
 }

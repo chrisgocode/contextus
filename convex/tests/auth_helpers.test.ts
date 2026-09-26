@@ -88,6 +88,22 @@ test("requireUser rejects a token whose session was deleted", async () => {
   ).rejects.toThrow("Not authenticated");
 });
 
+test("requireUser rejects a token whose session has expired", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (const s of await ctx.db.query("authSessions").collect()) {
+      await ctx.db.patch("authSessions", s._id, {
+        expirationTime: Date.now() - 1,
+      });
+    }
+  });
+
+  await expect(
+    asUser(t, userId).run(async (ctx) => await requireUser(ctx)),
+  ).rejects.toThrow("Not authenticated");
+});
+
 test("requireUser rejects a token whose session belongs to another user", async () => {
   const t = setupTest();
   const userId = await seedUser(t);
