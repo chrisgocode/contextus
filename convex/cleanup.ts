@@ -8,7 +8,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { decideRoomCleanup } from "./lib/cleanup";
-import { deleteUserOwnedRows } from "./lib/userRows";
+import { deleteUserStatsAndMemberships } from "./lib/userStatsRows";
 import { onlineUserIdsForRoom } from "./presence";
 
 export const _listActiveRoomIds = internalQuery({
@@ -124,12 +124,7 @@ async function anonymizeExpiredGuest(
   ctx: MutationCtx,
   guestUserId: Id<"users">,
 ) {
-  await deleteUserOwnedRows(ctx, guestUserId);
-  const stats = await ctx.db
-    .query("userAchievementStats")
-    .withIndex("by_user", (q) => q.eq("userId", guestUserId))
-    .unique();
-  if (stats !== null) await ctx.db.delete("userAchievementStats", stats._id);
+  await deleteUserStatsAndMemberships(ctx, guestUserId);
   await deleteGuestAuthData(ctx, guestUserId);
   await ctx.db.patch("users", guestUserId, {
     name: "Former Guest",

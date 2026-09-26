@@ -391,6 +391,13 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
       userId: guest,
       dayKey: "2026-03-01",
     });
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 1,
+      yellowGuesses: 0,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
   });
 
   await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
@@ -413,6 +420,10 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
       .query("userSolveDays")
       .withIndex("by_user_and_dayKey", (q) => q.eq("userId", guest))
       .collect(),
+    achievementStats: await ctx.db
+      .query("userAchievementStats")
+      .withIndex("by_user", (q) => q.eq("userId", guest))
+      .unique(),
     guesses: await ctx.db
       .query("gameGuesses")
       .withIndex("by_user", (q) => q.eq("userId", guest))
@@ -427,6 +438,7 @@ test("expired guest cleanup removes private progress and keeps anonymized guesse
   expect(result.achievements).toEqual([]);
   expect(result.progress).toEqual([]);
   expect(result.solveDays).toEqual([]);
+  expect(result.achievementStats).toBeNull();
   expect(result.guesses).toHaveLength(1);
 });
 
@@ -477,6 +489,13 @@ test("E2E account cleanup removes its complete data graph", async () => {
       contextoGameId: 1337,
       firstPlayedAt: Date.now(),
     });
+    await ctx.db.insert("userAchievementStats", {
+      userId,
+      redGuesses: 1,
+      yellowGuesses: 0,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
   });
 
   await t.mutation(api.e2eCleanup.purgeAccount, { email });
@@ -490,6 +509,7 @@ test("E2E account cleanup removes its complete data graph", async () => {
     authSessions: await ctx.db.query("authSessions").collect(),
     guesses: await ctx.db.query("gameGuesses").collect(),
     history: await ctx.db.query("userGameHistory").collect(),
+    achievementStats: await ctx.db.query("userAchievementStats").collect(),
   }));
   expect(remaining).toMatchObject({
     user: null,
@@ -499,6 +519,7 @@ test("E2E account cleanup removes its complete data graph", async () => {
     authSessions: [],
     guesses: [],
     history: [],
+    achievementStats: [],
   });
   expect(remaining.otherUser).not.toBeNull();
 });
