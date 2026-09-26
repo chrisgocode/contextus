@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
 import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
+import { loadCalendar } from "@/app/(app)/r/[code]/_components/calendar-loader";
 import { GameSetupCalendar } from "@/app/(app)/r/[code]/_components/GameSetupCalendar";
 import { HintGiveupBar } from "@/app/(app)/r/[code]/_components/HintGiveupBar";
 import { PendingRequestsSidebar } from "@/app/(app)/r/[code]/_components/PendingRequestsSidebar";
@@ -286,6 +287,12 @@ describe("GuessList", () => {
 });
 
 describe("GameSetupCalendar", () => {
+  // The calendar is loaded on demand. Import it up front so the slow
+  // react-day-picker import doesn't count against each test's timeout.
+  beforeAll(async () => {
+    await loadCalendar();
+  });
+
   it("keeps non-host members waiting", () => {
     convex.useMutation.mockReturnValue(vi.fn());
     convex.useQuery.mockReturnValue([]);
