@@ -10,6 +10,7 @@
 
 import type * as access from "../access.js";
 import type * as achievements from "../achievements.js";
+import type * as analytics from "../analytics.js";
 import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as contexto from "../contexto.js";
@@ -22,6 +23,7 @@ import type * as guesses from "../guesses.js";
 import type * as guestMerge from "../guestMerge.js";
 import type * as hints from "../hints.js";
 import type * as http from "../http.js";
+import type * as lib_accountLifecycle from "../lib/accountLifecycle.js";
 import type * as lib_achievementRules from "../lib/achievementRules.js";
 import type * as lib_achievements from "../lib/achievements.js";
 import type * as lib_cleanup from "../lib/cleanup.js";
@@ -30,13 +32,14 @@ import type * as lib_dates from "../lib/dates.js";
 import type * as lib_gameTransitions from "../lib/gameTransitions.js";
 import type * as lib_guestEngagement from "../lib/guestEngagement.js";
 import type * as lib_guestMerge from "../lib/guestMerge.js";
+import type * as lib_guestMergeRows from "../lib/guestMergeRows.js";
 import type * as lib_hint from "../lib/hint.js";
 import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_player from "../lib/player.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
-import type * as lib_userStatsRows from "../lib/userStatsRows.js";
 import type * as lib_usernames from "../lib/usernames.js";
 import type * as lib_words from "../lib/words.js";
+import type * as posthog from "../posthog.js";
 import type * as presence from "../presence.js";
 import type * as requests from "../requests.js";
 import type * as rooms from "../rooms.js";
@@ -53,6 +56,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   achievements: typeof achievements;
+  analytics: typeof analytics;
   auth: typeof auth;
   cleanup: typeof cleanup;
   contexto: typeof contexto;
@@ -65,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   guestMerge: typeof guestMerge;
   hints: typeof hints;
   http: typeof http;
+  "lib/accountLifecycle": typeof lib_accountLifecycle;
   "lib/achievementRules": typeof lib_achievementRules;
   "lib/achievements": typeof lib_achievements;
   "lib/cleanup": typeof lib_cleanup;
@@ -73,13 +78,14 @@ declare const fullApi: ApiFromModules<{
   "lib/gameTransitions": typeof lib_gameTransitions;
   "lib/guestEngagement": typeof lib_guestEngagement;
   "lib/guestMerge": typeof lib_guestMerge;
+  "lib/guestMergeRows": typeof lib_guestMergeRows;
   "lib/hint": typeof lib_hint;
   "lib/localTime": typeof lib_localTime;
   "lib/player": typeof lib_player;
   "lib/roomActivity": typeof lib_roomActivity;
-  "lib/userStatsRows": typeof lib_userStatsRows;
   "lib/usernames": typeof lib_usernames;
   "lib/words": typeof lib_words;
+  posthog: typeof posthog;
   presence: typeof presence;
   requests: typeof requests;
   rooms: typeof rooms;
@@ -116,4 +122,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+  posthog: import("@posthog/convex/_generated/component.js").ComponentApi<"posthog">;
 };
