@@ -1,17 +1,12 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
 import {
   internalAction,
   internalMutation,
   internalQuery,
 } from "./_generated/server";
+import { expireGuest } from "./lib/accountLifecycle";
 import { decideRoomCleanup } from "./lib/cleanup";
-import {
-  deleteUserAuthData,
-  deleteUserStatsAndMemberships,
-} from "./lib/userStatsRows";
 import { onlineUserIdsForRoom } from "./presence";
 
 export const _listActiveRoomIds = internalQuery({
@@ -101,7 +96,7 @@ export const removeExpiredGuests = internalMutation({
       )
       .take(50);
     for (const guest of guests) {
-      await anonymizeExpiredGuest(ctx, guest._id);
+      await expireGuest(ctx, guest._id);
     }
     if (guests.length === 50) {
       await ctx.scheduler.runAfter(0, internal.cleanup.removeExpiredGuests, {
@@ -111,25 +106,6 @@ export const removeExpiredGuests = internalMutation({
     return { removed: guests.length };
   },
 });
-
-async function anonymizeExpiredGuest(
-  ctx: MutationCtx,
-  guestUserId: Id<"users">,
-) {
-  await deleteUserStatsAndMemberships(ctx, guestUserId);
-  await deleteUserAuthData(ctx, guestUserId);
-  await ctx.db.patch("users", guestUserId, {
-    name: "Former Guest",
-    image: undefined,
-    email: undefined,
-    username: undefined,
-    displayUsername: undefined,
-    isAnonymous: false,
-    guestCompletedGames: undefined,
-    guestPromptedGames: undefined,
-    guestExpiresAt: undefined,
-  });
-}
 
 export const tick = internalAction({
   args: {},

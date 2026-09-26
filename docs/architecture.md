@@ -41,7 +41,7 @@ flowchart LR
 | `crons.ts`           | Schedules the cleanup jobs                                                                       |
 | `e2eCleanup.ts`      | Purges Playwright test accounts (only usable when `E2E_TEST=1`)                                  |
 
-Pure logic lives in `convex/lib/` so it can be unit tested without a database. This includes the guess decision logic (`gameTransitions.ts`), achievement rules, hint targeting (`hint.ts`), room cleanup decisions (`cleanup.ts`), guest merging, room codes, and usernames.
+Pure logic lives in `convex/lib/` so it can be unit tested without a database. This includes the guess decision logic (`gameTransitions.ts`), achievement rules, hint targeting (`hint.ts`), room cleanup decisions (`cleanup.ts`), room codes, and usernames.
 
 ### Next.js (`app/`)
 
@@ -94,8 +94,9 @@ The host calls `hints.hostHint` / `giveup.hostGiveup` directly. Other players ca
 ## Auth and guests
 
 - Anyone who opens the app without an account signs in anonymously and becomes a guest. Guests can be members of at most three active rooms.
-- Guest accounts expire after 30 days (1 hour when `E2E_TEST=1`).
-- When a guest signs in with Google, `lib/guestMerge.ts` moves their rooms, guesses, requests, wins, history, and achievements to the Google account. The leftover guest user is then deleted.
+- Guest accounts expire after 30 days (1 hour when `E2E_TEST=1`). An expired guest is anonymized to "Former Guest": private rows are deleted, and rows in shared rooms are kept (see `docs/adr/0002-expired-guest-retention.md`).
+- When a guest signs in with Google, their rooms, guesses, requests, wins, history, and achievements move to the Google account in scheduled batches (`lib/guestMerge.ts`, tracked by a `guestMerges` row). The leftover guest user is deleted when the last batch finishes.
+- `lib/accountLifecycle.ts` declares, for every table that references `users`, what guest merge, guest expiry, and E2E purge do to its rows. The merge runs one batch phase per table in that order. Per-row merge logic lives in `lib/guestMergeRows.ts`.
 - Every registered user gets a generated username (see `lib/usernames.ts`). Users can change it on their profile.
 
 ## Background jobs
