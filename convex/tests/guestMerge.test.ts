@@ -846,3 +846,69 @@ test("guest merge picks up rows a stale guest tab wrote after their phase", asyn
   }));
   expect(result).toEqual({ guesses: [target], guest: null });
 });
+
+test("guest merge re-sweep counts a stale tab's repeat solve once", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const guest = await seedUser(t, { isAnonymous: true });
+    const target = await seedUser(t);
+    await t.run(async (ctx) => {
+      for (const userId of [guest, target]) {
+        await ctx.db.insert("userGameHistory", {
+          userId,
+          contextoGameId: 1,
+          firstPlayedAt: 1,
+          firstSolvedAt: 1,
+        });
+        await ctx.db.insert("userAchievementStats", {
+          userId,
+          redGuesses: 0,
+          yellowGuesses: 0,
+          greenGuesses: 0,
+          uniqueSolves: 1,
+        });
+      }
+    });
+    const mergeId = await (
+      await asUserWithSession(t, guest)
+    ).run(async (ctx) => startGuestMerge(ctx, target));
+    if (mergeId === null) throw new Error("merge did not start");
+    const phase = () =>
+      t.run(async (ctx) => (await ctx.db.get("guestMerges", mergeId))?.phase);
+    while ((await phase()) !== "finalize") {
+      vi.runAllTimers();
+      await t.finishInProgressScheduledFunctions();
+    }
+
+    // The history phase already moved puzzle 1, so a stale tab solving it
+    // again credits the guest with a new unique solve and a new history row.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userGameHistory", {
+        userId: guest,
+        contextoGameId: 1,
+        firstPlayedAt: 2,
+        firstSolvedAt: 2,
+      });
+      const stats = await ctx.db
+        .query("userAchievementStats")
+        .withIndex("by_user", (q) => q.eq("userId", guest))
+        .unique();
+      if (stats === null) throw new Error("missing guest stats");
+      await ctx.db.patch("userAchievementStats", stats._id, {
+        uniqueSolves: stats.uniqueSolves + 1,
+      });
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const stats = await t.run(async (ctx) =>
+      ctx.db
+        .query("userAchievementStats")
+        .withIndex("by_user", (q) => q.eq("userId", target))
+        .unique(),
+    );
+    expect(stats?.uniqueSolves).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
