@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { env, mutation, type MutationCtx } from "./_generated/server";
-import { deleteUserOwnedRows } from "./lib/userRows";
+import { deleteUserStatsAndMemberships } from "./lib/userStatsRows";
 
 const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u[01]@example\.com$/;
 
@@ -40,17 +40,12 @@ async function deleteUserData(
     .collect();
   for (const room of hostedRooms) await deleteRoom(ctx, room._id);
 
-  await deleteUserOwnedRows(ctx, userId);
+  await deleteUserStatsAndMemberships(ctx, userId);
   const guesses = await ctx.db
     .query("gameGuesses")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
   for (const row of guesses) await ctx.db.delete("gameGuesses", row._id);
-  const stats = await ctx.db
-    .query("userAchievementStats")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
-  if (stats !== null) await ctx.db.delete("userAchievementStats", stats._id);
 
   const requests = await ctx.db
     .query("pendingRequests")
