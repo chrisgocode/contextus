@@ -72,6 +72,16 @@ test("a duplicate Guess and a win record their Game outcomes once", async () => 
     gameId,
     turn: { kind: "guess", lemma: "persimmon", distance: 0 },
   });
+  // Leaving after the win must not change the Game's member count.
+  await t.run(async (ctx) => {
+    const members = await ctx.db
+      .query("roomMembers")
+      .withIndex("by_user", (q) => q.eq("userId", other))
+      .collect();
+    for (const member of members) {
+      await ctx.db.patch("roomMembers", member._id, { active: false });
+    }
+  });
   vi.runAllTimers();
   await t.finishInProgressScheduledFunctions();
   vi.useRealTimers();
@@ -84,7 +94,12 @@ test("a duplicate Guess and a win record their Game outcomes once", async () => 
   ]);
   expect(capture.mock.calls[1][1]).toMatchObject({
     distinctId: other,
-    properties: { lemma: "orange", distance: 42, duplicate: true },
+    properties: {
+      lemma: "orange",
+      distance: 42,
+      duplicate: true,
+      source: "guess",
+    },
   });
   expect(capture.mock.calls[3][1]).toMatchObject({
     distinctId: other,
@@ -129,6 +144,9 @@ test("approved hint and give-up requests record the committed outcomes", async (
     "request_approved",
     "game_given_up",
   ]);
+  expect(capture.mock.calls[0][1]).toMatchObject({
+    properties: { lemma: "orange", duplicate: false, source: "hint" },
+  });
   expect(capture.mock.calls[1][1]).toMatchObject({
     distinctId: host,
     properties: { game_id: gameId, source: "request" },

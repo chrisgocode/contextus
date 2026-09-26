@@ -198,6 +198,7 @@ async function applyScoredLemma(
         lemma: event.lemma,
         distance: event.distance,
         duplicate: true,
+        source: event.source,
       },
     });
     return { status: "duplicate", won: false, unlockedAchievementIds: [] };
@@ -232,6 +233,7 @@ async function applyScoredLemma(
       lemma: event.lemma,
       distance: event.distance,
       duplicate: false,
+      source: event.source,
     },
   });
   if (decision.won) {
@@ -277,13 +279,19 @@ async function scheduleGameOutcome(
   endedAt: number,
 ) {
   if (!analyticsEnabled()) return;
+  // Counted here, not in the action, so later joins and leaves don't skew it.
+  // Capped like playAgain's Room size limit; 101 means "over 100".
+  const members = await ctx.db
+    .query("roomMembers")
+    .withIndex("by_room_user", (q) => q.eq("roomId", game.roomId))
+    .take(101);
   try {
     await ctx.scheduler.runAfter(0, internal.turns._trackGameOutcome, {
       gameId: game._id,
-      roomId: game.roomId,
       userId,
       event,
       durationMs: Math.max(0, endedAt - game.startedAt),
+      memberCount: members.filter((member) => member.active !== false).length,
     });
   } catch (error) {
     console.warn("Game outcome analytics could not be scheduled", error);
@@ -291,35 +299,15 @@ async function scheduleGameOutcome(
 }
 
 export const _outcomeCounts = internalQuery({
-  args: {
-    gameId: v.id("games"),
-    roomId: v.id("rooms"),
-    kind: v.union(v.literal("guesses"), v.literal("members")),
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, { gameId, roomId, kind, paginationOpts }) => {
-    if (kind === "guesses") {
-      const page = await ctx.db
-        .query("gameGuesses")
-        .withIndex("by_game_created", (q) => q.eq("gameId", gameId))
-        .paginate(paginationOpts);
-      return {
-        guessCount: page.page.filter((guess) => guess.source === "guess")
-          .length,
-        hintCount: page.page.filter((guess) => guess.source === "hint").length,
-        memberCount: 0,
-        isDone: page.isDone,
-        continueCursor: page.continueCursor,
-      };
-    }
+  args: { gameId: v.id("games"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { gameId, paginationOpts }) => {
     const page = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+      .query("gameGuesses")
+      .withIndex("by_game_created", (q) => q.eq("gameId", gameId))
       .paginate(paginationOpts);
     return {
-      guessCount: 0,
-      hintCount: 0,
-      memberCount: page.page.filter((member) => member.active !== false).length,
+      guessCount: page.page.filter((guess) => guess.source === "guess").length,
+      hintCount: page.page.filter((guess) => guess.source === "hint").length,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
     };
@@ -329,36 +317,29 @@ export const _outcomeCounts = internalQuery({
 export const _trackGameOutcome = internalAction({
   args: {
     gameId: v.id("games"),
-    roomId: v.id("rooms"),
     userId: v.id("users"),
     event: v.union(v.literal("game_won"), v.literal("game_given_up")),
     durationMs: v.number(),
+    memberCount: v.number(),
   },
-  handler: async (ctx, { gameId, roomId, userId, event, durationMs }) => {
+  handler: async (ctx, { gameId, userId, event, durationMs, memberCount }) => {
     let guessCount = 0;
     let hintCount = 0;
-    let memberCount = 0;
-    for (const kind of ["guesses", "members"] as const) {
-      let cursor: string | null = null;
-      while (true) {
-        const page: {
-          guessCount: number;
-          hintCount: number;
-          memberCount: number;
-          isDone: boolean;
-          continueCursor: string;
-        } = await ctx.runQuery(internal.turns._outcomeCounts, {
-          gameId,
-          roomId,
-          kind,
-          paginationOpts: { cursor, numItems: 1000 },
-        });
-        guessCount += page.guessCount;
-        hintCount += page.hintCount;
-        memberCount += page.memberCount;
-        if (page.isDone) break;
-        cursor = page.continueCursor;
-      }
+    let cursor: string | null = null;
+    while (true) {
+      const page: {
+        guessCount: number;
+        hintCount: number;
+        isDone: boolean;
+        continueCursor: string;
+      } = await ctx.runQuery(internal.turns._outcomeCounts, {
+        gameId,
+        paginationOpts: { cursor, numItems: 1000 },
+      });
+      guessCount += page.guessCount;
+      hintCount += page.hintCount;
+      if (page.isDone) break;
+      cursor = page.continueCursor;
     }
     await track(ctx, userId, {
       name: event,
