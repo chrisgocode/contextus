@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
+import { renderToString } from "react-dom/server";
 import Home from "@/app/(app)/(home)/page";
 import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
@@ -47,7 +48,19 @@ beforeEach(() => {
 });
 
 describe("Home", () => {
-  it("creates and joins rooms as a guest", async () => {
+  it("server-renders Create and Join before auth resolves", () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+
+    const html = renderToString(<Home />);
+
+    expect(html).toContain("Start a new room");
+    expect(html).toContain("Join a room");
+  });
+
+  it("creates a room as a guest", async () => {
     mocks.create.mockResolvedValue({ code: "ABCDEF" });
     const user = userEvent.setup();
     render(<Home />);
@@ -56,10 +69,49 @@ describe("Home", () => {
     await waitFor(() => expect(mocks.signIn).toHaveBeenCalledWith("anonymous"));
     expect(mocks.create).toHaveBeenCalledWith({});
     expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF");
+  });
+
+  it.each([
+    { isAuthenticated: true, signsIn: false },
+    { isAuthenticated: false, signsIn: true },
+  ])(
+    "waits for auth before creating a room (authenticated: $isAuthenticated)",
+    async ({ isAuthenticated, signsIn }) => {
+      mocks.useConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: true,
+      });
+      mocks.create.mockResolvedValue({ code: "ABCDEF" });
+      const user = userEvent.setup();
+      const { rerender } = render(<Home />);
+
+      await user.click(screen.getByRole("button", { name: "Create room" }));
+      expect(mocks.signIn).not.toHaveBeenCalled();
+      expect(mocks.create).not.toHaveBeenCalled();
+
+      mocks.useConvexAuth.mockReturnValue({
+        isAuthenticated,
+        isLoading: false,
+      });
+      rerender(<Home />);
+
+      await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF"));
+      expect(mocks.signIn).toHaveBeenCalledTimes(signsIn ? 1 : 0);
+      expect(mocks.create).toHaveBeenCalledWith({});
+    },
+  );
+
+  it("opens the room page to join, even before auth resolves", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+    const user = userEvent.setup();
+    render(<Home />);
 
     await user.type(screen.getByPlaceholderText("ABCDEF"), " ab12 ");
-    await user.click(screen.getByRole("button", { name: "Join as guest" }));
-    expect(mocks.join).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Join" }));
+
     expect(mocks.push).toHaveBeenCalledWith("/r/AB12");
   });
 
@@ -115,53 +167,5 @@ describe("Home", () => {
     await user.click(screen.getByRole("button", { name: "Play Contextus" }));
     expect(mocks.playAgain).toHaveBeenCalledWith({ roomId: "old-room" });
     expect(mocks.push).toHaveBeenCalledWith("/r/NEWONE");
-  });
-
-  it("keeps failed registered joins actionable and reports the failure", async () => {
-    mocks.useConvexAuth.mockReturnValue({
-      isAuthenticated: true,
-      isLoading: false,
-    });
-    mocks.useQuery.mockImplementation((reference) => {
-      const name = getFunctionName(reference);
-      if (name === "users:getUser") return { isAnonymous: true };
-      if (name === "rooms:listMine") return [];
-      throw new Error(`Unexpected query: ${name}`);
-    });
-    mocks.join.mockRejectedValue(new Error("missing"));
-    const user = userEvent.setup();
-    render(<Home />);
-
-    await user.type(screen.getByPlaceholderText("ABCDEF"), "missing");
-    await user.click(screen.getByRole("button", { name: "Join" }));
-
-    expect(
-      await screen.findByText(
-        "Could not join room. Check the code and try again.",
-      ),
-    ).toBeVisible();
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ context: "room.join" }),
-    );
-  });
-
-  it("shows a mistyped room code", async () => {
-    mocks.useConvexAuth.mockReturnValue({
-      isAuthenticated: true,
-      isLoading: false,
-    });
-    mocks.useQuery.mockImplementation((reference) => {
-      const name = getFunctionName(reference);
-      if (name === "users:getUser") return { isAnonymous: true };
-      if (name === "rooms:listMine") return [];
-      throw new Error(`Unexpected query: ${name}`);
-    });
-    mocks.join.mockRejectedValue({ data: "Room not found" });
-    const user = userEvent.setup();
-    render(<Home />);
-    await user.type(screen.getByPlaceholderText("ABCDEF"), "missing");
-    await user.click(screen.getByRole("button", { name: "Join" }));
-    expect(await screen.findByText("Room not found.")).toBeVisible();
   });
 });

@@ -112,7 +112,6 @@ describe("reportClientError", () => {
       "giveup request already pending",
       "Give-up request already pending.",
     ],
-    ["room.join", "Room not found", "Room not found."],
     ["room.autojoin", "Room not found", "Room not found."],
     ["game.start", "Room not found", "Room not found."],
     [

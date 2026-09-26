@@ -10,7 +10,7 @@ test("creates a room as a guest", async ({ page }) => {
 test("shows an error for an unknown room code", async ({ page }) => {
   await page.goto("/");
   await page.getByPlaceholder("ABCDEF").fill("IIIIII");
-  await page.getByRole("button", { name: "Join as guest" }).click();
+  await page.getByRole("button", { name: "Join", exact: true }).click();
 
   await expect(page).toHaveURL("/r/IIIIII");
   await expect(page.getByText("Room not found.")).toBeVisible();

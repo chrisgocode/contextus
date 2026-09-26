@@ -4,7 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Avatar,
@@ -16,12 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
-import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
+import { getErrorData } from "@/lib/client-errors";
+import { roomPath } from "@/lib/room-code";
 import { reportClientError } from "@/lib/report-error";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
-  const { isLoading, isAuthenticated } = useConvexAuth();
+  const { isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const [openingRoom, setOpeningRoom] = useState(false);
   const currentUser = useQuery(
@@ -60,35 +61,43 @@ export default function Home() {
       document.body,
     );
 
-  if (isLoading || (isAuthenticated && currentUser === undefined)) {
-    return (
-      <>
-        {loadingOverlay}
-        {header}
-        <HomeIntro />
-        <HomeContentSkeleton />
-      </>
-    );
-  }
-
+  // Create and Join render before auth resolves so they are in the SSR HTML.
+  // Auth-dependent sections come after them, so their late appearance
+  // doesn't shift the cards.
   return (
     <>
       {loadingOverlay}
       <div inert={openingRoom} className="contents">
         {header}
         <HomeIntro />
+        <CreateRoom onOpeningChange={setOpeningRoom} />
+        <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
-        <CreateRoom
-          isAuthenticated={isAuthenticated}
-          onOpeningChange={setOpeningRoom}
-        />
-        <JoinRoom
-          isAuthenticated={isAuthenticated}
-          onOpeningChange={setOpeningRoom}
-        />
       </div>
     </>
+  );
+}
+
+/**
+ * Returns a function that resolves with `isAuthenticated` once Convex auth
+ * has finished loading, so actions clicked early take the right path.
+ */
+function useSettledAuth() {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const settled = useRef<boolean | null>(null);
+  const waiters = useRef<((isAuthenticated: boolean) => void)[]>([]);
+  useEffect(() => {
+    settled.current = isLoading ? null : isAuthenticated;
+    if (isLoading) return;
+    for (const resolve of waiters.current.splice(0)) resolve(isAuthenticated);
+  }, [isLoading, isAuthenticated]);
+  return useCallback(
+    () =>
+      settled.current !== null
+        ? Promise.resolve(settled.current)
+        : new Promise<boolean>((resolve) => waiters.current.push(resolve)),
+    [],
   );
 }
 
@@ -113,24 +122,14 @@ function HomeIntro() {
   );
 }
 
-function HomeContentSkeleton() {
-  return (
-    <>
-      <div className="h-32 w-full rounded-lg border" />
-      <div className="h-28 w-full rounded-lg border" />
-    </>
-  );
-}
-
 function CreateRoom({
-  isAuthenticated,
   onOpeningChange,
 }: {
-  isAuthenticated: boolean;
   onOpeningChange: (opening: boolean) => void;
 }) {
   const router = useRouter();
   const { signIn } = useAuthActions();
+  const settledAuth = useSettledAuth();
   const create = useMutation(api.rooms.create);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +146,7 @@ function CreateRoom({
           setBusy(true);
           onOpeningChange(true);
           try {
-            if (!isAuthenticated) await signIn("anonymous");
+            if (!(await settledAuth())) await signIn("anonymous");
             const { code } = await create({});
             router.push(`/r/${code}`);
           } catch (err) {
@@ -185,57 +184,30 @@ function CreateRoom({
   );
 }
 
+// Joining is only navigation: the room page joins signed-in users and offers
+// guests "Join as guest", so this form doesn't need auth state. The GET
+// action to /join makes it work before hydration too.
 function JoinRoom({
-  isAuthenticated,
   onOpeningChange,
 }: {
-  isAuthenticated: boolean;
   onOpeningChange: (opening: boolean) => void;
 }) {
   const router = useRouter();
-  const join = useMutation(api.rooms.join);
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   return (
     <section className="rounded-lg border p-6 flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Join a room</h2>
       <form
+        action="/join"
         className="flex gap-2"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
-          setError(null);
-          setBusy(true);
           onOpeningChange(true);
-          try {
-            const normalized = code.toUpperCase().trim();
-            if (!isAuthenticated) {
-              router.push(`/r/${normalized}`);
-              return;
-            }
-            await join({ code: normalized });
-            router.push(`/r/${normalized}`);
-          } catch (err) {
-            onOpeningChange(false);
-            const isRoomLimit =
-              getErrorData(err) === "Guest room limit reached";
-            const message = isRoomLimit
-              ? "Guest room limit reached"
-              : (expectedClientErrorMessage(err, "room.join") ??
-                "Could not join room. Check the code and try again.");
-            setError(message);
-            if (!isRoomLimit) {
-              reportClientError(err, {
-                userMessage: message,
-                context: "room.join",
-              });
-            }
-          } finally {
-            setBusy(false);
-          }
+          router.push(roomPath(code));
         }}
       >
         <Input
+          name="code"
           placeholder="ABCDEF"
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -243,20 +215,10 @@ function JoinRoom({
           autoCapitalize="characters"
           className="uppercase"
         />
-        <Button type="submit" disabled={busy || code.length === 0}>
-          {busy ? "Joining…" : isAuthenticated ? "Join" : "Join as guest"}
+        <Button type="submit" disabled={code.trim().length === 0}>
+          Join
         </Button>
       </form>
-      {error === "Guest room limit reached" ? (
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>Create an account to host or join more active rooms.</p>
-          <Button variant="outline" onClick={() => router.push("/signin")}>
-            Create account
-          </Button>
-        </div>
-      ) : error ? (
-        <p className="text-sm text-rose-400">{error}</p>
-      ) : null}
     </section>
   );
 }

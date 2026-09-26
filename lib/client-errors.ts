@@ -40,9 +40,7 @@ export function expectedClientErrorMessage(
   if (context === "request.giveup" && data === "giveup request already pending")
     return "Give-up request already pending.";
   if (
-    (context === "room.join" ||
-      context === "room.autojoin" ||
-      context === "game.start") &&
+    (context === "room.autojoin" || context === "game.start") &&
     data === "Room not found"
   )
     return "Room not found.";
