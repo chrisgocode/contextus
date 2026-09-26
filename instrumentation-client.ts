@@ -23,6 +23,7 @@ if (posthogEnvironment && posthogToken) {
             process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
           defaults: "2026-01-30",
           capture_pageview: "history_change",
+          capture_pageleave: false,
           autocapture: false,
           capture_dead_clicks: false,
           rageclick: false,

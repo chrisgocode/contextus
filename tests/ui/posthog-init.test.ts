@@ -27,6 +27,7 @@ it("waits until idle and captures pageviews without interaction telemetry", asyn
     "test-token",
     expect.objectContaining({
       capture_pageview: "history_change",
+      capture_pageleave: false,
       autocapture: false,
       capture_dead_clicks: false,
       rageclick: false,
