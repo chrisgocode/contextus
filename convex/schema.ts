@@ -80,6 +80,34 @@ export default defineSchema({
     attemptsLeft: v.number(),
   }).index("identifier", ["identifier"]),
 
+  // In-flight guest-to-account merge. Rows are moved in bounded batches
+  // outside the sign-in transaction; the row is deleted once the guest is.
+  guestMerges: defineTable({
+    guestUserId: v.id("users"),
+    targetUserId: v.id("users"),
+    phase: v.union(
+      v.literal("hostedRooms"),
+      v.literal("memberships"),
+      v.literal("guesses"),
+      v.literal("requests"),
+      v.literal("wins"),
+      v.literal("history"),
+      v.literal("achievements"),
+      v.literal("achievementProgress"),
+      v.literal("solveDays"),
+      v.literal("gamePlayerStats"),
+      v.literal("streak"),
+      v.literal("finalize"),
+    ),
+    // Puzzles both sides solved, so combined uniqueSolves counts them once.
+    overlappingSolves: v.number(),
+    // Longest-streak scan over the account's solve days, resumed after
+    // `streakLastDay`.
+    streakLastDay: v.optional(v.string()),
+    streakRun: v.number(),
+    streakBest: v.number(),
+  }).index("by_guest_user", ["guestUserId"]),
+
   rooms: defineTable({
     code: v.string(),
     hostUserId: v.id("users"),

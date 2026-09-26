@@ -327,25 +327,6 @@ test("room activity backfill inserts only missing activity rows", async () => {
   ).resolves.toEqual({ inserted: 0, scanned: 1 });
 });
 
-test("merged guest cleanup ignores missing and registered users", async () => {
-  const t = setupTest();
-  const registered = await seedUser(t, { isAnonymous: false });
-  const missing = await seedUser(t, { isAnonymous: true });
-  await t.run(async (ctx) => ctx.db.delete("users", missing));
-
-  await expect(
-    t.mutation(internal.cleanup.removeMergedGuest, {
-      guestUserId: registered,
-    }),
-  ).resolves.toBeNull();
-  await expect(
-    t.mutation(internal.cleanup.removeMergedGuest, { guestUserId: missing }),
-  ).resolves.toBeNull();
-  await expect(
-    t.run(async (ctx) => ctx.db.get("users", registered)),
-  ).resolves.not.toBeNull();
-});
-
 test("expired guest cleanup removes private progress and keeps anonymized guesses", async () => {
   const t = setupTest();
   const guest = await seedUser(t, {

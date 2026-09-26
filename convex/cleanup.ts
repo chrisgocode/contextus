@@ -90,17 +90,6 @@ export const _backfillRoomActivity = internalMutation({
   },
 });
 
-export const removeMergedGuest = internalMutation({
-  args: { guestUserId: v.id("users") },
-  handler: async (ctx, { guestUserId }) => {
-    const guest = await ctx.db.get("users", guestUserId);
-    if (guest?.isAnonymous !== true) return null;
-    await deleteUserAuthData(ctx, guestUserId);
-    await ctx.db.delete("users", guestUserId);
-    return null;
-  },
-});
-
 export const removeExpiredGuests = internalMutation({
   args: { now: v.optional(v.number()) },
   handler: async (ctx, args) => {
