@@ -67,7 +67,7 @@ export type AnalyticsEvent = {
   };
 }[keyof EventCatalog];
 
-function enabled() {
+export function analyticsEnabled() {
   return (
     env.POSTHOG_PROJECT_TOKEN &&
     env.POSTHOG_PROJECT_TOKEN !== "disabled" &&
@@ -82,7 +82,7 @@ export async function track(
   distinctId: Id<"users">,
   event: AnalyticsEvent,
 ) {
-  if (!enabled()) return;
+  if (!analyticsEnabled()) return;
   try {
     await posthog.capture(ctx, {
       distinctId,
@@ -105,7 +105,7 @@ export async function mergeGuestIdentity(
   guestUserId: Id<"users">,
   accountUserId: Id<"users">,
 ) {
-  if (!enabled()) return;
+  if (!analyticsEnabled()) return;
   try {
     await posthog.capture(ctx, {
       distinctId: accountUserId,
