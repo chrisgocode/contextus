@@ -23,6 +23,8 @@ type EventCatalog = {
     lemma: string;
     distance: number;
     duplicate: boolean;
+    // Hints are Guesses too; game outcome guess_count covers only "guess".
+    source: "guess" | "hint";
   };
   hint_given: { game_id: Id<"games">; source: "host" | "request" };
   game_won: {
