@@ -9,6 +9,7 @@
 import type * as SentrySdk from "@sentry/nextjs";
 import { sentryEnabled } from "@/lib/sentry";
 import { loadSentry } from "@/lib/sentry-client";
+import { markPosthogReady } from "@/lib/posthog-client";
 
 const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const posthogEnvironment = process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT;
@@ -19,8 +20,8 @@ if (posthogEnvironment && posthogToken) {
     void import("posthog-js")
       .then(({ default: posthog }) => {
         posthog.init(posthogToken, {
-          api_host:
-            process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+          api_host: "/ingest",
+          ui_host: "https://us.posthog.com",
           defaults: "2026-01-30",
           capture_pageview: "history_change",
           autocapture: false,
@@ -31,6 +32,7 @@ if (posthogEnvironment && posthogToken) {
         });
         // Tag browser events like server events so previews can be filtered.
         posthog.register({ deployment_environment: posthogEnvironment });
+        markPosthogReady(posthog);
       })
       // Analytics is best-effort and must never break the page.
       .catch(() => {});
