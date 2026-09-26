@@ -7,8 +7,9 @@ import * as Sentry from "@sentry/nextjs";
 Sentry.init({
   dsn: "https://85ede5126abf32a201118c5f021bb7e9@o4511398152437760.ingest.us.sentry.io/4511405904297984",
 
-  // Add optional integrations for additional features
-  integrations: [Sentry.replayIntegration()],
+  // Replay is added after page load (see below) so rrweb stays out of the
+  // main client bundle.
+  integrations: [],
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 0.1,
@@ -27,5 +28,22 @@ Sentry.init({
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
   sendDefaultPii: true,
 });
+
+// Fetch Replay from the Sentry CDN once the page has loaded, instead of
+// bundling it for every visitor. The sample rates above apply once it's added.
+// Errors thrown before then are still captured, just without a replay.
+function loadReplay() {
+  Sentry.lazyLoadIntegration("replayIntegration")
+    .then((replayIntegration) => Sentry.addIntegration(replayIntegration()))
+    .catch(() => {
+      // Replay is best-effort; ad blockers may block the CDN script.
+    });
+}
+
+if (document.readyState === "complete") {
+  loadReplay();
+} else {
+  window.addEventListener("load", loadReplay, { once: true });
+}
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
