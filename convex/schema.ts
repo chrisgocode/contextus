@@ -106,7 +106,9 @@ export default defineSchema({
     streakLastDay: v.optional(v.string()),
     streakRun: v.number(),
     streakBest: v.number(),
-  }).index("by_guest_user", ["guestUserId"]),
+  })
+    .index("by_guest_user", ["guestUserId"])
+    .index("by_target_user", ["targetUserId"]),
 
   rooms: defineTable({
     code: v.string(),
