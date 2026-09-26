@@ -26,6 +26,7 @@ it("waits until idle and captures pageviews without interaction telemetry", asyn
   expect(init).toHaveBeenCalledWith(
     "test-token",
     expect.objectContaining({
+      api_host: "/ingest",
       capture_pageview: "history_change",
       autocapture: false,
       capture_dead_clicks: false,
