@@ -1,29 +1,49 @@
-import { expect, test } from "vitest";
-import { mergeCurrentGuestIntoUser } from "../lib/guestMerge";
+import { expect, test, vi } from "vitest";
+import type { Id } from "../_generated/dataModel";
+import { GUEST_MERGE_BATCH_SIZE, startGuestMerge } from "../lib/guestMerge";
 import {
   asUser,
   asUserWithSession,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 
-test("mergeCurrentGuestIntoUser ignores sessions that cannot be merged", async () => {
+async function mergeGuest(
+  t: ReturnType<typeof setupTest>,
+  guest: Id<"users">,
+  target: Id<"users">,
+) {
+  const guestSession = await asUserWithSession(t, guest);
+  await guestSession.run(async (ctx) => startGuestMerge(ctx, target));
+  await finishMerge(t);
+}
+
+async function finishMerge(t: ReturnType<typeof setupTest>) {
+  vi.useFakeTimers();
+  try {
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+test("startGuestMerge ignores sessions that cannot be merged", async () => {
   const t = setupTest();
   const registered = await seedUser(t, { isAnonymous: false });
   const target = await seedUser(t);
 
   await expect(
-    t.run(async (ctx) => mergeCurrentGuestIntoUser(ctx, target)),
+    t.run(async (ctx) => startGuestMerge(ctx, target)),
   ).resolves.toBeNull();
   await expect(
     (await asUserWithSession(t, target)).run(async (ctx) =>
-      mergeCurrentGuestIntoUser(ctx, target),
+      startGuestMerge(ctx, target),
     ),
   ).resolves.toBeNull();
   await expect(
     (await asUserWithSession(t, registered)).run(async (ctx) =>
-      mergeCurrentGuestIntoUser(ctx, target),
+      startGuestMerge(ctx, target),
     ),
   ).resolves.toBeNull();
 
@@ -32,12 +52,12 @@ test("mergeCurrentGuestIntoUser ignores sessions that cannot be merged", async (
   await t.run(async (ctx) => ctx.db.delete("users", missingTarget));
   await expect(
     (await asUserWithSession(t, guest)).run(async (ctx) =>
-      mergeCurrentGuestIntoUser(ctx, missingTarget),
+      startGuestMerge(ctx, missingTarget),
     ),
   ).resolves.toBeNull();
 });
 
-test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered user", async () => {
+test("guest merge moves guest room and progress rows to registered user", async () => {
   const t = setupTest();
   const host = await seedUser(t);
   const guest = await seedUser(t, { isAnonymous: true });
@@ -84,10 +104,7 @@ test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered
     });
   });
 
-  const guestSession = await asUserWithSession(t, guest);
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const result = await t.run(async (ctx) => {
     const members = await ctx.db
@@ -154,22 +171,19 @@ test("mergeCurrentGuestIntoUser moves guest room and progress rows to registered
   });
 });
 
-test("mergeCurrentGuestIntoUser transfers guest-hosted rooms", async () => {
+test("guest merge transfers guest-hosted rooms", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const target = await seedUser(t);
   const { roomId } = await asUser(t, guest).mutation(api.rooms.create, {});
-  const guestSession = await asUserWithSession(t, guest);
 
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.hostUserId).toBe(target);
 });
 
-test("mergeCurrentGuestIntoUser deduplicates overlapping pending requests", async () => {
+test("guest merge deduplicates overlapping pending requests", async () => {
   const t = setupTest();
   const host = await seedUser(t);
   const guest = await seedUser(t, { isAnonymous: true });
@@ -189,11 +203,8 @@ test("mergeCurrentGuestIntoUser deduplicates overlapping pending requests", asyn
     gameId,
     type: "hint",
   });
-  const guestSession = await asUserWithSession(t, guest);
 
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const requests = await asUser(t, host).query(api.requests.listPending, {
     gameId,
@@ -201,7 +212,7 @@ test("mergeCurrentGuestIntoUser deduplicates overlapping pending requests", asyn
   expect(requests).toHaveLength(1);
 });
 
-test("mergeCurrentGuestIntoUser unlocks achievements crossed by combined progress", async () => {
+test("guest merge unlocks achievements crossed by combined progress", async () => {
   const t = setupTest();
   const host = await seedUser(t);
   const guest = await seedUser(t, { isAnonymous: true });
@@ -243,11 +254,8 @@ test("mergeCurrentGuestIntoUser unlocks achievements crossed by combined progres
       });
     }
   });
-  const guestSession = await asUserWithSession(t, guest);
 
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const profile = await asUser(t, target).query(
     api.achievements.listForProfile,
@@ -261,7 +269,7 @@ test("mergeCurrentGuestIntoUser unlocks achievements crossed by combined progres
   expect(achievement?.unlocked).toBe(true);
 });
 
-test("merged guest identities can be removed after auth switches sessions", async () => {
+test("guest merge removes the guest identity once transfer finishes", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const target = await seedUser(t);
@@ -272,21 +280,17 @@ test("merged guest identities can be removed after auth switches sessions", asyn
       providerAccountId: "guest-account",
     }),
   );
-  const guestSession = await asUserWithSession(t, guest);
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
-
-  await t.mutation(internal.cleanup.removeMergedGuest, { guestUserId: guest });
+  await mergeGuest(t, guest, target);
 
   const result = await t.run(async (ctx) => ({
     guest: await ctx.db.get("users", guest),
     account: await ctx.db.get("authAccounts", accountId),
+    jobs: await ctx.db.query("guestMerges").take(1),
   }));
-  expect(result).toEqual({ guest: null, account: null });
+  expect(result).toEqual({ guest: null, account: null, jobs: [] });
 });
 
-test("mergeCurrentGuestIntoUser counts overlapping puzzle solves once", async () => {
+test("guest merge counts overlapping puzzle solves once", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const target = await seedUser(t, {
@@ -320,10 +324,7 @@ test("mergeCurrentGuestIntoUser counts overlapping puzzle solves once", async ()
       });
     }
   });
-  const guestSession = await asUserWithSession(t, guest);
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const profile = await asUser(t, target).query(
     api.achievements.listForProfile,
@@ -340,7 +341,7 @@ test("mergeCurrentGuestIntoUser counts overlapping puzzle solves once", async ()
   });
 });
 
-test("mergeCurrentGuestIntoUser clamps inconsistent unique solve totals to zero", async () => {
+test("guest merge clamps inconsistent unique solve totals to zero", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const target = await seedUser(t);
@@ -361,10 +362,7 @@ test("mergeCurrentGuestIntoUser clamps inconsistent unique solve totals to zero"
       });
     }
   });
-  const guestSession = await asUserWithSession(t, guest);
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const stats = await t.run(async (ctx) =>
     ctx.db
@@ -375,7 +373,7 @@ test("mergeCurrentGuestIntoUser clamps inconsistent unique solve totals to zero"
   expect(stats?.uniqueSolves).toBe(0);
 });
 
-test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game stats", async () => {
+test("guest merge preserves guest-only progress and combines game stats", async () => {
   const t = setupTest();
   const host = await seedUser(t);
   const guest = await seedUser(t, { isAnonymous: true });
@@ -457,11 +455,7 @@ test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game 
     });
   });
 
-  await (
-    await asUserWithSession(t, guest)
-  ).run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const result = await t.run(async (ctx) => ({
     history: await ctx.db
@@ -509,7 +503,7 @@ test("mergeCurrentGuestIntoUser preserves guest-only progress and combines game 
   );
 });
 
-test("mergeCurrentGuestIntoUser combines interleaved solve days into one streak", async () => {
+test("guest merge combines interleaved solve days into one streak", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
   const target = await seedUser(t, {
@@ -524,11 +518,8 @@ test("mergeCurrentGuestIntoUser combines interleaved solve days into one streak"
       await ctx.db.insert("userSolveDays", { userId: target, dayKey });
     }
   });
-  const guestSession = await asUserWithSession(t, guest);
 
-  await guestSession.run(async (ctx) => {
-    await mergeCurrentGuestIntoUser(ctx, target);
-  });
+  await mergeGuest(t, guest, target);
 
   const profile = await asUser(t, target).query(
     api.achievements.listForProfile,
@@ -549,4 +540,201 @@ test("mergeCurrentGuestIntoUser combines interleaved solve days into one streak"
     "2026-03-02",
     "2026-03-03",
   ]);
+});
+
+test("guest merge transfers more rows than fit in one batch", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  const rowCount = GUEST_MERGE_BATCH_SIZE * 2 + 1;
+  const sharedCount = GUEST_MERGE_BATCH_SIZE + 1;
+  const gameIds = await t.run(async (ctx) => {
+    const ids: Id<"games">[] = [];
+    for (let i = 0; i < rowCount; i++) {
+      ids.push(
+        await ctx.db.insert("games", {
+          roomId,
+          contextoGameId: i,
+          status: "won",
+          startedAt: i,
+          endedAt: i,
+        }),
+      );
+    }
+    return ids;
+  });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < rowCount; i++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId: gameIds[i],
+        userId: guest,
+        lemma: `word${i}`,
+        distance: 500,
+        source: "guess",
+        createdAt: i,
+      });
+      await ctx.db.insert("userGameHistory", {
+        userId: guest,
+        contextoGameId: i,
+        firstPlayedAt: i,
+        firstSolvedAt: i,
+      });
+      await ctx.db.insert("gamePlayerStats", {
+        gameId: gameIds[i],
+        userId: guest,
+        realGuessCount: 1,
+        bestDistance: 500,
+        lastDistance: 500,
+        noBacktrackingSoFar: true,
+        updatedAt: i,
+      });
+    }
+    for (let i = 0; i < sharedCount; i++) {
+      await ctx.db.insert("userGameHistory", {
+        userId: target,
+        contextoGameId: i,
+        firstPlayedAt: i,
+        firstSolvedAt: i,
+      });
+      await ctx.db.insert("gamePlayerStats", {
+        gameId: gameIds[i],
+        userId: target,
+        realGuessCount: 2,
+        bestDistance: 500,
+        lastDistance: 500,
+        noBacktrackingSoFar: true,
+        updatedAt: i,
+      });
+    }
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 0,
+      yellowGuesses: rowCount,
+      greenGuesses: 0,
+      uniqueSolves: rowCount,
+    });
+    await ctx.db.insert("userAchievementStats", {
+      userId: target,
+      redGuesses: 0,
+      yellowGuesses: 0,
+      greenGuesses: 0,
+      uniqueSolves: sharedCount,
+    });
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const result = await t.run(async (ctx) => {
+    const byUser = async (userId: Id<"users">) => ({
+      guesses: (
+        await ctx.db
+          .query("gameGuesses")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .collect()
+      ).length,
+      history: (
+        await ctx.db
+          .query("userGameHistory")
+          .withIndex("by_user_game", (q) => q.eq("userId", userId))
+          .collect()
+      ).length,
+      playerStats: await ctx.db
+        .query("gamePlayerStats")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect(),
+    });
+    return {
+      guest: await byUser(guest),
+      target: await byUser(target),
+      stats: await ctx.db
+        .query("userAchievementStats")
+        .withIndex("by_user", (q) => q.eq("userId", target))
+        .unique(),
+      guestUser: await ctx.db.get("users", guest),
+    };
+  });
+
+  expect(result.guest).toEqual({ guesses: 0, history: 0, playerStats: [] });
+  expect(result.target.guesses).toBe(rowCount);
+  expect(result.target.history).toBe(rowCount);
+  expect(result.target.playerStats).toHaveLength(rowCount);
+  expect(
+    result.target.playerStats.reduce((sum, row) => sum + row.realGuessCount, 0),
+  ).toBe(rowCount + sharedCount * 2);
+  expect(result.stats).toMatchObject({
+    yellowGuesses: rowCount,
+    uniqueSolves: rowCount,
+  });
+  expect(result.guestUser).toBeNull();
+});
+
+test("repeated sign-in for a merging guest starts only one merge", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  const otherTarget = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (let contextoGameId = 1; contextoGameId <= 3; contextoGameId++) {
+      await ctx.db.insert("userGameHistory", {
+        userId: guest,
+        contextoGameId,
+        firstPlayedAt: contextoGameId,
+        firstSolvedAt: contextoGameId,
+      });
+    }
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 0,
+      yellowGuesses: 0,
+      greenGuesses: 0,
+      uniqueSolves: 3,
+    });
+  });
+  const guestSession = await asUserWithSession(t, guest);
+
+  const first = await guestSession.run(async (ctx) =>
+    startGuestMerge(ctx, target),
+  );
+  const retry = await guestSession.run(async (ctx) =>
+    startGuestMerge(ctx, target),
+  );
+  const elsewhere = await guestSession.run(async (ctx) =>
+    startGuestMerge(ctx, otherTarget),
+  );
+  const jobs = await t.run(async (ctx) =>
+    ctx.db.query("guestMerges").collect(),
+  );
+  await finishMerge(t);
+
+  expect(first).not.toBeNull();
+  expect(retry).toBeNull();
+  expect(elsewhere).toBeNull();
+  expect(jobs).toEqual([
+    expect.objectContaining({ guestUserId: guest, targetUserId: target }),
+  ]);
+  const result = await t.run(async (ctx) => ({
+    history: (
+      await ctx.db
+        .query("userGameHistory")
+        .withIndex("by_user_game", (q) => q.eq("userId", target))
+        .collect()
+    ).length,
+    otherHistory: (
+      await ctx.db
+        .query("userGameHistory")
+        .withIndex("by_user_game", (q) => q.eq("userId", otherTarget))
+        .collect()
+    ).length,
+    stats: await ctx.db
+      .query("userAchievementStats")
+      .withIndex("by_user", (q) => q.eq("userId", target))
+      .unique(),
+  }));
+  expect(result).toMatchObject({
+    history: 3,
+    otherHistory: 0,
+    stats: { uniqueSolves: 3 },
+  });
 });

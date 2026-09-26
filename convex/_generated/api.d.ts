@@ -19,6 +19,7 @@ import type * as e2eWordOracle from "../e2eWordOracle.js";
 import type * as games from "../games.js";
 import type * as giveup from "../giveup.js";
 import type * as guesses from "../guesses.js";
+import type * as guestMerge from "../guestMerge.js";
 import type * as hints from "../hints.js";
 import type * as http from "../http.js";
 import type * as lib_achievementRules from "../lib/achievementRules.js";
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   games: typeof games;
   giveup: typeof giveup;
   guesses: typeof guesses;
+  guestMerge: typeof guestMerge;
   hints: typeof hints;
   http: typeof http;
   "lib/achievementRules": typeof lib_achievementRules;

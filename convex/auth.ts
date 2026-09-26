@@ -2,14 +2,13 @@ import Google from "@auth/core/providers/google";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
-import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { env } from "./_generated/server";
 import {
   E2E_GUEST_LIFETIME_MS,
   GUEST_LIFETIME_MS,
 } from "./lib/guestEngagement";
-import { mergeCurrentGuestIntoUser } from "./lib/guestMerge";
+import { startGuestMerge } from "./lib/guestMerge";
 import { ensureUserHasUsername } from "./lib/usernames";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
@@ -27,15 +26,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   ],
   callbacks: {
     async beforeSessionCreation(ctx, { userId }) {
-      const mergedGuestUserId = await mergeCurrentGuestIntoUser(
-        ctx,
-        userId as Id<"users">,
-      );
-      if (mergedGuestUserId !== null) {
-        await ctx.scheduler.runAfter(0, internal.cleanup.removeMergedGuest, {
-          guestUserId: mergedGuestUserId,
-        });
-      }
+      await startGuestMerge(ctx, userId as Id<"users">);
       const user = await ctx.db.get("users", userId as Id<"users">);
       if (user?.isAnonymous === true) return;
       await ctx.db.patch("users", userId as Id<"users">, {
