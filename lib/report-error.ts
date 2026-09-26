@@ -1,6 +1,6 @@
-import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { expectedClientErrorMessage } from "./client-errors";
+import { captureException } from "./sentry-client";
 
 export function reportClientError(
   err: unknown,
@@ -13,7 +13,7 @@ export function reportClientError(
 ): void {
   const expectedMessage = expectedClientErrorMessage(err, opts.context);
   if (expectedMessage === null)
-    Sentry.captureException(err, {
+    captureException(err, {
       tags: { surface: opts.context ?? "unknown", ...opts.tags },
     });
   if (opts.showToast !== false)

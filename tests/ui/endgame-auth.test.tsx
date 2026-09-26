@@ -25,7 +25,7 @@ vi.mock("@convex-dev/auth/react", () => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
 }));
-vi.mock("@sentry/nextjs", () => ({
+vi.mock("@/lib/sentry-client", () => ({
   captureException: mocks.captureException,
 }));
 vi.mock("next/error", () => ({

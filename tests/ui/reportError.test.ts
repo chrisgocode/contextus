@@ -1,9 +1,9 @@
-import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { reportClientError } from "../../lib/report-error";
+import { captureException } from "../../lib/sentry-client";
 
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+vi.mock("../../lib/sentry-client", () => ({ captureException: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 describe("reportClientError", () => {
@@ -17,7 +17,7 @@ describe("reportClientError", () => {
       context: "inline",
       showToast: false,
     });
-    expect(Sentry.captureException).toHaveBeenCalledWith(error, {
+    expect(captureException).toHaveBeenCalledWith(error, {
       tags: { surface: "inline" },
     });
     expect(toast.error).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe("reportClientError", () => {
   ])("handles %s: %s", (context, data, message) => {
     const error = { data, message: "Server Error stack trace" };
     reportClientError(error, { context, userMessage: "Fallback" });
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(message);
   });
 
@@ -154,7 +154,7 @@ describe("reportClientError", () => {
   ])("still reports %s: %s", (context, data) => {
     const error = { data };
     reportClientError(error, { context, userMessage: "Fallback" });
-    expect(Sentry.captureException).toHaveBeenCalledOnce();
+    expect(captureException).toHaveBeenCalledOnce();
     expect(toast.error).toHaveBeenCalledWith("Fallback");
   });
 });
