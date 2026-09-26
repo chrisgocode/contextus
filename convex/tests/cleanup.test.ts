@@ -5,6 +5,7 @@ import type { Id } from "../_generated/dataModel";
 import {
   asUser,
   fakeWordOracle,
+  finishScheduledFunctions,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -464,12 +465,7 @@ test("expired guest stays eligible until all progress and auth rows are deleted"
   expect(await t.run(async (ctx) => ctx.db.get("users", guest))).toMatchObject({
     isAnonymous: true,
   });
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await finishScheduledFunctions(t);
   const remaining = await t.run(async (ctx) => ({
     user: await ctx.db.get("users", guest),
     history: await ctx.db.query("userGameHistory").collect(),
@@ -511,12 +507,7 @@ test("expired guests share a row budget and all eventually finish", async () => 
     Promise.all(guests.map((guest) => ctx.db.get("users", guest))),
   );
   expect(first.some((guest) => guest?.isAnonymous)).toBe(true);
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await finishScheduledFunctions(t);
   const result = await t.run(async (ctx) => ({
     users: await Promise.all(guests.map((guest) => ctx.db.get("users", guest))),
     history: await ctx.db.query("userGameHistory").collect(),

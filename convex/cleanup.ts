@@ -9,7 +9,7 @@ import { expireGuest } from "./lib/accountLifecycle";
 import { decideRoomCleanup } from "./lib/cleanup";
 import { onlineUserIdsForRoom } from "./presence";
 
-const GUEST_CLEANUP_ROW_BUDGET = 100;
+export const GUEST_CLEANUP_ROW_BUDGET = 100;
 
 export const _listActiveRoomIds = internalQuery({
   args: {},

@@ -34,7 +34,8 @@ async function getUserByUsername(ctx: Pick<QueryCtx, "db">, username: string) {
 export const getUser = query({
   args: { userId: v.optional(v.id("users")) },
   handler: async (ctx, { userId }) => {
-    const currentUserId = await requireUser(ctx);
+    const currentUserId = await getCurrentUserId(ctx);
+    if (currentUserId === null) return null;
     const requestedUserId = userId ?? currentUserId;
     const user = await ctx.db.get("users", requestedUserId);
     if (user === null) return null;
@@ -81,7 +82,8 @@ export const getByUsername = query({
 export const getGuestAccountPrompt = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUser(ctx);
+    const userId = await getCurrentUserId(ctx);
+    if (userId === null) return null;
     const user = await ctx.db.get("users", userId);
     if (user?.isAnonymous !== true) return null;
     const completedGames = user.guestCompletedGames ?? 0;
@@ -207,9 +209,11 @@ export const getActivityGraph = query({
   handler: async (ctx, { userId, username }) => {
     const requestedUserId =
       username === undefined
-        ? (userId ?? (await requireUser(ctx)))
+        ? (userId ?? (await getCurrentUserId(ctx)))
         : (await getUserByUsername(ctx, username.trim()))?._id;
-    if (requestedUserId === undefined) return null;
+    if (requestedUserId === undefined || requestedUserId === null) {
+      return null;
+    }
     const user = await ctx.db.get("users", requestedUserId);
     if (user === null) return null;
 

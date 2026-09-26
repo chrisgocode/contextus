@@ -2,9 +2,10 @@ import { expect, test, vi } from "vitest";
 import { ConvexError } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { requireRegisteredUser, requireUser } from "../access";
+import { GUEST_CLEANUP_ROW_BUDGET } from "../cleanup";
 import {
   asUser,
-  asUserWithSession,
+  finishScheduledFunctions,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -52,8 +53,8 @@ async function seedExpiredGuestWithAuthRows(
   const guest = await seedUser(t, {
     isAnonymous: true,
     guestExpiresAt: Date.now() - 1,
+    username: "guest1",
   });
-  const guestSession = await asUserWithSession(t, guest);
   await t.run(async (ctx) => {
     const accountId = await ctx.db.insert("authAccounts", {
       userId: guest,
@@ -69,22 +70,13 @@ async function seedExpiredGuestWithAuthRows(
       });
     }
   });
-  return { guest, guestSession };
-}
-
-async function finishScheduled(t: ReturnType<typeof setupTest>) {
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  return { guest, guestSession: asUser(t, guest) };
 }
 
 test("requireUser rejects a token whose session was deleted", async () => {
   const t = setupTest();
   const userId = await seedUser(t);
-  const session = await asUserWithSession(t, userId);
+  const session = asUser(t, userId);
   await t.run(async (ctx) => {
     for (const s of await ctx.db.query("authSessions").collect()) {
       await ctx.db.delete("authSessions", s._id);
@@ -115,40 +107,49 @@ test("requireUser rejects a token whose session belongs to another user", async 
 });
 
 test("guest token cannot write once expiry cleanup has started", async () => {
-  const t = setupTest();
-  const { guest, guestSession } = await seedExpiredGuestWithAuthRows(t, 120);
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    // More auth rows than one cleanup batch deletes, so the first batch
+    // stops before the guest's session.
+    const { guest, guestSession } = await seedExpiredGuestWithAuthRows(
+      t,
+      GUEST_CLEANUP_ROW_BUDGET + 1,
+    );
 
-  await t.mutation(internal.cleanup.removeExpiredGuests, {});
-  const midCleanup = await t.run(async (ctx) => ({
-    user: await ctx.db.get("users", guest),
-    sessions: await ctx.db
-      .query("authSessions")
-      .withIndex("userId", (q) => q.eq("userId", guest))
-      .collect(),
-  }));
-  expect(midCleanup.user).toMatchObject({
-    isAnonymous: true,
-    guestCleanupStarted: true,
-  });
-  expect(midCleanup.sessions).not.toEqual([]);
+    await t.mutation(internal.cleanup.removeExpiredGuests, {});
+    const midCleanup = await t.run(async (ctx) => ({
+      user: await ctx.db.get("users", guest),
+      sessions: await ctx.db
+        .query("authSessions")
+        .withIndex("userId", (q) => q.eq("userId", guest))
+        .collect(),
+    }));
+    expect(midCleanup.user).toMatchObject({
+      isAnonymous: true,
+      guestCleanupStarted: true,
+    });
+    expect(midCleanup.sessions).not.toEqual([]);
 
-  await expect(guestSession.mutation(api.rooms.create, {})).rejects.toThrow(
-    "Not authenticated",
-  );
-  await expect(
-    guestSession.mutation(api.users.setTimeZone, { timeZone: "UTC" }),
-  ).rejects.toThrow("Not authenticated");
+    await expect(guestSession.mutation(api.rooms.create, {})).rejects.toThrow(
+      "Not authenticated",
+    );
+    await expect(
+      guestSession.mutation(api.users.setTimeZone, { timeZone: "UTC" }),
+    ).rejects.toThrow("Not authenticated");
+    await expect(
+      guestSession.query(api.users.getByUsername, { username: "guest1" }),
+    ).resolves.toMatchObject({ isCurrentUser: false });
+    await expect(guestSession.query(api.users.getUser, {})).resolves.toBeNull();
 
-  await finishScheduled(t);
-  const after = await t.run(async (ctx) => ({
-    user: await ctx.db.get("users", guest),
-    rooms: await ctx.db.query("rooms").collect(),
-  }));
-  expect(after.user).toMatchObject({
-    name: "Former Guest",
-    isAnonymous: false,
-  });
-  expect(after.rooms).toEqual([]);
+    // The old token's calls don't stop the scheduled cleanup chain.
+    await finishScheduledFunctions(t);
+    expect(
+      await t.run(async (ctx) => ctx.db.get("users", guest)),
+    ).toMatchObject({ name: "Former Guest" });
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("old guest token cannot act as the Former Guest after cleanup", async () => {
@@ -156,11 +157,7 @@ test("old guest token cannot act as the Former Guest after cleanup", async () =>
   const { guest, guestSession } = await seedExpiredGuestWithAuthRows(t, 0);
 
   await t.mutation(internal.cleanup.removeExpiredGuests, {});
-  await finishScheduled(t);
-  expect(await t.run(async (ctx) => ctx.db.get("users", guest))).toMatchObject({
-    name: "Former Guest",
-    isAnonymous: false,
-  });
+  await finishScheduledFunctions(t);
 
   await expect(
     guestSession.mutation(api.users.updateProfile, {
@@ -171,8 +168,16 @@ test("old guest token cannot act as the Former Guest after cleanup", async () =>
   await expect(guestSession.mutation(api.rooms.create, {})).rejects.toThrow(
     "Not authenticated",
   );
+  await expect(guestSession.query(api.users.getUser, {})).resolves.toBeNull();
   await expect(
-    guestSession.query(api.users.getByUsername, { username: "nobody" }),
+    guestSession.query(api.games.listMyHistory, {}),
+  ).resolves.toEqual([]);
+  await expect(
+    guestSession.query(api.users.getActivityGraph, {}),
+  ).resolves.toBeNull();
+  await expect(guestSession.query(api.rooms.listMine, {})).resolves.toEqual([]);
+  await expect(
+    guestSession.query(api.users.getGuestAccountPrompt, {}),
   ).resolves.toBeNull();
   const user = await t.run(async (ctx) => ctx.db.get("users", guest));
   expect(user?.name).toBe("Former Guest");

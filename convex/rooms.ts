@@ -289,7 +289,8 @@ export const getByCode = query({
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUser(ctx);
+    const userId = await getCurrentUserId(ctx);
+    if (userId === null) return [];
     const memberships = await ctx.db
       .query("roomMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))

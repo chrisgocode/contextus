@@ -3,8 +3,8 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
+  getCurrentUserId,
   requireHostByRoom,
-  requireUser,
   tryMemberByGame,
   tryMemberByRoom,
 } from "./access";
@@ -95,7 +95,8 @@ export const getById = query({
 export const listMyHistory = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUser(ctx);
+    const userId = await getCurrentUserId(ctx);
+    if (userId === null) return [];
     const rows = await ctx.db
       .query("userGameHistory")
       .withIndex("by_user_game", (q) => q.eq("userId", userId))

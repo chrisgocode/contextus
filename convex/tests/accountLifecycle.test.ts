@@ -6,7 +6,12 @@ import type { MutationCtx } from "../_generated/server";
 import { USER_KEYED_TABLES } from "../lib/accountLifecycle";
 import { startGuestMerge } from "../lib/guestMerge";
 import schema from "../schema";
-import { asUserWithSession, seedUser, setupTest } from "../testHelpers.test";
+import {
+  asUser,
+  finishScheduledFunctions,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 
 type SeedCtx = Pick<MutationCtx, "db">;
 type Fixture = {
@@ -239,15 +244,10 @@ test("guest merge moves every app row to the account and deletes the guest", asy
     (p) => p.merge !== "removeWithGuest",
   ).map((p) => `${p.table}.${p.field}`);
   await seedEveryTable(t, guest, fixture, movedKeys);
-  const guestSession = await asUserWithSession(t, guest);
+  const guestSession = asUser(t, guest);
 
   await guestSession.run((ctx) => startGuestMerge(ctx, target));
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await finishScheduledFunctions(t);
 
   expect(await referenceCounts(t, guest)).toEqual(countsWhere(() => true, 0));
   const targetCounts = await referenceCounts(t, target);

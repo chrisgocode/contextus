@@ -52,7 +52,8 @@ export async function seedUser(
     });
     return { userId, sessionId };
   });
-  const sessions = seededSessions.get(t) ?? new Map();
+  const sessions =
+    seededSessions.get(t) ?? new Map<Id<"users">, Id<"authSessions">>();
   sessions.set(userId, sessionId);
   seededSessions.set(t, sessions);
   return userId;
@@ -69,20 +70,19 @@ export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
   });
 }
 
-export async function asUserWithSession(
+// Runs scheduled functions to completion. Tests that inspect state between
+// scheduled batches install fake timers first; with real timers convex-test
+// also runs them on its own in the background.
+export async function finishScheduledFunctions(
   t: ReturnType<typeof setupTest>,
-  userId: Id<"users">,
 ) {
-  const sessionId = await t.run(async (ctx) => {
-    return await ctx.db.insert("authSessions", {
-      userId,
-      expirationTime: Date.now() + 60_000,
-    });
-  });
-  return t.withIdentity({
-    subject: `${userId}|${sessionId}`,
-    issuer: "test",
-  });
+  const alreadyFake = vi.isFakeTimers();
+  if (!alreadyFake) vi.useFakeTimers();
+  try {
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  } finally {
+    if (!alreadyFake) vi.useRealTimers();
+  }
 }
 
 export type WordOracleMock = {
