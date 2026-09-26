@@ -96,6 +96,18 @@ export default defineSchema({
     .index("by_room", ["roomId"])
     .index("by_lastActivity", ["lastActivityAt"]),
 
+  playerPresence: defineTable({
+    userId: v.id("users"),
+    lastSeenAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_lastSeenAt", ["lastSeenAt"]),
+
+  playerCountSamples: defineTable({
+    sampledAt: v.number(),
+    count: v.number(),
+  }).index("by_sampledAt", ["sampledAt"]),
+
   roomMembers: defineTable({
     roomId: v.id("rooms"),
     userId: v.id("users"),

@@ -90,6 +90,8 @@ ESLint includes `@convex-dev/eslint-plugin`. Before changing Convex code, read `
 
 **Convex:** `.github/workflows/deploy-convex.yml` runs `convex deploy` on every push to `main`. It needs a production deploy key stored as the `CONVEX_DEPLOY_KEY` repository secret. Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and the Convex Auth keys on the production deployment in the Convex dashboard.
 
+**Private player counts:** Set `PLAYER_COUNT_OWNER_EMAIL` in the production Convex deployment to the owner's Google sign-in email. Only that registered account can read `/admin/players`; without the variable, the page denies access to everyone. The count covers distinct signed-in players whose room heartbeat arrived in the last 45 seconds. A cron saves one sample per minute and retains seven days of samples; the page charts the past 24 hours. The live count displays `1000+` if it reaches the current query cap.
+
 **Frontend:** Vercel. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables, then push. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.

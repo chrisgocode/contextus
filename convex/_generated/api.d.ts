@@ -37,6 +37,7 @@ import type * as lib_userRows from "../lib/userRows.js";
 import type * as lib_usernames from "../lib/usernames.js";
 import type * as lib_words from "../lib/words.js";
 import type * as presence from "../presence.js";
+import type * as playerCounts from "../playerCounts.js";
 import type * as requests from "../requests.js";
 import type * as rooms from "../rooms.js";
 import type * as turns from "../turns.js";
@@ -79,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "lib/usernames": typeof lib_usernames;
   "lib/words": typeof lib_words;
   presence: typeof presence;
+  playerCounts: typeof playerCounts;
   requests: typeof requests;
   rooms: typeof rooms;
   turns: typeof turns;

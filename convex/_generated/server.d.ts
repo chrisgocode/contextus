@@ -31,6 +31,7 @@ type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly E2E_TEST: string | undefined;
+  readonly PLAYER_COUNT_OWNER_EMAIL: string | undefined;
 };
 
 /**

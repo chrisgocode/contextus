@@ -5,6 +5,7 @@ import { v } from "convex/values";
 const app = defineApp({
   env: {
     E2E_TEST: v.optional(v.string()),
+    PLAYER_COUNT_OWNER_EMAIL: v.optional(v.string()),
   },
 });
 app.use(presence);

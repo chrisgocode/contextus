@@ -20,13 +20,28 @@ export const heartbeat = mutation({
     if (normalized === null) throw new Error("Invalid room id");
     const access = await tryMemberByRoom(ctx, { roomId: normalized });
     if (access === null) return null;
-    return await presence.heartbeat(
+    const result = await presence.heartbeat(
       ctx,
       normalized,
       access.userId,
       sessionId,
       interval,
     );
+    const current = await ctx.db
+      .query("playerPresence")
+      .withIndex("by_userId", (q) => q.eq("userId", access.userId))
+      .unique();
+    if (current === null) {
+      await ctx.db.insert("playerPresence", {
+        userId: access.userId,
+        lastSeenAt: Date.now(),
+      });
+    } else {
+      await ctx.db.patch("playerPresence", current._id, {
+        lastSeenAt: Date.now(),
+      });
+    }
+    return result;
   },
 });
 

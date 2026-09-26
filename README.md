@@ -29,14 +29,15 @@ bun run dev
 
 ### Environment variables
 
-| Variable                 | Where                                        | Required for       | Notes                                                                                         |
-| ------------------------ | -------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_CONVEX_URL` | `.env.local`                                 | Everything         | Written automatically by `convex dev`                                                         |
-| `AUTH_GOOGLE_ID`         | Convex dashboard env vars                    | Google sign-in     | OAuth client ID. Guest play works without it                                                  |
-| `AUTH_GOOGLE_SECRET`     | Convex dashboard env vars                    | Google sign-in     | OAuth client secret                                                                           |
-| `E2E_TEST`               | Convex env (`npx convex env set E2E_TEST 1`) | E2E tests          | Enables password auth, short guest lifetimes, and a fake word oracle. Never set in production |
-| `E2E_PASSWORD`           | `.env.local`                                 | E2E tests          | Password for the generated test accounts                                                      |
-| `CONVEX_DEPLOY_KEY`      | Vercel / GitHub secrets                      | Production deploys | See [development guide](docs/development.md#deployment)                                       |
+| Variable                   | Where                                        | Required for          | Notes                                                                                         |
+| -------------------------- | -------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL`   | `.env.local`                                 | Everything            | Written automatically by `convex dev`                                                         |
+| `AUTH_GOOGLE_ID`           | Convex dashboard env vars                    | Google sign-in        | OAuth client ID. Guest play works without it                                                  |
+| `AUTH_GOOGLE_SECRET`       | Convex dashboard env vars                    | Google sign-in        | OAuth client secret                                                                           |
+| `E2E_TEST`                 | Convex env (`npx convex env set E2E_TEST 1`) | E2E tests             | Enables password auth, short guest lifetimes, and a fake word oracle. Never set in production |
+| `E2E_PASSWORD`             | `.env.local`                                 | E2E tests             | Password for the generated test accounts                                                      |
+| `CONVEX_DEPLOY_KEY`        | Vercel / GitHub secrets                      | Production deploys    | See [development guide](docs/development.md#deployment)                                       |
+| `PLAYER_COUNT_OWNER_EMAIL` | Convex dashboard env vars                    | Private player counts | Google email of the sole account allowed to view `/admin/players`                             |
 
 See [`.env.example`](.env.example) for the full list.
 
