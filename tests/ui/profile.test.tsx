@@ -2,7 +2,7 @@
 
 import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProfileClient } from "@/app/user/[username]/_components/ProfileClient";
+import { ProfileClient } from "@/app/(app)/user/[username]/_components/ProfileClient";
 import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
@@ -22,10 +22,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
-vi.mock("@/app/user/[username]/_components/ActivityGraph", () => ({
+vi.mock("@/app/(app)/user/[username]/_components/ActivityGraph", () => ({
   ActivityGraph: () => <div>Activity graph</div>,
 }));
-vi.mock("@/app/user/[username]/_components/Achievements", () => ({
+vi.mock("@/app/(app)/user/[username]/_components/Achievements", () => ({
   Achievements: () => <div>Achievements</div>,
 }));
 

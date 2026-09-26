@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
-import RoomPage from "@/app/r/[code]/page";
+import RoomPage from "@/app/(app)/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
 import { act, render, screen, userEvent, waitFor } from "./test-utils";
 
@@ -36,25 +36,25 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
 }));
 vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
-vi.mock("@/app/r/[code]/_components/usePresenceSet", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/usePresenceSet", () => ({
   usePresenceSet: () => new Set(["friend"]),
 }));
-vi.mock("@/app/r/[code]/_components/useElementInViewport", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/useElementInViewport", () => ({
   useElementInViewport: () => true,
 }));
-vi.mock("@/app/r/[code]/_components/GuessList", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/GuessList", () => ({
   GuessList: () => <div>Guess list</div>,
 }));
-vi.mock("@/app/r/[code]/_components/HintGiveupBar", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/HintGiveupBar", () => ({
   HintGiveupBar: () => <div>Hint controls</div>,
 }));
-vi.mock("@/app/r/[code]/_components/PendingRequestsSidebar", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/PendingRequestsSidebar", () => ({
   PendingRequestsSidebar: () => <div>Requests</div>,
 }));
-vi.mock("@/app/r/[code]/_components/GameSetupCalendar", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/GameSetupCalendar", () => ({
   GameSetupCalendar: () => <div>Game setup</div>,
 }));
-vi.mock("@/app/r/[code]/_components/EndGameBanner", () => ({
+vi.mock("@/app/(app)/r/[code]/_components/EndGameBanner", () => ({
   EndGameBanner: () => <div>End game</div>,
 }));
 

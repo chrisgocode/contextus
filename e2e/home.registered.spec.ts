@@ -75,3 +75,24 @@ test("plays again with the same registered group", async ({
 
   await endRoom(host.page);
 });
+
+test("stays signed in across the static How to play page", async ({
+  createRegisteredUser,
+}) => {
+  const { page } = await createRegisteredUser();
+  const profileButton = page.getByRole("button", { name: "Profile" });
+
+  await page.goto("/");
+  await expect(profileButton).toBeVisible();
+
+  await page.getByRole("link", { name: "Learn how to play" }).click();
+  await expect(page).toHaveURL("/how-to-play");
+  await page.getByRole("link", { name: "← Back to Contextus" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(profileButton).toBeVisible();
+
+  await page.goto("/how-to-play");
+  await page.getByRole("link", { name: "← Back to Contextus" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(profileButton).toBeVisible();
+});

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GuessInput } from "@/app/r/[code]/_components/GuessInput";
-import { GuessList } from "@/app/r/[code]/_components/GuessList";
-import { GameSetupCalendar } from "@/app/r/[code]/_components/GameSetupCalendar";
-import { HintGiveupBar } from "@/app/r/[code]/_components/HintGiveupBar";
-import { PendingRequestsSidebar } from "@/app/r/[code]/_components/PendingRequestsSidebar";
+import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
+import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
+import { GameSetupCalendar } from "@/app/(app)/r/[code]/_components/GameSetupCalendar";
+import { HintGiveupBar } from "@/app/(app)/r/[code]/_components/HintGiveupBar";
+import { PendingRequestsSidebar } from "@/app/(app)/r/[code]/_components/PendingRequestsSidebar";
 import { reportClientError } from "@/lib/report-error";
 import { cleanup, render, screen, userEvent, waitFor } from "./test-utils";
 

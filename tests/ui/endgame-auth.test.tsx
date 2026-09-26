@@ -3,8 +3,8 @@
 import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import GlobalError from "@/app/global-error";
-import { EndGameBanner } from "@/app/r/[code]/_components/EndGameBanner";
-import SignIn from "@/app/signin/page";
+import { EndGameBanner } from "@/app/(app)/r/[code]/_components/EndGameBanner";
+import SignIn from "@/app/(app)/signin/page";
 import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
