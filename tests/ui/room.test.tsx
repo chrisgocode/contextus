@@ -51,7 +51,6 @@ vi.mock("@/app/(app)/r/[code]/_components/PendingRequestsSidebar", () => ({
 }));
 vi.mock("@/app/(app)/r/[code]/_components/GameSetupCalendar", () => ({
   GameSetupCalendar: () => <div>Game setup</div>,
-  preloadCalendar: () => {},
 }));
 vi.mock("@/app/(app)/r/[code]/_components/EndGameBanner", () => ({
   EndGameBanner: () => <div>End game</div>,

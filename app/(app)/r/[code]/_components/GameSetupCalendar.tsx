@@ -14,20 +14,12 @@ import {
 } from "@/lib/contexto";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
+import { loadCalendar } from "./calendar-loader";
 
-// react-day-picker is most of this component's weight and only hosts
-// between games see it, so it loads separately. The room page preloads it
-// for hosts (see preloadCalendar) so it's usually ready by the time the
-// game list resolves.
-const loadCalendar = () =>
-  import("@/components/ui/calendar").then((mod) => mod.Calendar);
+// Loaded on demand; see calendar-loader.ts for who preloads it.
 const Calendar = dynamic(loadCalendar, {
   loading: () => <Skeleton className="h-[291px] w-62" />,
 });
-
-export function preloadCalendar() {
-  void loadCalendar();
-}
 
 export function GameSetupCalendar({
   roomId,
