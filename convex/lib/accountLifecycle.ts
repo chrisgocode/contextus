@@ -357,7 +357,10 @@ export async function expireGuest(
   let remaining = budget;
   for (const p of USER_KEYED_TABLES) {
     remaining -= await p.runExpire(ctx, guestUserId, remaining);
-    if (remaining === 0) return { deleted: budget, done: false };
+    if (remaining === 0) {
+      await ctx.db.patch("users", guestUserId, { guestCleanupStarted: true });
+      return { deleted: budget, done: false };
+    }
   }
   await ctx.db.patch("users", guestUserId, {
     name: "Former Guest",
@@ -369,6 +372,7 @@ export async function expireGuest(
     guestCompletedGames: undefined,
     guestPromptedGames: undefined,
     guestExpiresAt: undefined,
+    guestCleanupStarted: undefined,
   });
   return { deleted: budget - remaining, done: true };
 }

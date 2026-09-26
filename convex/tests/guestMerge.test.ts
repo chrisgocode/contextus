@@ -805,6 +805,54 @@ test("guest expiry cleanup leaves a merging guest's rows for the merge", async (
   expect(result).toEqual({ history: 1, guest: null });
 });
 
+test("guest cannot start merging after expiry cleanup has begun", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, {
+    isAnonymous: true,
+    guestExpiresAt: Date.now() - 1,
+  });
+  const target = await seedUser(t);
+  const guestSession = await asUserWithSession(t, guest);
+  await t.run(async (ctx) => {
+    const accountId = await ctx.db.insert("authAccounts", {
+      userId: guest,
+      provider: "password",
+      providerAccountId: "guest",
+    });
+    for (let i = 0; i < 120; i++) {
+      await ctx.db.insert("authVerificationCodes", {
+        accountId,
+        provider: "password",
+        code: `test-${i}`,
+        expirationTime: Date.now() + 60_000,
+      });
+    }
+    await ctx.db.insert("userGameHistory", {
+      userId: guest,
+      contextoGameId: 1,
+      firstPlayedAt: 1,
+    });
+  });
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+  await expect(
+    guestSession.run(async (ctx) => startGuestMerge(ctx, target)),
+  ).resolves.toBeNull();
+  await finishMerge(t);
+  const result = await t.run(async (ctx) => ({
+    guest: await ctx.db.get("users", guest),
+    targetHistory: await ctx.db
+      .query("userGameHistory")
+      .withIndex("by_user_game", (q) => q.eq("userId", target))
+      .collect(),
+  }));
+  expect(result.guest).toMatchObject({
+    name: "Former Guest",
+    isAnonymous: false,
+  });
+  expect(result.targetHistory).toEqual([]);
+});
+
 test("guest merge picks up rows a stale guest tab wrote after their phase", async () => {
   const t = setupTest();
   const host = await seedUser(t);

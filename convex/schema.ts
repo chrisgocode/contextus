@@ -16,6 +16,7 @@ export default defineSchema({
     guestCompletedGames: v.optional(v.number()),
     guestPromptedGames: v.optional(v.number()),
     guestExpiresAt: v.optional(v.number()),
+    guestCleanupStarted: v.optional(v.boolean()),
     // IANA time zone reported by the client, for local-time achievements.
     timeZone: v.optional(v.string()),
   })
