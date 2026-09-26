@@ -18,6 +18,32 @@ type EventCatalog = {
     contexto_game_id: number;
     play_again: boolean;
   };
+  guess_recorded: {
+    game_id: Id<"games">;
+    lemma: string;
+    distance: number;
+    duplicate: boolean;
+  };
+  hint_given: { game_id: Id<"games">; source: "host" | "request" };
+  game_won: {
+    game_id: Id<"games">;
+    guess_count: number;
+    hint_count: number;
+    member_count: number;
+    duration_ms: number;
+  };
+  game_given_up: {
+    game_id: Id<"games">;
+    guess_count: number;
+    hint_count: number;
+    member_count: number;
+    duration_ms: number;
+  };
+  request_approved: {
+    request_id: Id<"pendingRequests">;
+    game_id: Id<"games">;
+    request_type: "hint" | "giveup";
+  };
   request_created: {
     request_id: Id<"pendingRequests">;
     game_id: Id<"games">;

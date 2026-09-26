@@ -16,6 +16,7 @@ import {
 } from "./_generated/server";
 import { requireHostByGame, requireMemberByGame } from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
+import { track } from "./analytics";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
@@ -136,7 +137,7 @@ export const _apply = internalMutation({
     );
     const outcome =
       turn.kind === "giveup"
-        ? await applyGiveup(ctx, game, turn.answerLemma)
+        ? await applyGiveup(ctx, game, turn.answerLemma, userId)
         : await applyScoredLemma(ctx, game, {
             // An approved hint belongs to the member who asked for it.
             userId: request?.requesterUserId ?? userId,
@@ -144,9 +145,23 @@ export const _apply = internalMutation({
             distance: turn.distance,
             source: turn.kind,
           });
+    if (turn.kind === "hint" && outcome.status === "recorded") {
+      await track(ctx, userId, {
+        name: "hint_given",
+        properties: { game_id: gameId, source: request ? "request" : "host" },
+      });
+    }
     if (request !== null && outcome.status === "recorded") {
       await ctx.db.patch("pendingRequests", request._id, {
         status: "approved",
+      });
+      await track(ctx, userId, {
+        name: "request_approved",
+        properties: {
+          request_id: request._id,
+          game_id: gameId,
+          request_type: request.type,
+        },
       });
     }
     return outcome;
@@ -174,6 +189,15 @@ async function applyScoredLemma(
     if (decision.reason === "not_in_progress") {
       throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
     }
+    await track(ctx, event.userId, {
+      name: "guess_recorded",
+      properties: {
+        game_id: game._id,
+        lemma: event.lemma,
+        distance: event.distance,
+        duplicate: true,
+      },
+    });
     return { status: "duplicate", won: false, unlockedAchievementIds: [] };
   }
 
@@ -199,6 +223,25 @@ async function applyScoredLemma(
   if (decision.won) {
     await recordGuestGameCompletion(ctx, game._id);
   }
+  await track(ctx, event.userId, {
+    name: "guess_recorded",
+    properties: {
+      game_id: game._id,
+      lemma: event.lemma,
+      distance: event.distance,
+      duplicate: false,
+    },
+  });
+  if (decision.won) {
+    await track(ctx, event.userId, {
+      name: "game_won",
+      properties: await gameOutcomeProperties(
+        ctx,
+        game,
+        decision.lastActivityAt,
+      ),
+    });
+  }
   return { status: "recorded", won: decision.won, unlockedAchievementIds };
 }
 
@@ -206,6 +249,7 @@ async function applyGiveup(
   ctx: MutationCtx,
   game: Doc<"games">,
   answerLemma: string,
+  userId: Id<"users">,
 ): Promise<ApplyResult> {
   const decision = decideGiveup({ game, now: Date.now() }, { answerLemma });
   if (decision.kind === "reject") {
@@ -214,7 +258,39 @@ async function applyGiveup(
   await ctx.db.patch("games", game._id, decision.gamePatch);
   await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
   await recordGuestGameCompletion(ctx, game._id);
+  await track(ctx, userId, {
+    name: "game_given_up",
+    properties: await gameOutcomeProperties(ctx, game, decision.lastActivityAt),
+  });
   return { status: "recorded", won: false, unlockedAchievementIds: [] };
+}
+
+async function gameOutcomeProperties(
+  ctx: MutationCtx,
+  game: Doc<"games">,
+  endedAt: number,
+) {
+  let guessCount = 0;
+  let hintCount = 0;
+  let memberCount = 0;
+  for await (const guess of ctx.db
+    .query("gameGuesses")
+    .withIndex("by_game_created", (q) => q.eq("gameId", game._id))) {
+    if (guess.source === "hint") hintCount++;
+    else guessCount++;
+  }
+  for await (const member of ctx.db
+    .query("roomMembers")
+    .withIndex("by_room_user", (q) => q.eq("roomId", game.roomId))) {
+    if (member.active !== false) memberCount++;
+  }
+  return {
+    game_id: game._id,
+    guess_count: guessCount,
+    hint_count: hintCount,
+    member_count: memberCount,
+    duration_ms: Math.max(0, endedAt - game.startedAt),
+  };
 }
 
 type TurnArgs =
