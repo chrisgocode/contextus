@@ -14,10 +14,14 @@ export function PostHogIdentity() {
     if (isLoading) return;
     let cancelled = false;
     if (!isAuthenticated) {
-      if (identified.current !== null) {
-        void posthogReady.then((posthog) => posthog.reset());
-        identified.current = null;
-      }
+      identified.current = null;
+      // PostHog persists identity across page loads, so check the SDK rather
+      // than this mount's ref; resetting anonymous visitors would churn IDs.
+      void posthogReady.then((posthog) => {
+        if (posthog.get_property("$user_state") === "identified") {
+          posthog.reset();
+        }
+      });
     } else if (user) {
       void posthogReady.then((posthog) => {
         if (cancelled || identified.current === user._id) return;
