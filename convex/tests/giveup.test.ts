@@ -93,8 +93,8 @@ test("given-up games count toward guest account prompts after a real guess", asy
 
 test("game completion credits participants beyond the first page", async () => {
   const t = setupTest();
+  const hostId = await seedUser(t, { name: "Host" });
   const participantIds = await t.run(async (ctx) => {
-    const hostId = await ctx.db.insert("users", { name: "Host" });
     const roomId = await ctx.db.insert("rooms", {
       code: "PAGING",
       hostUserId: hostId,

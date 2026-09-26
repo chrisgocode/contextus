@@ -1,8 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { requireRegisteredUser, requireUser } from "./access";
+import { getCurrentUserId, requireRegisteredUser, requireUser } from "./access";
 import {
   assertUsernameAvailable,
   ensureUserHasUsername,
@@ -61,7 +60,7 @@ export const getByUsername = query({
     const user = await getUserByUsername(ctx, username.trim());
     if (user === null) return null;
 
-    const currentUserId = await getAuthUserId(ctx);
+    const currentUserId = await getCurrentUserId(ctx);
     const isCurrentUser = currentUserId === user._id;
     const player = await playerFromUser(ctx, user._id, user);
 

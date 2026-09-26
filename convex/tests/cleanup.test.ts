@@ -597,7 +597,10 @@ test("E2E account cleanup removes its complete data graph", async () => {
     room: await ctx.db.get("rooms", roomId),
     game: await ctx.db.get("games", gameId),
     authAccounts: await ctx.db.query("authAccounts").collect(),
-    authSessions: await ctx.db.query("authSessions").collect(),
+    authSessions: await ctx.db
+      .query("authSessions")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .collect(),
     authVerificationCodes: await ctx.db
       .query("authVerificationCodes")
       .collect(),
