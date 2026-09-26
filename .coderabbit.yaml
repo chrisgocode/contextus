@@ -4,3 +4,6 @@ reviews:
   auto_review:
     base_branches:
       - ".*"
+    # Only review PRs carrying this label. Add it to opt a PR in.
+    labels:
+      - "coderabbit-review"
