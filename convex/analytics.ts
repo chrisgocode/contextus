@@ -71,18 +71,22 @@ export async function track(
   }
 }
 
-export async function aliasGuest(
+// The browser identifies Guests by their Convex ID, and PostHog refuses to
+// alias an already-identified person. Only call this once the Guest's rows
+// have merged, since $merge_dangerously can't be undone.
+export async function mergeGuestIdentity(
   ctx: Pick<ActionCtx | MutationCtx, "scheduler">,
   guestUserId: Id<"users">,
   accountUserId: Id<"users">,
 ) {
   if (!enabled()) return;
   try {
-    await posthog.alias(ctx, {
+    await posthog.capture(ctx, {
       distinctId: accountUserId,
-      alias: guestUserId,
+      event: "$merge_dangerously",
+      properties: { alias: guestUserId },
     });
   } catch (error) {
-    console.warn("PostHog alias could not be scheduled", error);
+    console.warn("PostHog identity merge could not be scheduled", error);
   }
 }

@@ -100,11 +100,12 @@ export const join = mutation({
         joinedAt: Date.now(),
         active: true,
       });
+      // Capped like playAgain's Room size limit; 101 means "over 100".
       const memberCount = (
         await ctx.db
           .query("roomMembers")
           .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
-          .collect()
+          .take(101)
       ).length;
       await track(ctx, userId, {
         name: "room_joined",
