@@ -51,6 +51,7 @@ Pure logic lives in `convex/lib/` so it can be unit tested without a database. T
 | `/r/[code]`        | Room. State machine: lobby → in-progress → ended                   |
 | `/user/[username]` | Public profile: activity graph and achievements                    |
 | `/how-to-play`     | Static rules page                                                  |
+| `/privacy`         | Analytics and error-reporting notice                               |
 | `/signin`          | Google sign-in                                                     |
 | `/api/version`     | Current build ID. `NewVersionNotifier` uses it to prompt a refresh |
 
@@ -112,4 +113,4 @@ Defined in `crons.ts`:
 
 Sentry is configured for the client, server, and edge runtimes (`instrumentation*.ts`, `sentry.*.config.ts`). Browser events go through the `/monitoring` tunnel route so ad blockers don't drop them.
 
-PostHog records browser pageviews (`instrumentation-client.ts`). Like Sentry, it loads once the page is idle and only on production and preview Vercel deployments; events carry a `deployment_environment` property so previews can be filtered out.
+PostHog records browser pageviews (`instrumentation-client.ts`) and identifies each player by Convex user ID with an `is_guest` flag, resetting on sign-out (`components/PostHogIdentity.tsx`). Like Sentry, it loads once the page is idle and only on production and preview Vercel deployments, and its events go through the `/ingest` rewrite. Events carry a `deployment_environment` property so previews can be filtered out.
