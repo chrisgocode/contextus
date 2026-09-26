@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
 import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";

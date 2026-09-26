@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AchievementUnlockQueue } from "@/app/_components/AchievementUnlockQueue";
 import {
