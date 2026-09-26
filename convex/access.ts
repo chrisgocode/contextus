@@ -1,13 +1,35 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthSessionId, getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 type DbCtx = Pick<QueryCtx, "db" | "auth"> | Pick<MutationCtx, "db" | "auth">;
-type AnyCtx = QueryCtx | MutationCtx | ActionCtx;
 
-export async function requireUser(ctx: AnyCtx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
+// The caller's user, or null when signed out. Convex Auth reads the user from
+// the access token alone, so a token issued before guest expiry would keep
+// working until it expires. Expiry deletes the session row, and marks the
+// guest before that, so both are checked here.
+export async function getCurrentUserId(
+  ctx: DbCtx,
+): Promise<Id<"users"> | null> {
+  const [userId, rawSessionId] = await Promise.all([
+    getAuthUserId(ctx),
+    getAuthSessionId(ctx),
+  ]);
+  if (userId === null || rawSessionId === null) return null;
+  const sessionId = ctx.db.normalizeId("authSessions", rawSessionId);
+  if (sessionId === null) return null;
+  const [session, user] = await Promise.all([
+    ctx.db.get("authSessions", sessionId),
+    ctx.db.get("users", userId),
+  ]);
+  if (session?.userId !== userId) return null;
+  if (user === null || user.guestCleanupStarted === true) return null;
+  return userId;
+}
+
+export async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
+  const userId = await getCurrentUserId(ctx);
   if (userId === null) {
     throw new ConvexError("Not authenticated");
   }
@@ -15,7 +37,7 @@ export async function requireUser(ctx: AnyCtx): Promise<Id<"users">> {
 }
 
 export async function requireRegisteredUser(ctx: DbCtx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
+  const userId = await getCurrentUserId(ctx);
   if (userId === null) {
     throw new ConvexError("Not authenticated");
   }
@@ -46,7 +68,7 @@ async function loadByGame(
   game: Doc<"games"> | null;
   room: Doc<"rooms"> | null;
 }> {
-  const userId = await getAuthUserId(ctx as AnyCtx);
+  const userId = await getCurrentUserId(ctx);
   const game = await ctx.db.get("games", gameId);
   const room = game === null ? null : await ctx.db.get("rooms", game.roomId);
   return { userId, game, room };
@@ -56,7 +78,7 @@ async function loadByRoom(
   ctx: DbCtx,
   { roomId }: ByRoom,
 ): Promise<{ userId: Id<"users"> | null; room: Doc<"rooms"> | null }> {
-  const userId = await getAuthUserId(ctx as AnyCtx);
+  const userId = await getCurrentUserId(ctx);
   const room = await ctx.db.get("rooms", roomId);
   return { userId, room };
 }
