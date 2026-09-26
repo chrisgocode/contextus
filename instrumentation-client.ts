@@ -30,7 +30,13 @@ if (sentryEnabled) {
         for (const error of early.splice(0)) Sentry.captureException(error);
       })
       .catch(() => {
-        // Blocked or offline: the page works without Sentry.
+        // Blocked or offline: the page works without Sentry. Stop buffering
+        // so the queue can't grow for the rest of the session.
+        // captureException still retries the import on the next reported
+        // error.
+        window.removeEventListener("error", onError);
+        window.removeEventListener("unhandledrejection", onRejection);
+        early.length = 0;
       });
   };
   const startWhenIdle = () =>
@@ -42,6 +48,9 @@ if (sentryEnabled) {
   else window.addEventListener("load", startWhenIdle, { once: true });
 }
 
+// Transitions before the SDK loads aren't replayed: Sentry would start their
+// navigation spans at replay time, not when they happened. The pageload span
+// starts at timeOrigin, so it covers that window instead.
 export function onRouterTransitionStart(
   ...args: Parameters<typeof SentrySdk.captureRouterTransitionStart>
 ) {

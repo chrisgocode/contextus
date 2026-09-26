@@ -13,7 +13,16 @@ let sdk: Promise<Sentry> | undefined;
  * captureException calls it if an error comes first.
  */
 export function loadSentry(): Promise<Sentry> {
-  sdk ??= import("@sentry/nextjs").then((Sentry) => {
+  sdk ??= importAndInit().catch((error: unknown) => {
+    // Let the next call retry, e.g. once the network is back.
+    sdk = undefined;
+    throw error;
+  });
+  return sdk;
+}
+
+function importAndInit(): Promise<Sentry> {
+  return import("@sentry/nextjs").then((Sentry) => {
     Sentry.init({
       dsn: "https://85ede5126abf32a201118c5f021bb7e9@o4511398152437760.ingest.us.sentry.io/4511405904297984",
       enabled: sentryEnabled,
@@ -51,7 +60,6 @@ export function loadSentry(): Promise<Sentry> {
 
     return Sentry;
   });
-  return sdk;
 }
 
 export function captureException(
