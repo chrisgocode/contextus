@@ -9,8 +9,8 @@ import {
   getAchievementGroup,
   getUnlockedAchievementMetadata,
 } from "@/app/_components/achievement-metadata";
-import { Achievements } from "@/app/user/[username]/_components/Achievements";
-import { ActivityGraph } from "@/app/user/[username]/_components/ActivityGraph";
+import { Achievements } from "@/app/(app)/user/[username]/_components/Achievements";
+import { ActivityGraph } from "@/app/(app)/user/[username]/_components/ActivityGraph";
 import { achievementDefinitions } from "@/convex/lib/achievements";
 import { render, screen, userEvent } from "./test-utils";
 

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
-import Home from "@/app/(home)/page";
+import Home from "@/app/(app)/(home)/page";
 import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
