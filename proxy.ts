@@ -21,7 +21,7 @@ export const config = {
   // Sentry and PostHog tunnels. None of those use auth or are OAuth landing pages, so
   // skipping them saves a middleware hop.
   matcher: [
-    "/((?!.*\\..*|_next|how-to-play|monitoring|ingest|api/version).*)",
+    "/((?!.*\\..*|_next|how-to-play|privacy|monitoring|ingest|api/version).*)",
     "/",
     "/api/((?!version$).*)",
   ],
