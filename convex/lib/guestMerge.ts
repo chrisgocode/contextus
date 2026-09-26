@@ -14,6 +14,7 @@ import {
   reconcileCounterAchievements,
 } from "./guestMergeRows";
 import { addDays } from "./localTime";
+import { aliasGuest, track } from "../analytics";
 
 type MergeCtx = Pick<MutationCtx, "db">;
 
@@ -164,6 +165,14 @@ async function finalizeMerge(ctx: MutationCtx, job: MergeJob) {
   }
   // Also deletes this job, which is keyed to the guest.
   await deleteMergedGuest(ctx, job.guestUserId);
+  await track(ctx, job.targetUserId, {
+    name: "guest_merged",
+    properties: {
+      guest_user_id: job.guestUserId,
+      account_user_id: job.targetUserId,
+    },
+  });
+  await aliasGuest(ctx, job.guestUserId, job.targetUserId);
 }
 
 async function guestHasRowsLeft(ctx: MergeCtx, guestUserId: Id<"users">) {

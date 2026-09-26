@@ -8,6 +8,7 @@ import {
   setupTest,
 } from "../testHelpers.test";
 import { api, internal } from "../_generated/api";
+import { posthog } from "../posthog";
 
 async function mergeGuest(
   t: ReturnType<typeof setupTest>,
@@ -27,6 +28,32 @@ async function finishMerge(t: ReturnType<typeof setupTest>) {
     vi.useRealTimers();
   }
 }
+
+test("completed Guest merge records conversion and joins analytics identities", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const alias = vi.spyOn(posthog, "alias").mockResolvedValue(undefined);
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const account = await seedUser(t);
+
+  await mergeGuest(t, guest, account);
+
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: account,
+    event: "guest_merged",
+    properties: {
+      guest_user_id: guest,
+      account_user_id: account,
+      deployment_environment: "production",
+    },
+  });
+  expect(alias).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: account,
+    alias: guest,
+  });
+});
 
 test("startGuestMerge ignores sessions that cannot be merged", async () => {
   const t = setupTest();

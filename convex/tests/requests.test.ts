@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
+import { posthog } from "../posthog";
 import {
   asUser,
   fakeWordOracle,
@@ -53,6 +54,56 @@ test("create inserts pending row of correct type", async () => {
   expect(pending).toHaveLength(1);
   expect(pending[0].type).toBe("hint");
   expect(pending[0].requesterUserId).toBe(other);
+});
+
+test("creating and denying a Pending request records both outcomes", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  capture.mockClear();
+
+  await asUser(t, other).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  const request = await t.run(async (ctx) =>
+    ctx.db
+      .query("pendingRequests")
+      .withIndex("by_game_status", (q) =>
+        q.eq("gameId", gameId).eq("status", "pending"),
+      )
+      .first(),
+  );
+  expect(request).not.toBeNull();
+  await asUser(t, host).mutation(api.requests.deny, {
+    requestId: request!._id,
+  });
+  await expect(
+    asUser(t, host).mutation(api.requests.deny, { requestId: request!._id }),
+  ).rejects.toThrow("Request not found or already handled");
+
+  expect(capture.mock.calls.map(([, event]) => event)).toEqual([
+    expect.objectContaining({
+      distinctId: other,
+      event: "request_created",
+      properties: expect.objectContaining({
+        request_id: request!._id,
+        game_id: gameId,
+        request_type: "hint",
+      }),
+    }),
+    expect.objectContaining({
+      distinctId: host,
+      event: "request_denied",
+      properties: expect.objectContaining({
+        request_id: request!._id,
+        game_id: gameId,
+        request_type: "hint",
+      }),
+    }),
+  ]);
 });
 
 test("create rejects host", async () => {

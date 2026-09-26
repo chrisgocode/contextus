@@ -100,6 +100,16 @@ export const join = mutation({
         joinedAt: Date.now(),
         active: true,
       });
+      const memberCount = (
+        await ctx.db
+          .query("roomMembers")
+          .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
+          .collect()
+      ).length;
+      await track(ctx, userId, {
+        name: "room_joined",
+        properties: { room_id: room._id, member_count: memberCount },
+      });
     }
     await upsertRoomActivity(ctx, room._id, Date.now());
     return { roomId: room._id };
@@ -148,6 +158,19 @@ export const leave = mutation({
     if (stillActive) {
       await upsertRoomActivity(ctx, roomId, Date.now());
     }
+    if (member !== null) {
+      await track(ctx, userId, {
+        name: "room_left",
+        properties: {
+          room_id: roomId,
+          host_moved:
+            room.status === "active" &&
+            room.hostUserId === userId &&
+            stillActive,
+          room_ended: room.status === "active" && !stillActive,
+        },
+      });
+    }
     return null;
   },
 });
@@ -155,7 +178,8 @@ export const leave = mutation({
 export const endRoom = mutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
-    await requireHostByRoom(ctx, { roomId });
+    const { userId, room } = await requireHostByRoom(ctx, { roomId });
+    if (room.status !== "active") return null;
     await ctx.db.patch("rooms", roomId, { status: "ended" });
     const members = await ctx.db
       .query("roomMembers")
@@ -164,6 +188,10 @@ export const endRoom = mutation({
     for (const member of members) {
       await ctx.db.patch("roomMembers", member._id, { active: false });
     }
+    await track(ctx, userId, {
+      name: "room_ended",
+      properties: { room_id: roomId, member_count: members.length },
+    });
     return null;
   },
 });
