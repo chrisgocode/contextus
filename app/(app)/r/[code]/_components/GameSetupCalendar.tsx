@@ -14,12 +14,14 @@ import {
 } from "@/lib/contexto";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
-import { loadCalendar } from "./calendar-loader";
 
-// Loaded on demand; see calendar-loader.ts for who preloads it.
-const Calendar = dynamic(loadCalendar, {
-  loading: () => <Skeleton className="h-[291px] w-62" />,
-});
+// Loaded on demand; see calendar-loader.ts for who preloads it. The import
+// is written out here rather than reusing loadCalendar so Next can attach its
+// preload metadata to this dynamic() call.
+const Calendar = dynamic(
+  () => import("@/components/ui/calendar").then((mod) => mod.Calendar),
+  { loading: () => <Skeleton className="h-[291px] w-62" /> },
+);
 
 export function GameSetupCalendar({
   roomId,

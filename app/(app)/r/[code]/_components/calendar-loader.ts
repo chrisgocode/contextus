@@ -5,5 +5,7 @@ export const loadCalendar = () =>
   import("@/components/ui/calendar").then((mod) => mod.Calendar);
 
 export function preloadCalendar() {
-  void loadCalendar();
+  loadCalendar().catch(() => {
+    // Best-effort: next/dynamic retries when the calendar actually renders.
+  });
 }
