@@ -119,6 +119,9 @@ function HomeIntro() {
         </Link>
         .
       </p>
+      <Link className="text-sm underline underline-offset-4" href="/privacy">
+        Privacy notice
+      </Link>
     </section>
   );
 }

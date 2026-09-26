@@ -18,10 +18,10 @@ export default convexAuthNextjsMiddleware(
 export const config = {
   // The following matcher runs middleware on all routes except static assets,
   // content-only pages, the version check every open tab polls, and the
-  // Sentry tunnel. None of those use auth or are OAuth landing pages, so
+  // Sentry and PostHog tunnels. None of those use auth or are OAuth landing pages, so
   // skipping them saves a middleware hop.
   matcher: [
-    "/((?!.*\\..*|_next|how-to-play|monitoring|api/version).*)",
+    "/((?!.*\\..*|_next|how-to-play|privacy|monitoring|ingest|api/version).*)",
     "/",
     "/api/((?!version$).*)",
   ],

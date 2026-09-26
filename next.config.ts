@@ -18,6 +18,9 @@ const deployedEnvironment =
   vercelEnv === "production" || vercelEnv === "preview" ? vercelEnv : "";
 
 const nextConfig: NextConfig = {
+  // PostHog calls endpoints with trailing slashes (/ingest/e/); redirecting
+  // them would cost a round trip and can drop events sent while unloading.
+  skipTrailingSlashRedirect: true,
   // CI's e2e job skips the build's type check; the check job runs tsc.
   typescript: { ignoreBuildErrors: process.env.SKIP_BUILD_TYPECHECK === "1" },
   experimental: {
