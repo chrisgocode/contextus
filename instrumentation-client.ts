@@ -10,6 +10,32 @@ import type * as SentrySdk from "@sentry/nextjs";
 import { sentryEnabled } from "@/lib/sentry";
 import { loadSentry } from "@/lib/sentry-client";
 
+const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+if (process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT && posthogToken) {
+  const start = () => {
+    void import("posthog-js")
+      .then(({ default: posthog }) =>
+        posthog.init(posthogToken, {
+          api_host:
+            process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+          defaults: "2026-01-30",
+          capture_pageview: "history_change",
+          autocapture: false,
+          disable_session_recording: true,
+          capture_exceptions: false,
+        }),
+      )
+      .catch(() => {});
+  };
+  const startWhenIdle = () =>
+    "requestIdleCallback" in window
+      ? requestIdleCallback(start, { timeout: 3000 })
+      : setTimeout(start, 0);
+
+  if (document.readyState === "complete") startWhenIdle();
+  else window.addEventListener("load", startWhenIdle, { once: true });
+}
+
 let sentry: typeof SentrySdk | undefined;
 
 if (sentryEnabled) {

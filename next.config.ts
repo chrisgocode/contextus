@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
+    NEXT_PUBLIC_POSTHOG_ENVIRONMENT: sentryEnvironment,
   },
 };
 
