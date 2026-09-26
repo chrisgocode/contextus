@@ -1,5 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { posthog } from "../posthog";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
 async function createRoomWith(t: ReturnType<typeof setupTest>) {
@@ -9,6 +10,50 @@ async function createRoomWith(t: ReturnType<typeof setupTest>) {
   await asUser(t, other).mutation(api.rooms.join, { code });
   return { host, other, roomId };
 }
+
+test("starting a Game records its puzzle and replay status", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "preview");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const { host, roomId } = await createRoomWith(t);
+  capture.mockClear();
+
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: host,
+    event: "game_started",
+    properties: {
+      game_id: gameId,
+      room_id: roomId,
+      contexto_game_id: 1336,
+      play_again: false,
+      deployment_environment: "preview",
+    },
+  });
+  await t.run(async (ctx) =>
+    ctx.db.patch("games", gameId, { status: "given_up", endedAt: Date.now() }),
+  );
+  capture.mockClear();
+  const replay = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1337,
+  });
+  expect(capture).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      event: "game_started",
+      properties: expect.objectContaining({
+        game_id: replay.gameId,
+        play_again: true,
+      }),
+    }),
+  );
+});
 
 test("start: only host can start", async () => {
   const t = setupTest();

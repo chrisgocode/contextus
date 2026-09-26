@@ -9,6 +9,7 @@ import {
 } from "./access";
 import { performTurn } from "./turns";
 import { loadPlayers } from "./lib/player";
+import { track } from "./analytics";
 
 const REQUEST_TYPE = v.union(v.literal("hint"), v.literal("giveup"));
 
@@ -62,13 +63,21 @@ export const create = mutation({
     if (existing !== null) {
       throw new ConvexError(`${type} request already pending`);
     }
-    await ctx.db.insert("pendingRequests", {
+    const requestId = await ctx.db.insert("pendingRequests", {
       roomId: game.roomId,
       gameId,
       requesterUserId: userId,
       type,
       status: "pending",
       createdAt: Date.now(),
+    });
+    await track(ctx, userId, {
+      name: "request_created",
+      properties: {
+        request_id: requestId,
+        game_id: gameId,
+        request_type: type,
+      },
     });
     return null;
   },
@@ -79,8 +88,19 @@ export const deny = mutation({
   handler: async (ctx, { requestId }) => {
     const req = await ctx.db.get("pendingRequests", requestId);
     if (req === null) throw new ConvexError("Request not found");
-    await requireHostByRoom(ctx, { roomId: req.roomId });
+    const { userId } = await requireHostByRoom(ctx, { roomId: req.roomId });
+    if (req.status !== "pending") {
+      throw new ConvexError("Request not found or already handled");
+    }
     await ctx.db.patch("pendingRequests", requestId, { status: "denied" });
+    await track(ctx, userId, {
+      name: "request_denied",
+      properties: {
+        request_id: requestId,
+        game_id: req.gameId,
+        request_type: req.type,
+      },
+    });
     return null;
   },
 });
