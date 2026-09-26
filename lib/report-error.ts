@@ -1,6 +1,6 @@
-import { toast } from "sonner";
 import { expectedClientErrorMessage } from "./client-errors";
 import { captureException } from "./sentry-client";
+import { lazyToast } from "./toast";
 
 export function reportClientError(
   err: unknown,
@@ -17,5 +17,5 @@ export function reportClientError(
       tags: { surface: opts.context ?? "unknown", ...opts.tags },
     });
   if (opts.showToast !== false)
-    toast.error(expectedMessage ?? opts.userMessage);
+    lazyToast((toast) => toast.error(expectedMessage ?? opts.userMessage));
 }

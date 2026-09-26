@@ -3,23 +3,25 @@
 import { Cancel01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { watchForNewVersion } from "@/lib/new-version";
+import { lazyToast } from "@/lib/toast";
 
 export function NewVersionNotifier() {
   useEffect(() => {
     const currentVersion = process.env.NEXT_PUBLIC_APP_VERSION;
     if (!currentVersion) return;
     return watchForNewVersion(currentVersion, () => {
-      toast.custom(
-        (id) => (
-          <NewVersionToast
-            onRefresh={() => window.location.reload()}
-            onDismiss={() => toast.dismiss(id)}
-          />
+      lazyToast((toast) =>
+        toast.custom(
+          (id) => (
+            <NewVersionToast
+              onRefresh={() => window.location.reload()}
+              onDismiss={() => toast.dismiss(id)}
+            />
+          ),
+          { id: "new-version", duration: Infinity, position: "bottom-right" },
         ),
-        { id: "new-version", duration: Infinity, position: "bottom-right" },
       );
     });
   }, []);

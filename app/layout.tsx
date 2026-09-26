@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { LazyToaster } from "@/components/LazyToaster";
 import { SITE_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { NewVersionNotifier } from "./_components/NewVersionNotifier";
@@ -34,7 +34,7 @@ export default function RootLayout({
     <html lang="en" className={cn("dark font-mono", jetbrainsMono.variable)}>
       <body className="antialiased">
         {children}
-        <Toaster richColors position="top-center" />
+        <LazyToaster richColors position="top-center" />
         <NewVersionNotifier />
       </body>
     </html>

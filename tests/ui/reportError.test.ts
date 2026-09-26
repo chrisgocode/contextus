@@ -5,6 +5,9 @@ import { captureException } from "../../lib/sentry-client";
 
 vi.mock("../../lib/sentry-client", () => ({ captureException: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+vi.mock("../../lib/toast", () => ({
+  lazyToast: (show: (t: typeof toast) => void) => show(toast),
+}));
 
 describe("reportClientError", () => {
   beforeEach(() => vi.clearAllMocks());
