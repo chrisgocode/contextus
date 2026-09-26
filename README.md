@@ -78,3 +78,9 @@ More detail is in the [development guide](docs/development.md#contributing).
 ## Acknowledgements
 
 Contextus is a fan project and is not affiliated with Contexto. Puzzles, word rankings, and answers come from the public [Contexto](https://contexto.me) API.
+
+## License
+
+Copyright (C) 2026 Christian Gonzalez
+
+Licensed under the [GNU Affero General Public License v3.0](LICENSE). If you modify Contextus and run it as a network service, you must make your modified source available to its users under the same license.
