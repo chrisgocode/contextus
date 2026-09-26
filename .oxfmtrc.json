@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    ".agents/skills/",
+    ".claude/skills/",
+    "convex/_generated/",
+    "example/convex/_generated/",
+    ".convex/"
+  ]
+}

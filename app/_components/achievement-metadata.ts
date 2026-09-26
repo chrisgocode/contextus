@@ -8,7 +8,11 @@ import obsidianTrophy from "@/assets/obsidian-trophy.svg";
 import silverTrophy from "@/assets/silver-trophy.svg";
 
 export type AchievementCategory =
-  "bronze" | "silver" | "gold" | "diamond" | "hidden";
+  | "bronze"
+  | "silver"
+  | "gold"
+  | "diamond"
+  | "hidden";
 
 export type Achievement = {
   id: AchievementId;

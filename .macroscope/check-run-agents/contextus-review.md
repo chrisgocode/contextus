@@ -109,7 +109,7 @@ surviving or stale reference, not a general cleanup request.
 ## Reporting
 
 Formatting, naming preference, speculative hardening, untouched legacy behavior,
-and checks already enforced by ESLint, Prettier, TypeScript, or the test suite are
+and checks already enforced by oxlint, oxfmt, TypeScript, or the test suite are
 out of scope.
 
 Post each proven issue as a concise inline comment on the smallest relevant
