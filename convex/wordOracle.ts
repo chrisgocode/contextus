@@ -8,6 +8,10 @@ import {
 } from "./_generated/server";
 import { contextoOracle } from "./contexto";
 import { e2eWordOracle } from "./e2eWordOracle";
+import { track } from "./analytics";
+import { UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
+import { ConvexError } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 export type ScoredLemma = { lemma: string; distance: number };
 
@@ -29,7 +33,50 @@ export type WordOracle = {
 
 // The word oracle for one Contexto puzzle, with distances served from the
 // wordDistances cache when possible. Callers never see cache vs. fetch.
-export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
+export function puzzleWordOracle(
+  ctx: ActionCtx,
+  contextoGameId: number,
+  userId: Id<"users">,
+) {
+  async function measured<T>(
+    endpoint: "distance" | "tip" | "answer",
+    run: () => Promise<T>,
+    cache?: "hit" | "miss",
+    startedAt = Date.now(),
+  ): Promise<T> {
+    let outcome: "ok" | "unknown_word" | "unavailable" | "unexpected_payload" =
+      "ok";
+    try {
+      const result = await run();
+      if (
+        endpoint === "distance" &&
+        typeof result === "object" &&
+        result !== null &&
+        "ok" in result &&
+        result.ok === false
+      ) {
+        outcome = "unknown_word";
+      }
+      return result;
+    } catch (error) {
+      outcome =
+        error instanceof ConvexError &&
+        error.data === UNEXPECTED_PAYLOAD_MESSAGE
+          ? "unexpected_payload"
+          : "unavailable";
+      throw error;
+    } finally {
+      await track(ctx, userId, {
+        name: "contexto_request",
+        properties: {
+          endpoint,
+          duration_ms: Math.max(0, Date.now() - startedAt),
+          outcome,
+          ...(cache ? { cache } : {}),
+        },
+      });
+    }
+  }
   // E2E deployments use a deterministic fake and bypass the cache, so fake
   // and real Contexto scores never mix on a shared deployment.
   if (env.E2E_TEST === "1") {
@@ -41,36 +88,48 @@ export function puzzleWordOracle(ctx: ActionCtx, contextoGameId: number) {
   }
   return {
     async distance(word: string): Promise<DistanceResult> {
+      const startedAt = Date.now();
       const cached: ScoredLemma | null = await ctx.runQuery(
         internal.wordOracle._cachedDistance,
         { contextoGameId, word },
       );
-      if (cached !== null) return { ok: true, ...cached };
-      const result = await contextoOracle.distance(contextoGameId, word);
-      if (result.ok) {
-        await ctx.runMutation(internal.wordOracle._cacheDistance, {
-          contextoGameId,
-          input: word,
-          lemma: result.lemma,
-          distance: result.distance,
-        });
-      }
-      return result;
+      return await measured(
+        "distance",
+        async () => {
+          if (cached !== null) return { ok: true, ...cached };
+          const result = await contextoOracle.distance(contextoGameId, word);
+          if (result.ok) {
+            await ctx.runMutation(internal.wordOracle._cacheDistance, {
+              contextoGameId,
+              input: word,
+              lemma: result.lemma,
+              distance: result.distance,
+            });
+          }
+          return result;
+        },
+        cached === null ? "miss" : "hit",
+        startedAt,
+      );
     },
 
     async tip(distance: number): Promise<ScoredLemma> {
-      const tip = await contextoOracle.tip(contextoGameId, distance);
-      await ctx.runMutation(internal.wordOracle._cacheDistance, {
-        contextoGameId,
-        input: tip.lemma,
-        lemma: tip.lemma,
-        distance: tip.distance,
+      return await measured("tip", async () => {
+        const tip = await contextoOracle.tip(contextoGameId, distance);
+        await ctx.runMutation(internal.wordOracle._cacheDistance, {
+          contextoGameId,
+          input: tip.lemma,
+          lemma: tip.lemma,
+          distance: tip.distance,
+        });
+        return tip;
       });
-      return tip;
     },
 
     async answer(): Promise<{ lemma: string }> {
-      return await contextoOracle.answer(contextoGameId);
+      return await measured("answer", () =>
+        contextoOracle.answer(contextoGameId),
+      );
     },
   };
 }
