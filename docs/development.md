@@ -94,6 +94,8 @@ Linting uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (`.oxlintrc.json`)
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.
 
+**PostHog:** set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` (and optionally `NEXT_PUBLIC_POSTHOG_HOST`) in Vercel's environment variables for production and preview.
+
 ## Contributing
 
 - **Issues:** use [GitHub Issues](https://github.com/chrisgocode/contextus/issues). Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
