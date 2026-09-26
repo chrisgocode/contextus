@@ -96,10 +96,16 @@ export default defineSchema({
       v.literal("achievementProgress"),
       v.literal("solveDays"),
       v.literal("gamePlayerStats"),
+      v.literal("streak"),
       v.literal("finalize"),
     ),
     // Puzzles both sides solved, so combined uniqueSolves counts them once.
     overlappingSolves: v.number(),
+    // Longest-streak scan over the account's solve days, resumed after
+    // `streakLastDay`.
+    streakLastDay: v.optional(v.string()),
+    streakRun: v.number(),
+    streakBest: v.number(),
   }).index("by_guest_user", ["guestUserId"]),
 
   rooms: defineTable({

@@ -7,7 +7,7 @@ import {
   seedUser,
   setupTest,
 } from "../testHelpers.test";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 
 async function mergeGuest(
   t: ReturnType<typeof setupTest>,
@@ -737,4 +737,112 @@ test("repeated sign-in for a merging guest starts only one merge", async () => {
     otherHistory: 0,
     stats: { uniqueSolves: 3 },
   });
+});
+
+test("guest merge finds streaks that span solve-day batches", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t, {
+    username: "longstreak",
+    displayUsername: "LongStreak",
+  });
+  // Solve days two apart, except one 3-day run straddling the first batch
+  // boundary.
+  const runStart = GUEST_MERGE_BATCH_SIZE - 2;
+  await t.run(async (ctx) => {
+    let day = Date.parse("2020-01-01T00:00:00Z");
+    for (let i = 0; i < GUEST_MERGE_BATCH_SIZE * 2; i++) {
+      const inRun = i > runStart && i <= runStart + 2;
+      day += (inRun ? 1 : 2) * 24 * 60 * 60 * 1000;
+      await ctx.db.insert("userSolveDays", {
+        userId: target,
+        dayKey: new Date(day).toISOString().slice(0, 10),
+      });
+    }
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const profile = await asUser(t, target).query(
+    api.achievements.listForProfile,
+    { username: "longstreak" },
+  );
+  const find = (id: string) =>
+    profile?.achievements.find((item) => item.achievementId === id);
+  expect(find("on_a_roll")?.unlocked).toBe(true);
+  expect(find("habit_formed")?.progress).toEqual({ current: 3, target: 7 });
+});
+
+test("guest expiry cleanup leaves a merging guest's rows for the merge", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, {
+    isAnonymous: true,
+    guestExpiresAt: Date.now() - 1,
+  });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userGameHistory", {
+      userId: guest,
+      contextoGameId: 1,
+      firstPlayedAt: 1,
+    });
+  });
+  const guestSession = await asUserWithSession(t, guest);
+  await guestSession.run(async (ctx) => startGuestMerge(ctx, target));
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+  await finishMerge(t);
+
+  const result = await t.run(async (ctx) => ({
+    history: (
+      await ctx.db
+        .query("userGameHistory")
+        .withIndex("by_user_game", (q) => q.eq("userId", target))
+        .collect()
+    ).length,
+    guest: await ctx.db.get("users", guest),
+  }));
+  expect(result).toEqual({ history: 1, guest: null });
+});
+
+test("guest merge picks up rows a stale guest tab wrote after their phase", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  const guestSession = await asUserWithSession(t, guest);
+  const mergeId = await guestSession.run(async (ctx) =>
+    startGuestMerge(ctx, target),
+  );
+  if (mergeId === null) throw new Error("merge did not start");
+
+  // The guesses phase already ran when the stale tab's guess lands.
+  await t.run(async (ctx) => {
+    await ctx.db.patch("guestMerges", mergeId, { phase: "finalize" });
+    await ctx.db.insert("gameGuesses", {
+      gameId,
+      userId: guest,
+      lemma: "late",
+      distance: 42,
+      source: "guess",
+      createdAt: 1,
+    });
+  });
+  await finishMerge(t);
+
+  const result = await t.run(async (ctx) => ({
+    guesses: (
+      await ctx.db
+        .query("gameGuesses")
+        .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
+        .collect()
+    ).map((row) => row.userId),
+    guest: await ctx.db.get("users", guest),
+  }));
+  expect(result).toEqual({ guesses: [target], guest: null });
 });

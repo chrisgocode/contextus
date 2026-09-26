@@ -53,12 +53,3 @@ export function streakEndingOn(dayKey: string, days: Set<string>): number {
   while (days.has(addDays(dayKey, -streak))) streak += 1;
   return streak;
 }
-
-export function longestStreak(days: Set<string>): number {
-  let longest = 0;
-  for (const day of days) {
-    if (days.has(addDays(day, 1))) continue;
-    longest = Math.max(longest, streakEndingOn(day, days));
-  }
-  return longest;
-}

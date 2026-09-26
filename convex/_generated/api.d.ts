@@ -34,7 +34,7 @@ import type * as lib_hint from "../lib/hint.js";
 import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_player from "../lib/player.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
-import type * as lib_userRows from "../lib/userRows.js";
+import type * as lib_userStatsRows from "../lib/userStatsRows.js";
 import type * as lib_usernames from "../lib/usernames.js";
 import type * as lib_words from "../lib/words.js";
 import type * as presence from "../presence.js";
@@ -77,7 +77,7 @@ declare const fullApi: ApiFromModules<{
   "lib/localTime": typeof lib_localTime;
   "lib/player": typeof lib_player;
   "lib/roomActivity": typeof lib_roomActivity;
-  "lib/userRows": typeof lib_userRows;
+  "lib/userStatsRows": typeof lib_userStatsRows;
   "lib/usernames": typeof lib_usernames;
   "lib/words": typeof lib_words;
   presence: typeof presence;

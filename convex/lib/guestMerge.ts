@@ -4,7 +4,9 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { evaluateCounterRules } from "./achievementRules";
 import { getAchievementDefinition } from "./achievements";
-import { longestStreak } from "./localTime";
+import { GUEST_LIFETIME_MS } from "./guestEngagement";
+import { addDays } from "./localTime";
+import { deleteUserAuthData } from "./userStatsRows";
 
 type MergeCtx = Pick<MutationCtx, "db">;
 
@@ -50,6 +52,13 @@ export async function startGuestMerge(
     targetUserId,
     phase: "hostedRooms",
     overlappingSolves: 0,
+    streakRun: 0,
+    streakBest: 0,
+  });
+  // Expiry cleanup would delete rows the merge hasn't moved yet. The merge
+  // deletes the guest itself, well before this new expiry.
+  await ctx.db.patch("users", guestUserId, {
+    guestExpiresAt: Date.now() + GUEST_LIFETIME_MS,
   });
   await ctx.scheduler.runAfter(0, internal.guestMerge.runBatch, { mergeId });
   return mergeId;
@@ -73,7 +82,10 @@ const batchPhases: Record<
   solveDays: { run: mergeSolveDays, next: "gamePlayerStats" },
   // Runs after achievement progress so per-game counters land on the
   // merged progress rows.
-  gamePlayerStats: { run: mergeGamePlayerStats, next: "finalize" },
+  gamePlayerStats: { run: mergeGamePlayerStats, next: "streak" },
+  // Guest and account solve days can interleave into a longer streak than
+  // either side had alone, so scan the merged days.
+  streak: { run: scanStreak, next: "finalize" },
 };
 
 export async function runGuestMergeBatch(
@@ -94,8 +106,22 @@ export async function runGuestMergeBatch(
   await ctx.scheduler.runAfter(0, internal.guestMerge.runBatch, { mergeId });
 }
 
-// Totals depend on every history row having moved, so they run last.
+// Totals depend on every history row having moved, so they run last. A
+// stale guest tab can still write after its table's phase, so re-sweep
+// until nothing is left, then delete the guest in the same transaction.
 async function finalizeMerge(ctx: MutationCtx, job: MergeJob) {
+  if (await guestHasRowsLeft(ctx, job.guestUserId)) {
+    await ctx.db.patch("guestMerges", job._id, {
+      phase: "hostedRooms",
+      streakLastDay: undefined,
+      streakRun: 0,
+      streakBest: 0,
+    });
+    await ctx.scheduler.runAfter(0, internal.guestMerge.runBatch, {
+      mergeId: job._id,
+    });
+    return;
+  }
   await mergeAchievementStats(
     ctx,
     job.guestUserId,
@@ -103,11 +129,68 @@ async function finalizeMerge(ctx: MutationCtx, job: MergeJob) {
     job.overlappingSolves,
   );
   await reconcileCounterAchievements(ctx, job.targetUserId);
-  await reconcileStreakAchievements(ctx, job.targetUserId);
+  if (job.streakBest > 0) {
+    await applyCounterValue(
+      ctx,
+      job.targetUserId,
+      "streakDays",
+      job.streakBest,
+      Date.now(),
+    );
+  }
+  await deleteUserAuthData(ctx, job.guestUserId);
+  if ((await ctx.db.get("users", job.guestUserId)) !== null) {
+    await ctx.db.delete("users", job.guestUserId);
+  }
   await ctx.db.delete("guestMerges", job._id);
-  await ctx.scheduler.runAfter(0, internal.cleanup.removeMergedGuest, {
-    guestUserId: job.guestUserId,
-  });
+}
+
+async function guestHasRowsLeft(ctx: MergeCtx, guestUserId: Id<"users">) {
+  const rows = await Promise.all([
+    ctx.db
+      .query("rooms")
+      .withIndex("by_host_user", (q) => q.eq("hostUserId", guestUserId))
+      .first(),
+    ctx.db
+      .query("roomMembers")
+      .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("gameGuesses")
+      .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("pendingRequests")
+      .withIndex("by_requester_game_type_status", (q) =>
+        q.eq("requesterUserId", guestUserId),
+      )
+      .first(),
+    ctx.db
+      .query("games")
+      .withIndex("by_winner_user", (q) => q.eq("winnerUserId", guestUserId))
+      .first(),
+    ctx.db
+      .query("userGameHistory")
+      .withIndex("by_user_game", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("userAchievements")
+      .withIndex("by_user_achievement", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("userAchievementProgress")
+      .withIndex("by_user_achievement", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("userSolveDays")
+      .withIndex("by_user_and_dayKey", (q) => q.eq("userId", guestUserId))
+      .first(),
+    ctx.db
+      .query("gamePlayerStats")
+      .withIndex("by_user", (q) => q.eq("userId", guestUserId))
+      .first(),
+  ]);
+  return rows.some((row) => row !== null);
 }
 
 async function patchGuestHostedRooms(
@@ -510,21 +593,33 @@ async function applyCounterValue(
   }
 }
 
-// Guest and account solve days can interleave into a longer streak than
-// either side had alone.
-async function reconcileStreakAchievements(ctx: MergeCtx, userId: Id<"users">) {
+async function scanStreak(ctx: MergeCtx, job: MergeJob) {
   const rows = await ctx.db
     .query("userSolveDays")
-    .withIndex("by_user_and_dayKey", (q) => q.eq("userId", userId))
-    .collect();
-  if (rows.length === 0) return;
-  await applyCounterValue(
-    ctx,
-    userId,
-    "streakDays",
-    longestStreak(new Set(rows.map((row) => row.dayKey))),
-    Date.now(),
-  );
+    .withIndex("by_user_and_dayKey", (q) => {
+      const byUser = q.eq("userId", job.targetUserId);
+      return job.streakLastDay === undefined
+        ? byUser
+        : byUser.gt("dayKey", job.streakLastDay);
+    })
+    .take(GUEST_MERGE_BATCH_SIZE);
+  let { streakLastDay, streakRun, streakBest } = job;
+  for (const row of rows) {
+    streakRun =
+      streakLastDay !== undefined && addDays(streakLastDay, 1) === row.dayKey
+        ? streakRun + 1
+        : 1;
+    streakBest = Math.max(streakBest, streakRun);
+    streakLastDay = row.dayKey;
+  }
+  if (rows.length > 0) {
+    await ctx.db.patch("guestMerges", job._id, {
+      streakLastDay,
+      streakRun,
+      streakBest,
+    });
+  }
+  return rows.length;
 }
 
 function earliest(a: number | undefined, b: number | undefined) {
