@@ -1,4 +1,4 @@
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 // Identifies this build to clients so they can tell when a newer deployment
@@ -18,6 +18,8 @@ const sentryEnvironment =
   vercelEnv === "production" || vercelEnv === "preview" ? vercelEnv : "";
 
 const nextConfig: NextConfig = {
+  // CI's e2e job skips the build's type check; the check job runs tsc.
+  typescript: { ignoreBuildErrors: process.env.SKIP_BUILD_TYPECHECK === "1" },
   experimental: {
     // Tailwind's CSS is small (~12 KB compressed), so shipping it inside the
     // HTML beats a render-blocking stylesheet request on first load.
