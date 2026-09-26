@@ -1,8 +1,8 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { query } from "./_generated/server";
+import { getCurrentUserId } from "./access";
 import {
   type AcceptedGuessEvent,
   type AchievementId,
@@ -25,7 +25,7 @@ export const listForProfile = query({
     const user = await getUserByUsername(ctx, username.trim());
     if (user === null) return null;
 
-    const currentUserId = await getAuthUserId(ctx);
+    const currentUserId = await getCurrentUserId(ctx);
     const isCurrentUser = currentUserId === user._id;
     const [unlocks, progressRows] = await Promise.all([
       ctx.db

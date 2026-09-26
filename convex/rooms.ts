@@ -1,8 +1,8 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { type MutationCtx, mutation, query } from "./_generated/server";
 import {
+  getCurrentUserId,
   requireHostByRoom,
   requireRegisteredUser,
   requireUser,
@@ -215,7 +215,7 @@ export const getByCode = query({
       .withIndex("by_code", (q) => q.eq("code", normalized))
       .unique();
     if (room === null) return null;
-    const viewerId = await getAuthUserId(ctx);
+    const viewerId = await getCurrentUserId(ctx);
     const viewerMembership =
       viewerId === null
         ? null
