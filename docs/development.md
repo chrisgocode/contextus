@@ -69,7 +69,7 @@ With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` inste
 
 #### In CI
 
-The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwaway local Convex backend with `CONVEX_AGENT_MODE=anonymous npx convex dev`, then runs `scripts/setup-e2e-convex-env.mjs` to set `E2E_TEST`, `SITE_URL`, and a fresh Convex Auth signing key. After that it builds the app and runs Playwright. When the job fails, the Playwright report, traces, and Convex log are uploaded as the `playwright-report` artifact.
+The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwaway local Convex backend with `CONVEX_AGENT_MODE=anonymous npx convex dev`, then runs `scripts/setup-e2e-convex-env.mjs` to set `E2E_TEST`, `SITE_URL`, and a fresh Convex Auth signing key. Convex starts in the background while the app builds, since the build only needs the backend's fixed local URL. The build reuses a cached `.next/cache` and skips its type check (`SKIP_BUILD_TYPECHECK=1`), because the `check` job already runs `tsc`. Playwright's headless Chromium uses the runner's preinstalled system libraries, so the job has no apt step. When the job fails, the Playwright report, traces, and Convex log are uploaded as the `playwright-report` artifact.
 
 ## Code quality
 
