@@ -23,8 +23,8 @@ jobs:
       - run: bun run format:check
       - run: bun run typecheck
 
-      # Vitest pre-bundles the UI project's barrel deps here. Vitest also checks
-      # its own hash inside the folder, so a stale restore is rebuilt, not used.
+      # Holds Vitest's UI dep pre-bundle and its results cache (past durations,
+      # which order slow files first). A stale bundle is rebuilt, not used.
       - name: Cache Vitest dependency pre-bundle
         uses: actions/cache@v6
         with:
