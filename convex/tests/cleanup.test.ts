@@ -476,6 +476,11 @@ test("E2E account cleanup removes its complete data graph", async () => {
       sessionId,
       expirationTime: Date.now() + 60_000,
     });
+    await ctx.db.insert("authRateLimits", {
+      identifier: email,
+      lastAttemptTime: Date.now(),
+      attemptsLeft: 5,
+    });
     await ctx.db.insert("gameGuesses", {
       gameId,
       userId,
@@ -507,6 +512,11 @@ test("E2E account cleanup removes its complete data graph", async () => {
     game: await ctx.db.get("games", gameId),
     authAccounts: await ctx.db.query("authAccounts").collect(),
     authSessions: await ctx.db.query("authSessions").collect(),
+    authVerificationCodes: await ctx.db
+      .query("authVerificationCodes")
+      .collect(),
+    authRefreshTokens: await ctx.db.query("authRefreshTokens").collect(),
+    authRateLimits: await ctx.db.query("authRateLimits").collect(),
     guesses: await ctx.db.query("gameGuesses").collect(),
     history: await ctx.db.query("userGameHistory").collect(),
     achievementStats: await ctx.db.query("userAchievementStats").collect(),
@@ -517,6 +527,9 @@ test("E2E account cleanup removes its complete data graph", async () => {
     game: null,
     authAccounts: [],
     authSessions: [],
+    authVerificationCodes: [],
+    authRefreshTokens: [],
+    authRateLimits: [],
     guesses: [],
     history: [],
     achievementStats: [],
