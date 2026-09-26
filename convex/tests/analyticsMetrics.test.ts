@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import { posthog } from "../posthog";
+import { contextoOracle } from "../contexto";
 import {
   asUser,
   fakeWordOracle,
@@ -63,6 +64,20 @@ test("turn and oracle metrics distinguish cache hits, duplicates, and unknown wo
     expect(event.properties?.duration_ms).toBeGreaterThanOrEqual(0);
     expect(event.distinctId).toBe(host);
   }
+});
+
+test("an empty unknown-word message is still an unknown-word outcome", async () => {
+  vi.spyOn(contextoOracle, "distance").mockResolvedValue({
+    ok: false,
+    error: "",
+  });
+  const { t, host, gameId, capture } = await game();
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" });
+  expect(
+    capture.mock.calls.find(
+      ([, event]) => event.event === "turn_completed",
+    )?.[1],
+  ).toMatchObject({ properties: { outcome: "unknown_word" } });
 });
 
 test.each([
