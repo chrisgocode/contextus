@@ -3,9 +3,12 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { sentryEnabled, sentryEnvironment } from "@/lib/sentry";
 
 Sentry.init({
   dsn: "https://85ede5126abf32a201118c5f021bb7e9@o4511398152437760.ingest.us.sentry.io/4511405904297984",
+  enabled: sentryEnabled,
+  environment: sentryEnvironment,
 
   // Replay is added after page load (see below) so rrweb stays out of the
   // main client bundle.
@@ -40,7 +43,9 @@ function loadReplay() {
     });
 }
 
-if (document.readyState === "complete") {
+if (!sentryEnabled) {
+  // Nothing reports outside Vercel, so skip the CDN fetch too.
+} else if (document.readyState === "complete") {
   loadReplay();
 } else {
   window.addEventListener("load", loadReplay, { once: true });
