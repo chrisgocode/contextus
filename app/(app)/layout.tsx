@@ -1,4 +1,5 @@
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import { preconnect } from "react-dom";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { TimeZoneSync } from "@/app/_components/TimeZoneSync";
 
@@ -12,6 +13,9 @@ export default function AppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The Convex client opens its WebSocket as soon as its chunk runs, so warm
+  // up DNS and TLS while the browser is still fetching the JS.
+  preconnect(process.env.NEXT_PUBLIC_CONVEX_URL!);
   return (
     <ConvexAuthNextjsServerProvider>
       <ConvexClientProvider>
