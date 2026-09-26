@@ -2,8 +2,9 @@ import { ConvexError } from "convex/values";
 import type { WordOracle } from "./wordOracle";
 
 const BASE = "https://api.contexto.me/machado/en";
-const UNAVAILABLE_MESSAGE = "Contexto is unavailable, please try again";
-const UNEXPECTED_PAYLOAD_MESSAGE = "Contexto returned an unexpected response";
+export const UNAVAILABLE_MESSAGE = "Contexto is unavailable, please try again";
+export const UNEXPECTED_PAYLOAD_MESSAGE =
+  "Contexto returned an unexpected response";
 
 // Contexto's JSON is untrusted, so every field is checked before use.
 type ContextoBody = {

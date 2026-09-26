@@ -46,6 +46,27 @@ type EventCatalog = {
     game_id: Id<"games">;
     request_type: "hint" | "giveup";
   };
+  contexto_request: {
+    endpoint: "distance" | "tip" | "answer";
+    duration_ms: number;
+    outcome: "ok" | "unknown_word" | "unavailable" | "unexpected_payload";
+    cache?: "hit" | "miss";
+  };
+  turn_completed: {
+    game_id: Id<"games">;
+    kind: "guess" | "hint" | "giveup";
+    outcome: "recorded" | "duplicate" | "won" | "unknown_word";
+    duration_ms: number;
+    tips_tried?: number;
+  };
+  turn_failed: {
+    game_id: Id<"games">;
+    kind: "guess" | "hint" | "giveup";
+    outcome: "rejected" | "failed";
+    error_category: string;
+    duration_ms: number;
+    tips_tried?: number;
+  };
   request_created: {
     request_id: Id<"pendingRequests">;
     game_id: Id<"games">;

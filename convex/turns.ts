@@ -4,8 +4,9 @@
 // Pipeline: `_prepare` (authorize, early checks) -> word oracle -> `_apply`.
 // `_apply` re-runs authorization and the Pending request check in the same
 // transaction that changes the Game, so no caller can skip them.
-import { ConvexError, v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -19,6 +20,7 @@ import {
 import { requireHostByGame, requireMemberByGame } from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
 import { analyticsEnabled, track } from "./analytics";
+import { UNAVAILABLE_MESSAGE, UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
@@ -93,7 +95,7 @@ export const _prepare = internalQuery({
     requestId: v.optional(v.id("pendingRequests")),
   },
   handler: async (ctx, { gameId, kind, requestId }) => {
-    const { game } = await authorize(ctx, gameId, kind);
+    const { game, userId } = await authorize(ctx, gameId, kind);
     await requirePendingRequest(ctx, gameId, kind, requestId);
     if (game.status !== "in_progress") {
       throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
@@ -107,7 +109,7 @@ export const _prepare = internalQuery({
         .first();
       best = closest?.distance ?? null;
     }
-    return { contextoGameId: game.contextoGameId, best };
+    return { contextoGameId: game.contextoGameId, best, userId };
   },
 });
 
@@ -393,27 +395,125 @@ export async function performTurn(
 ): Promise<GuessResult | ScoredLemma | { lemma: string }> {
   const { gameId, turn } = args;
   const requestId = "requestId" in args ? args.requestId : undefined;
-  const pre: { contextoGameId: number; best: number | null } =
-    await ctx.runQuery(internal.turns._prepare, {
+  const startedAt = Date.now();
+  let userId: Id<"users"> | null = null;
+  let tipsTried = 0;
+  try {
+    const pre: {
+      contextoGameId: number;
+      best: number | null;
+      userId: Id<"users">;
+    } = await ctx.runQuery(internal.turns._prepare, {
       gameId,
       kind: turn.kind,
       requestId,
     });
-  const oracle = puzzleWordOracle(ctx, pre.contextoGameId);
-  switch (turn.kind) {
-    case "guess":
-      return await performGuess(ctx, gameId, oracle, turn.word);
-    case "hint":
-      return await performHint(ctx, gameId, oracle, pre.best, requestId);
-    case "giveup": {
-      const answer = await oracle.answer();
-      await ctx.runMutation(internal.turns._apply, {
-        gameId,
-        turn: { kind: "giveup", answerLemma: answer.lemma },
-        requestId,
-      });
-      return answer;
+    userId = pre.userId;
+    const oracle = puzzleWordOracle(ctx, pre.contextoGameId, userId);
+    let result: GuessResult | ScoredLemma | { lemma: string };
+    let outcome: "recorded" | "duplicate" | "won" | "unknown_word" = "recorded";
+    switch (turn.kind) {
+      case "guess": {
+        const guess = await performGuess(ctx, gameId, oracle, turn.word);
+        result = guess;
+        outcome = guess.won
+          ? "won"
+          : guess.alreadyGuessed
+            ? "duplicate"
+            : guess.message
+              ? "unknown_word"
+              : "recorded";
+        break;
+      }
+      case "hint": {
+        const hint = await performHint(
+          ctx,
+          gameId,
+          oracle,
+          pre.best,
+          requestId,
+          () => tipsTried++,
+        );
+        result = hint.tip;
+        tipsTried = hint.tipsTried;
+        break;
+      }
+      case "giveup": {
+        const answer = await oracle.answer();
+        await ctx.runMutation(internal.turns._apply, {
+          gameId,
+          turn: { kind: "giveup", answerLemma: answer.lemma },
+          requestId,
+        });
+        result = answer;
+        break;
+      }
     }
+    await track(ctx, userId, {
+      name: "turn_completed",
+      properties: {
+        game_id: gameId,
+        kind: turn.kind,
+        outcome,
+        duration_ms: Math.max(0, Date.now() - startedAt),
+        ...(turn.kind === "hint" ? { tips_tried: tipsTried } : {}),
+      },
+    });
+    return result;
+  } catch (error) {
+    userId ??= await getAuthUserId(ctx);
+    if (userId !== null) {
+      const category = turnErrorCategory(error);
+      await track(ctx, userId, {
+        name: "turn_failed",
+        properties: {
+          game_id: gameId,
+          kind: turn.kind,
+          outcome:
+            category === "unexpected" || category.startsWith("contexto_")
+              ? "failed"
+              : "rejected",
+          error_category: category,
+          duration_ms: Math.max(0, Date.now() - startedAt),
+          ...(turn.kind === "hint" ? { tips_tried: tipsTried } : {}),
+        },
+      });
+    }
+    throw error;
+  }
+}
+
+function turnErrorCategory(error: unknown): string {
+  const message = error instanceof ConvexError ? error.data : null;
+  switch (message) {
+    case UNAVAILABLE_MESSAGE:
+      return "contexto_unavailable";
+    case UNEXPECTED_PAYLOAD_MESSAGE:
+      return "contexto_unexpected_payload";
+    case "Empty word":
+      return "empty_word";
+    case ALREADY_GUESSED_MESSAGE:
+      return "duplicate";
+    case REQUEST_HANDLED_MESSAGE:
+      return "request_handled";
+    case NOT_IN_PROGRESS_MESSAGE:
+      return "game_ended";
+    case "Not authenticated":
+      return "not_authenticated";
+    case "Not a member of this room":
+      return "not_member";
+    case "Game not found":
+      return "game_not_found";
+    case "Room not found":
+      return "room_not_found";
+    case "Host only":
+      return "not_host";
+    case "Hint lemma already guessed":
+      return "hint_duplicate";
+    case "Could not find an unguessed hint":
+      return "hint_exhausted";
+    default:
+      return "unexpected";
   }
 }
 
@@ -462,17 +562,19 @@ async function performHint(
   oracle: PuzzleWordOracle,
   best: number | null,
   requestId: Id<"pendingRequests"> | undefined,
-): Promise<ScoredLemma> {
+  onTip: () => void,
+): Promise<{ tip: ScoredLemma; tipsTried: number }> {
   let target = initialHintTarget(best);
   const walking = best === 1;
   for (let i = 0; i < MAX_WALK_ITERATIONS; i++) {
+    onTip();
     const tip = await oracle.tip(target);
     const result: ApplyResult = await ctx.runMutation(internal.turns._apply, {
       gameId,
       turn: { kind: "hint", lemma: tip.lemma, distance: tip.distance },
       requestId,
     });
-    if (result.status === "recorded") return tip;
+    if (result.status === "recorded") return { tip, tipsTried: i + 1 };
     if (!walking) throw new ConvexError("Hint lemma already guessed");
     target += 1;
   }
