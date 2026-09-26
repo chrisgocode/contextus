@@ -18,6 +18,34 @@ type EventCatalog = {
     contexto_game_id: number;
     play_again: boolean;
   };
+  guess_recorded: {
+    game_id: Id<"games">;
+    lemma: string;
+    distance: number;
+    duplicate: boolean;
+    // Hints are Guesses too; game outcome guess_count covers only "guess".
+    source: "guess" | "hint";
+  };
+  hint_given: { game_id: Id<"games">; source: "host" | "request" };
+  game_won: {
+    game_id: Id<"games">;
+    guess_count: number;
+    hint_count: number;
+    member_count: number;
+    duration_ms: number;
+  };
+  game_given_up: {
+    game_id: Id<"games">;
+    guess_count: number;
+    hint_count: number;
+    member_count: number;
+    duration_ms: number;
+  };
+  request_approved: {
+    request_id: Id<"pendingRequests">;
+    game_id: Id<"games">;
+    request_type: "hint" | "giveup";
+  };
   request_created: {
     request_id: Id<"pendingRequests">;
     game_id: Id<"games">;
@@ -41,7 +69,7 @@ export type AnalyticsEvent = {
   };
 }[keyof EventCatalog];
 
-function enabled() {
+export function analyticsEnabled() {
   return (
     env.POSTHOG_PROJECT_TOKEN &&
     env.POSTHOG_PROJECT_TOKEN !== "disabled" &&
@@ -56,7 +84,7 @@ export async function track(
   distinctId: Id<"users">,
   event: AnalyticsEvent,
 ) {
-  if (!enabled()) return;
+  if (!analyticsEnabled()) return;
   try {
     await posthog.capture(ctx, {
       distinctId,
@@ -79,7 +107,7 @@ export async function mergeGuestIdentity(
   guestUserId: Id<"users">,
   accountUserId: Id<"users">,
 ) {
-  if (!enabled()) return;
+  if (!analyticsEnabled()) return;
   try {
     await posthog.capture(ctx, {
       distinctId: accountUserId,
