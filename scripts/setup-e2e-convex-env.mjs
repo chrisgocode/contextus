@@ -29,6 +29,7 @@ fs.writeFileSync(
   envFile,
   [
     "E2E_TEST=1",
+    "POSTHOG_PROJECT_TOKEN=disabled",
     `SITE_URL=${siteUrl}`,
     `JWT_PRIVATE_KEY="${pem.trimEnd().replace(/\n/g, " ")}"`,
     `JWKS='${jwks}'`,
