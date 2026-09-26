@@ -11,7 +11,11 @@ const appVersion =
 // Sentry reports only from Vercel deployments, tagged "production" or
 // "preview". Local builds and e2e runs (which talk to the dev Convex
 // deployment) leave this empty, so they never report (see lib/sentry.ts).
-const sentryEnvironment = process.env.VERCEL_ENV ?? "";
+// `vercel dev` and `vercel env pull` set VERCEL_ENV=development locally,
+// so match the deployed values explicitly.
+const vercelEnv = process.env.VERCEL_ENV;
+const sentryEnvironment =
+  vercelEnv === "production" || vercelEnv === "preview" ? vercelEnv : "";
 
 const nextConfig: NextConfig = {
   env: {
