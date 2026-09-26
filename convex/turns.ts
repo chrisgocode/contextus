@@ -420,7 +420,7 @@ export async function performTurn(
           ? "won"
           : guess.alreadyGuessed
             ? "duplicate"
-            : guess.message
+            : guess.message !== undefined
               ? "unknown_word"
               : "recorded";
         break;
