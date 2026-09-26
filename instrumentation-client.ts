@@ -21,6 +21,8 @@ if (process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT && posthogToken) {
           defaults: "2026-01-30",
           capture_pageview: "history_change",
           autocapture: false,
+          capture_dead_clicks: false,
+          rageclick: false,
           disable_session_recording: true,
           capture_exceptions: false,
         }),
