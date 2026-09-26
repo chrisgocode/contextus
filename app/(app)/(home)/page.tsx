@@ -19,6 +19,7 @@ import { api } from "@/convex/_generated/api";
 import { getErrorData } from "@/lib/client-errors";
 import { roomPath } from "@/lib/room-code";
 import { reportClientError } from "@/lib/report-error";
+import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
@@ -145,6 +146,8 @@ function CreateRoom({
           setError(null);
           setBusy(true);
           onOpeningChange(true);
+          // The new room opens on the game setup calendar.
+          preloadCalendar();
           try {
             if (!(await settledAuth())) await signIn("anonymous");
             const { code } = await create({});

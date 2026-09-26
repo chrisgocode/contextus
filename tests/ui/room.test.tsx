@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
 }));
 
+// Skip downloading react-day-picker; these tests don't render the calendar.
+vi.mock("@/app/(app)/r/[code]/_components/calendar-loader", () => ({
+  preloadCalendar: () => {},
+}));
 vi.mock("convex/react", () => ({
   useAction: mocks.useAction,
   useConvexAuth: mocks.useConvexAuth,

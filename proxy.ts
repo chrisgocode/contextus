@@ -16,9 +16,13 @@ export default convexAuthNextjsMiddleware(
 );
 
 export const config = {
-  // The following matcher runs middleware on all routes except static assets
-  // and content-only pages. Those pages don't use auth and aren't OAuth
-  // landing pages, so skipping them lets the CDN serve them without a
-  // middleware hop.
-  matcher: ["/((?!.*\\..*|_next|how-to-play).*)", "/", "/(api|trpc)(.*)"],
+  // The following matcher runs middleware on all routes except static assets,
+  // content-only pages, the version check every open tab polls, and the
+  // Sentry tunnel. None of those use auth or are OAuth landing pages, so
+  // skipping them saves a middleware hop.
+  matcher: [
+    "/((?!.*\\..*|_next|how-to-play|monitoring|api/version).*)",
+    "/",
+    "/api/((?!version$).*)",
+  ],
 };

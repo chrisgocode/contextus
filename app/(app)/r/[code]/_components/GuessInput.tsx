@@ -2,13 +2,13 @@
 
 import { useAction } from "convex/react";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
+import { lazyToast } from "@/lib/toast";
 
 // Unsent guesses live in sessionStorage so a reload (e.g. from the new-version
 // toast) doesn't throw away what the player was typing.
@@ -72,7 +72,8 @@ export function GuessInput({
             if (res.unlockedAchievementIds.length > 0) {
               onAchievementsUnlocked(res.unlockedAchievementIds);
             }
-            if (res.won) toast.success(`You got it: ${res.lemma}!`);
+            if (res.won)
+              lazyToast((toast) => toast.success(`You got it: ${res.lemma}!`));
           } catch (err) {
             const message =
               expectedClientErrorMessage(err, "guess.submit") ??

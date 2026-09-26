@@ -15,6 +15,7 @@ import { api } from "@/convex/_generated/api";
 import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
+import { preloadCalendar } from "./_components/calendar-loader";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
@@ -43,6 +44,11 @@ export default function RoomPage({
   const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
   const leavingRef = useRef(false);
+
+  // Start fetching the calendar chunk now rather than once the room and game
+  // queries say it's needed, so it isn't a second round trip for hosts.
+  // (Creating a room from home starts it even earlier.)
+  useEffect(() => preloadCalendar(), []);
 
   const isMember = data?.viewerUserId
     ? data.members.some((m) => m.userId === data.viewerUserId)

@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -13,6 +14,14 @@ import {
 } from "@/lib/contexto";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
+
+// Loaded on demand; see calendar-loader.ts for who preloads it. The import
+// is written out here rather than reusing loadCalendar so Next can attach its
+// preload metadata to this dynamic() call.
+const Calendar = dynamic(
+  () => import("@/components/ui/calendar").then((mod) => mod.Calendar),
+  { loading: () => <Skeleton className="h-[291px] w-62" /> },
+);
 
 export function GameSetupCalendar({
   roomId,
