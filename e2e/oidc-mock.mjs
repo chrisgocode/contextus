@@ -5,7 +5,10 @@
  *
  * Like Google, `/authorize` shows a page before redirecting back, and the test
  * types which account signs in. The page matters: the app page that started
- * sign-in unloads once it loads, as it does with Google.
+ * sign-in unloads once it loads, as it does with Google. A test can instead
+ * set an `account` cookie on the issuer, and `/authorize` redirects straight
+ * back as that account, as Google does for a returning user. The app page then
+ * stays loaded through the whole redirect chain.
  */
 
 import { createServer } from "node:http";
@@ -56,8 +59,25 @@ function escape(value) {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+function accountCookie(req) {
+  for (const cookie of req.headers.cookie?.split(";") ?? []) {
+    const [name, value] = cookie.trim().split("=");
+    if (name === "account" && value) return decodeURIComponent(value);
+  }
+  return null;
+}
+
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", issuerUrl);
+  const account = accountCookie(req);
+  if (
+    url.pathname === "/authorize" &&
+    !url.searchParams.has("account") &&
+    account !== null
+  ) {
+    url.searchParams.set("account", account);
+    req.url = url.pathname + url.search;
+  }
   if (url.pathname === "/authorize" && !url.searchParams.has("account")) {
     res.writeHead(200, { "content-type": "text/html" });
     res.end(loginPage(url));
