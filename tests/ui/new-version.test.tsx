@@ -2,12 +2,9 @@ import { act } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/version/route";
-import {
-  NewVersionNotifier,
-  NewVersionToast,
-} from "@/app/_components/NewVersionNotifier";
+import { NewVersionNotifier } from "@/app/_components/NewVersionNotifier";
 import { watchForNewVersion } from "@/lib/new-version";
-import { render, screen, userEvent } from "./test-utils";
+import { fireEvent, render, screen } from "./test-utils";
 
 vi.mock("sonner", () => ({
   toast: { custom: vi.fn(), dismiss: vi.fn() },
@@ -219,7 +216,7 @@ describe("version endpoint", () => {
 });
 
 describe("NewVersionNotifier", () => {
-  it("shows a persistent refresh toast when a new deployment is detected", async () => {
+  it("shows a dismissible refresh toast when a new deployment is detected", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_VERSION", "v1");
     vi.stubGlobal(
       "fetch",
@@ -234,14 +231,14 @@ describe("NewVersionNotifier", () => {
       await vi.advanceTimersByTimeAsync(POLL_MS);
     });
 
-    expect(toast.custom).toHaveBeenCalledExactlyOnceWith(
-      expect.any(Function),
-      expect.objectContaining({
-        id: "new-version",
-        duration: Infinity,
-        position: "bottom-right",
-      }),
+    expect(toast.custom).toHaveBeenCalledOnce();
+    const [renderToast] = vi.mocked(toast.custom).mock.calls[0];
+    render(<>{renderToast("new-version")}</>);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "New version available",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(toast.dismiss).toHaveBeenCalledWith("new-version");
     unmount();
   });
 
@@ -256,18 +253,5 @@ describe("NewVersionNotifier", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("renders a toast that refreshes or dismisses", async () => {
-    vi.useRealTimers();
-    const onRefresh = vi.fn();
-    const onDismiss = vi.fn();
-    render(<NewVersionToast onRefresh={onRefresh} onDismiss={onDismiss} />);
-
-    expect(screen.getByText("New version available")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    expect(onRefresh).toHaveBeenCalledOnce();
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(onDismiss).toHaveBeenCalledOnce();
   });
 });

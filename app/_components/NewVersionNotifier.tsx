@@ -29,7 +29,7 @@ export function NewVersionNotifier() {
   return null;
 }
 
-export function NewVersionToast({
+function NewVersionToast({
   onRefresh,
   onDismiss,
 }: {

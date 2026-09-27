@@ -276,11 +276,11 @@ const groupByCategory = new Map(
   achievementGroups.map((group) => [group.category, group]),
 );
 
-export function getAchievementById(id: string) {
+function getAchievementById(id: string) {
   return achievementById.get(id) ?? null;
 }
 
-export function getAchievementGroup(category: AchievementCategory) {
+function getAchievementGroup(category: AchievementCategory) {
   return groupByCategory.get(category) ?? achievementGroups[0];
 }
 

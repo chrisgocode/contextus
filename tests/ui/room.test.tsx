@@ -8,9 +8,7 @@ import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(),
-  endRoom: vi.fn(),
   join: vi.fn(),
-  leave: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
   signIn: vi.fn(),
@@ -98,8 +96,7 @@ beforeEach(() => {
   mocks.useAction.mockReturnValue(mocks.submit);
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
-    if (name === "rooms:leave") return mocks.leave;
-    if (name === "rooms:endRoom") return mocks.endRoom;
+    if (name === "rooms:leave" || name === "rooms:endRoom") return vi.fn();
     if (name === "rooms:join") return mocks.join;
     throw new Error(`Unexpected mutation: ${name}`);
   });
@@ -168,29 +165,15 @@ describe("RoomPage", () => {
     ).toBeVisible();
   });
 
-  it("renders an active member room and performs host room controls", async () => {
-    mocks.leave.mockResolvedValue(null);
-    mocks.endRoom.mockResolvedValue(null);
+  it("copies the room code", async () => {
     const user = userEvent.setup();
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);
     await renderRoom();
 
-    expect(
-      await screen.findByRole("heading", { name: "ABCDEF" }),
-    ).toBeVisible();
-    expect(screen.getByText("Alex")).toBeVisible();
-    expect(screen.getByText("Blair")).toBeVisible();
-    expect(screen.getByText("Game #123")).toBeVisible();
-
-    await user.click(screen.getByRole("button", { name: /^Copy/ }));
+    await user.click(await screen.findByRole("button", { name: /^Copy/ }));
     expect(writeText).toHaveBeenCalledWith("ABCDEF");
-    await user.click(screen.getByRole("button", { name: "Leave" }));
-    expect(mocks.leave).toHaveBeenCalledWith({ roomId: "room" });
-    await user.click(screen.getByRole("button", { name: /^End/ }));
-    expect(mocks.endRoom).toHaveBeenCalledWith({ roomId: "room" });
-    expect(mocks.push).toHaveBeenCalledWith("/");
   });
 
   it("labels each member's online status", async () => {

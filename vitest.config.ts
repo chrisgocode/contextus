@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL(".", import.meta.url)) } },
+  // Import assets as URLs, not data URIs. next/image preloads `priority`
+  // images by querying for a link with the src, and jsdom rejects selectors
+  // over 2048 characters, which an inlined trophy SVG exceeds.
+  build: { assetsInlineLimit: 0 },
   test: {
     // Test files share workers instead of paying environment and dependency
     // setup per file, so every file must leave global state as it found it.

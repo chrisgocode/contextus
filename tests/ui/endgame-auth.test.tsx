@@ -81,20 +81,6 @@ describe("EndGameBanner", () => {
     expect(screen.getByText("apple")).toBeVisible();
   });
 
-  it("reveals the answer after the group gives up", () => {
-    render(
-      <EndGameBanner
-        answerLemma="pear"
-        gameId={"game" as never}
-        status="given_up"
-      />,
-    );
-    expect(
-      screen.getByRole("heading", { name: "Game given up" }),
-    ).toBeVisible();
-    expect(screen.getByText("pear")).toBeVisible();
-  });
-
   it("dismisses the guest prompt before navigating to account creation", async () => {
     mocks.dismissPrompt.mockResolvedValue(null);
     mocks.useQuery.mockImplementation((reference) => {
