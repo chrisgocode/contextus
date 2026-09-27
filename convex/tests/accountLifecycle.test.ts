@@ -262,6 +262,8 @@ test("guest expiry deletes private rows and keeps shared room history", async ()
   const fixture = await seedFixture(t);
   const guest = await seedUser(t, {
     isAnonymous: true,
+    username: "temporaryguest",
+    displayUsername: "TemporaryGuest",
     guestExpiresAt: Date.now() - 1,
   });
   await seedEveryTable(t, guest, fixture);
@@ -277,10 +279,10 @@ test("guest expiry deletes private rows and keeps shared room history", async ()
     ...countsWhere((key) => !kept.has(key), 0),
     ...countsWhere((key) => kept.has(key), 1),
   });
-  expect(await t.run((ctx) => ctx.db.get("users", guest))).toMatchObject({
-    name: "Former Guest",
-    isAnonymous: false,
-  });
+  const user = await t.run((ctx) => ctx.db.get("users", guest));
+  expect(user).toMatchObject({ name: "Former Guest", isAnonymous: false });
+  expect(user?.username).toBeUndefined();
+  expect(user?.displayUsername).toBeUndefined();
 });
 
 test("E2E purge leaves no row referencing the account", async () => {

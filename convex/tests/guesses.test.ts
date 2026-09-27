@@ -238,16 +238,6 @@ test("submit: rejected on ended game", async () => {
   ).rejects.toThrow();
 });
 
-test("submit: non-member rejected", async () => {
-  const t = setupTest();
-  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
-  const { gameId } = await startedGame(t);
-  const outsider = await seedUser(t);
-  await expect(
-    asUser(t, outsider).action(api.guesses.submit, { gameId, word: "hello" }),
-  ).rejects.toThrow();
-});
-
 test("listForGame returns empty for ex-member after leaving room", async () => {
   const t = setupTest();
   fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });

@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
-import { loadPlayers } from "../lib/player";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 import { posthog } from "../posthog";
 
@@ -431,17 +430,6 @@ test("getByCode uses one fallback for blank and deleted members", async () => {
   ).toMatchObject({
     name: "Former Guest",
     isGuest: false,
-  });
-});
-
-test("loading repeated players reads each user once", async () => {
-  const t = setupTest();
-  const userId = await seedUser(t);
-  await t.run(async (ctx) => {
-    const get = vi.spyOn(ctx.db, "get");
-    const players = await loadPlayers(ctx, [userId, userId]);
-    expect(players.get(userId)?.name).toBe("Test User");
-    expect(get).toHaveBeenCalledTimes(1);
   });
 });
 

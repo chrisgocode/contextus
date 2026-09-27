@@ -42,6 +42,7 @@ test("approve via requests dispatcher ends game with answer + marks approved", a
   const game = await t.run(async (ctx) => ctx.db.get("games", gameId));
   expect(game?.status).toBe("given_up");
   expect(game?.answerLemma).toBe("persimmon");
+  expect(game?.endedAt).toBeTypeOf("number");
   const reqRow = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", req!._id),
   );

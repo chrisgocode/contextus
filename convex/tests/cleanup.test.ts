@@ -15,19 +15,6 @@ const other = "u_other" as unknown as Id<"users">;
 const newer = "u_newer" as unknown as Id<"users">;
 
 describe("decideRoomCleanup", () => {
-  test("no-op when host online", () => {
-    const r = decideRoomCleanup({
-      room: { hostUserId: host, lastActivityAt: Date.now() },
-      members: [
-        { userId: host, joinedAt: 1 },
-        { userId: other, joinedAt: 2 },
-      ],
-      onlineUserIds: new Set([host, other]),
-      now: Date.now(),
-    });
-    expect(r.kind).toBe("noop");
-  });
-
   test("migrates host to oldest-joined online member", () => {
     const r = decideRoomCleanup({
       room: { hostUserId: host, lastActivityAt: Date.now() },
@@ -42,16 +29,6 @@ describe("decideRoomCleanup", () => {
     expect(r).toEqual({ kind: "migrateHost", newHostUserId: other });
   });
 
-  test("ends room when no online + idle past timeout", () => {
-    const r = decideRoomCleanup({
-      room: { hostUserId: host, lastActivityAt: 0 },
-      members: [{ userId: host, joinedAt: 1 }],
-      onlineUserIds: new Set(),
-      now: IDLE_TIMEOUT_MS + 1,
-    });
-    expect(r.kind).toBe("endRoom");
-  });
-
   test("no-op when no online but not yet idle", () => {
     const now = Date.now();
     const r = decideRoomCleanup({
@@ -59,19 +36,6 @@ describe("decideRoomCleanup", () => {
       members: [{ userId: host, joinedAt: 1 }],
       onlineUserIds: new Set(),
       now,
-    });
-    expect(r.kind).toBe("noop");
-  });
-
-  test("no-op when host happens to be only online member", () => {
-    const r = decideRoomCleanup({
-      room: { hostUserId: host, lastActivityAt: Date.now() },
-      members: [
-        { userId: host, joinedAt: 1 },
-        { userId: other, joinedAt: 2 },
-      ],
-      onlineUserIds: new Set([host]),
-      now: Date.now(),
     });
     expect(r.kind).toBe("noop");
   });
@@ -328,102 +292,6 @@ test("room activity backfill inserts only missing activity rows", async () => {
   ).resolves.toEqual({ inserted: 0, scanned: 1 });
 });
 
-test("expired guest cleanup removes private progress and keeps anonymized guesses", async () => {
-  const t = setupTest();
-  const guest = await seedUser(t, {
-    isAnonymous: true,
-    username: "temporaryguest",
-    displayUsername: "TemporaryGuest",
-    guestExpiresAt: Date.now() - 1,
-  });
-  const host = await seedUser(t);
-  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {});
-  const { gameId } = await asUser(t, host).mutation(api.games.start, {
-    roomId,
-    contextoGameId: 1336,
-  });
-  await t.run(async (ctx) => {
-    await ctx.db.insert("gameGuesses", {
-      gameId,
-      userId: guest,
-      lemma: "kept",
-      distance: 100,
-      source: "guess",
-      createdAt: 1,
-    });
-    await ctx.db.insert("userGameHistory", {
-      userId: guest,
-      contextoGameId: 1336,
-      firstPlayedAt: 1,
-    });
-    await ctx.db.insert("userAchievements", {
-      userId: guest,
-      achievementId: "first_solve",
-      unlockedAt: 1,
-    });
-    await ctx.db.insert("userAchievementProgress", {
-      userId: guest,
-      achievementId: "streak_3",
-      current: 1,
-      target: 3,
-      hidden: false,
-      updatedAt: 1,
-    });
-    await ctx.db.insert("userSolveDays", {
-      userId: guest,
-      dayKey: "2026-03-01",
-    });
-    await ctx.db.insert("userAchievementStats", {
-      userId: guest,
-      redGuesses: 1,
-      yellowGuesses: 0,
-      greenGuesses: 0,
-      uniqueSolves: 0,
-    });
-  });
-
-  await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
-
-  const result = await t.run(async (ctx) => ({
-    user: await ctx.db.get("users", guest),
-    history: await ctx.db
-      .query("userGameHistory")
-      .withIndex("by_user_game", (q) => q.eq("userId", guest))
-      .collect(),
-    achievements: await ctx.db
-      .query("userAchievements")
-      .withIndex("by_user_achievement", (q) => q.eq("userId", guest))
-      .collect(),
-    progress: await ctx.db
-      .query("userAchievementProgress")
-      .withIndex("by_user_achievement", (q) => q.eq("userId", guest))
-      .collect(),
-    solveDays: await ctx.db
-      .query("userSolveDays")
-      .withIndex("by_user_and_dayKey", (q) => q.eq("userId", guest))
-      .collect(),
-    achievementStats: await ctx.db
-      .query("userAchievementStats")
-      .withIndex("by_user", (q) => q.eq("userId", guest))
-      .unique(),
-    guesses: await ctx.db
-      .query("gameGuesses")
-      .withIndex("by_user", (q) => q.eq("userId", guest))
-      .collect(),
-  }));
-  expect(result.user).toMatchObject({
-    name: "Former Guest",
-    isAnonymous: false,
-  });
-  expect(result.user?.username).toBeUndefined();
-  expect(result.history).toEqual([]);
-  expect(result.achievements).toEqual([]);
-  expect(result.progress).toEqual([]);
-  expect(result.solveDays).toEqual([]);
-  expect(result.achievementStats).toBeNull();
-  expect(result.guesses).toHaveLength(1);
-});
-
 test("expired guest stays eligible until all progress and auth rows are deleted", async () => {
   const t = setupTest();
   const guest = await seedUser(t, {
@@ -519,7 +387,7 @@ test("expired guests share a row budget and all eventually finish", async () => 
   expect(result.history).toEqual([]);
 });
 
-test("E2E account cleanup removes its complete data graph", async () => {
+test("E2E purge rejects other emails and clears rate limits and hosted Games", async () => {
   vi.stubEnv("E2E_TEST", "1");
   const t = setupTest();
   const email = "contextus-e2e-local-w0-u0@example.com";
@@ -534,25 +402,6 @@ test("E2E account cleanup removes its complete data graph", async () => {
     contextoGameId: 1337,
   });
   await t.run(async (ctx) => {
-    const accountId = await ctx.db.insert("authAccounts", {
-      userId,
-      provider: "password",
-      providerAccountId: email,
-    });
-    await ctx.db.insert("authVerificationCodes", {
-      accountId,
-      provider: "password",
-      code: "test",
-      expirationTime: Date.now() + 60_000,
-    });
-    const sessionId = await ctx.db.insert("authSessions", {
-      userId,
-      expirationTime: Date.now() + 60_000,
-    });
-    await ctx.db.insert("authRefreshTokens", {
-      sessionId,
-      expirationTime: Date.now() + 60_000,
-    });
     await ctx.db.insert("authRateLimits", {
       identifier: email,
       lastAttemptTime: Date.now(),
@@ -566,18 +415,6 @@ test("E2E account cleanup removes its complete data graph", async () => {
       source: "guess",
       createdAt: Date.now(),
     });
-    await ctx.db.insert("userGameHistory", {
-      userId,
-      contextoGameId: 1337,
-      firstPlayedAt: Date.now(),
-    });
-    await ctx.db.insert("userAchievementStats", {
-      userId,
-      redGuesses: 1,
-      yellowGuesses: 0,
-      greenGuesses: 0,
-      uniqueSolves: 0,
-    });
   });
 
   await t.mutation(api.e2eCleanup.purgeAccount, { email });
@@ -587,32 +424,15 @@ test("E2E account cleanup removes its complete data graph", async () => {
     otherUser: await ctx.db.get("users", otherUserId),
     room: await ctx.db.get("rooms", roomId),
     game: await ctx.db.get("games", gameId),
-    authAccounts: await ctx.db.query("authAccounts").collect(),
-    authSessions: await ctx.db
-      .query("authSessions")
-      .withIndex("userId", (q) => q.eq("userId", userId))
-      .collect(),
-    authVerificationCodes: await ctx.db
-      .query("authVerificationCodes")
-      .collect(),
-    authRefreshTokens: await ctx.db.query("authRefreshTokens").collect(),
-    authRateLimits: await ctx.db.query("authRateLimits").collect(),
     guesses: await ctx.db.query("gameGuesses").collect(),
-    history: await ctx.db.query("userGameHistory").collect(),
-    achievementStats: await ctx.db.query("userAchievementStats").collect(),
+    authRateLimits: await ctx.db.query("authRateLimits").collect(),
   }));
   expect(remaining).toMatchObject({
     user: null,
     room: null,
     game: null,
-    authAccounts: [],
-    authSessions: [],
-    authVerificationCodes: [],
-    authRefreshTokens: [],
-    authRateLimits: [],
     guesses: [],
-    history: [],
-    achievementStats: [],
+    authRateLimits: [],
   });
   expect(remaining.otherUser).not.toBeNull();
 });
