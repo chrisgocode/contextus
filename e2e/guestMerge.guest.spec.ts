@@ -58,7 +58,15 @@ test("a Guest who signs in with Google keeps their room and activity", async ({
   const guestToken = await authToken(context);
 
   await test.step("sign in with Google", async () => {
+    // The page refreshes its token on load, and that response clears the
+    // OAuth verifier cookie. Signing in before it lands fails (#144).
+    const refreshed = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/auth") &&
+        (res.request().postData()?.includes('"refreshToken"') ?? false),
+    );
     await page.goto("/signin");
+    await refreshed;
     await page.getByRole("button", { name: "Continue with Google" }).click();
     // The mock signs in whichever account is typed, as `${account}@example.com`.
     await page.getByLabel("Account").fill(email.split("@")[0]);
