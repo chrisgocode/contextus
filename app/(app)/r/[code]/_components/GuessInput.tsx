@@ -36,9 +36,11 @@ function loadDraft(gameId: Id<"games">) {
 export function GuessInput({
   gameId,
   onAchievementsUnlocked,
+  onDuplicate,
 }: {
   gameId: Id<"games">;
   onAchievementsUnlocked: (ids: string[]) => void;
+  onDuplicate: (lemma: string | null) => void;
 }) {
   const submit = useAction(api.guesses.submit);
   // Only mounted once the game has loaded on the client, so reading storage
@@ -61,9 +63,15 @@ export function GuessInput({
           e.preventDefault();
           if (!word.trim()) return;
           setError(null);
+          onDuplicate(null);
           setBusy(true);
           try {
             const res = await submit({ gameId, word });
+            if (res.alreadyGuessed && res.lemma) {
+              onDuplicate(res.lemma);
+              updateWord("");
+              return;
+            }
             if (res.message) {
               setError(res.message);
               return;

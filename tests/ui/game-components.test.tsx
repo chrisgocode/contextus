@@ -39,7 +39,11 @@ describe("GuessInput", () => {
     const user = userEvent.setup();
 
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     const input = screen.getByPlaceholderText("Type a word…");
     await user.type(input, "apple");
@@ -61,19 +65,31 @@ describe("GuessInput", () => {
     const user = userEvent.setup();
 
     const first = render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     await user.type(screen.getByPlaceholderText("Type a word…"), "apple");
     first.unmount();
 
     render(
-      <GuessInput gameId={"other" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"other" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
     cleanup();
 
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     const input = screen.getByPlaceholderText("Type a word…");
     expect(input).toHaveValue("apple");
@@ -82,34 +98,29 @@ describe("GuessInput", () => {
     cleanup();
 
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
   });
 
-  it("shows expected submission messages without reporting them", async () => {
-    const submit = vi
-      .fn()
-      .mockResolvedValueOnce({
-        alreadyGuessed: true,
-        message: "Already guessed.",
-      })
-      .mockResolvedValueOnce({ message: "Unknown word." });
-    convex.useAction.mockReturnValue(submit);
+  it("shows unknown words without reporting them", async () => {
+    convex.useAction.mockReturnValue(
+      vi.fn().mockResolvedValue({ message: "Unknown word." }),
+    );
     const user = userEvent.setup();
 
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
-    const input = screen.getByPlaceholderText("Type a word…");
-    await user.type(input, "apple");
-    await user.click(screen.getByRole("button", { name: "Guess" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Already guessed.",
-    );
-
-    await user.clear(input);
-    await user.type(input, "pear");
+    await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Unknown word.");
     expect(reportClientError).not.toHaveBeenCalled();
@@ -121,7 +132,11 @@ describe("GuessInput", () => {
     const user = userEvent.setup();
 
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
@@ -141,7 +156,11 @@ describe("GuessInput", () => {
     );
     const user = userEvent.setup();
     render(
-      <GuessInput gameId={"game" as never} onAchievementsUnlocked={vi.fn()} />,
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
     );
     await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
@@ -255,8 +274,30 @@ describe("PendingRequestsSidebar", () => {
 describe("GuessList", () => {
   it("prompts for a first guess when there are none", () => {
     convex.useQuery.mockReturnValue({ sorted: [], latest: null });
-    render(<GuessList gameId={"game" as never} />);
+    render(<GuessList gameId={"game" as never} duplicate={null} />);
     expect(screen.getByText("No guesses yet. Type one!")).toBeVisible();
+  });
+
+  it("shows a repeated guess outside the displayed list", () => {
+    const guess = {
+      _id: "far",
+      lemma: "distant",
+      distance: 500,
+      source: "guess",
+      player: { name: "Alex", image: null },
+    };
+    convex.useQuery.mockReturnValue({
+      sorted: [{ ...guess, _id: "close", lemma: "near", distance: 1 }],
+      latest: null,
+      repeated: guess,
+    });
+
+    render(<GuessList gameId={"game" as never} duplicate="distant" />);
+    expect(
+      screen.getByRole("status", { name: "Already guessed" }),
+    ).toHaveTextContent("distant");
+    expect(screen.getByText("Earlier guess")).toBeVisible();
+    expect(screen.getAllByText("distant", { exact: true })).toHaveLength(2);
   });
 });
 

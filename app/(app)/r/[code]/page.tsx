@@ -295,6 +295,10 @@ function RoomLoaded({
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
+  const [duplicateGuess, setDuplicateGuess] = useState<{
+    gameId: string;
+    lemma: string;
+  } | null>(null);
   const dismissAchievementUnlock = useCallback(() => {
     setAchievementUnlocks((items) => items.slice(1));
   }, []);
@@ -402,8 +406,20 @@ function RoomLoaded({
               <GuessInput
                 gameId={activeGame._id}
                 onAchievementsUnlocked={onAchievementsUnlocked}
+                onDuplicate={(lemma) =>
+                  setDuplicateGuess(
+                    lemma ? { gameId: activeGame._id, lemma } : null,
+                  )
+                }
               />
-              <GuessList gameId={activeGame._id} />
+              <GuessList
+                gameId={activeGame._id}
+                duplicate={
+                  duplicateGuess?.gameId === activeGame._id
+                    ? duplicateGuess.lemma
+                    : null
+                }
+              />
             </>
           )}
         </div>
