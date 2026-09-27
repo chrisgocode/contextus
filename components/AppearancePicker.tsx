@@ -91,17 +91,14 @@ export function AppearancePicker() {
                   {selected === style.id ? "✓" : ""}
                 </span>
               </span>
-              <span className="mt-1 block text-[10px] text-muted-foreground">
-                {style.description}
-              </span>
             </label>
           ))}
         </fieldset>
-        <p role="status" className="text-xs text-muted-foreground">
-          {saved
-            ? "Applies instantly. Saved in this browser."
-            : "Applied for now. Your browser couldn’t save this choice."}
-        </p>
+        {!saved && (
+          <p role="status" className="text-xs text-muted-foreground">
+            Applied for now. Your browser couldn’t save this choice.
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   );

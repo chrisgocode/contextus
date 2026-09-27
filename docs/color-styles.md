@@ -19,8 +19,8 @@ host controls. Existing typography and game-result/error colors stay intact.
   pattern, without a theme editor or import/export.
 - [Slack’s theme documentation](https://slack.com/help/articles/205166337-Change-your-Slack-theme)
   puts themes in personal Preferences and distinguishes them from shared workspace
-  changes. Slack syncs across devices; this implementation explicitly labels the
-  choice as saved in this browser.
+  changes. Slack syncs across devices; this implementation saves the choice locally
+  in the browser.
 
 ## Behavior and validation
 
@@ -39,11 +39,11 @@ tests). Typecheck, lint, and changed-file formatting passed.
 Captured from the running app at 1280×800 and 390×844. The video cycles through
 presets, reloads to demonstrate persistence, and restores Classic.
 
-- [Classic](https://utfs.io/f/QXdPbNz3CXbY5V14Wsn2NmAZUE7arkTFClp6KW5wOctiPGen)
-- [Midnight](https://utfs.io/f/QXdPbNz3CXbY3qbSAGBWeEtINV0v4grAwi52upPQkLYza7cl)
-- [Forest](https://utfs.io/f/QXdPbNz3CXbYPBaJBTFV0o6lbKNxuEynIpcAkjRFt32f4imG)
-- [Plum](https://utfs.io/f/QXdPbNz3CXbYdYOG6VXMNBrEz5RXiPucA7fHLjDYaG4l83os)
-- [Espresso](https://utfs.io/f/QXdPbNz3CXbYZ4bTCAETu4HNcpbrWLfCSUFJhAqVK0ioaXy3)
-- [Slate](https://utfs.io/f/QXdPbNz3CXbY3JknJtVBWeEtINV0v4grAwi52upPQkLYza7c)
-- [Mobile](https://utfs.io/f/QXdPbNz3CXbYjtlOV2aIRNC92BoOmpY1lena8S4u65jQPk7x)
-- [Color Styles](https://utfs.io/f/QXdPbNz3CXbY7huliXdPxpnIZCBEzmjXAhg9TKQ5kVNbFL0r)
+- [Classic](https://utfs.io/f/QXdPbNz3CXbYP5hwI6FV0o6lbKNxuEynIpcAkjRFt32f4imG)
+- [Midnight](https://utfs.io/f/QXdPbNz3CXbYNktuMNlldA2yrqXx4Mn3e15UwSIsDTR9ZNom)
+- [Forest](https://utfs.io/f/QXdPbNz3CXbYZvjCIVETu4HNcpbrWLfCSUFJhAqVK0ioaXy3)
+- [Plum](https://utfs.io/f/QXdPbNz3CXbYCih9EJpixGdbA78g6FREVzYOSyQ2XIhTjnuc)
+- [Espresso](https://utfs.io/f/QXdPbNz3CXbYdCe1qLXMNBrEz5RXiPucA7fHLjDYaG4l83os)
+- [Slate](https://utfs.io/f/QXdPbNz3CXbYwW8Y6AHgek2cAjl5pGP6O7z8b0yV4MWavh9d)
+- [Mobile](https://utfs.io/f/QXdPbNz3CXbY3R9fhzBWeEtINV0v4grAwi52upPQkLYza7cl)
+- [Color Styles](https://utfs.io/f/QXdPbNz3CXbY9j3MFvg1UoH0vEMaRxB7t8TsQf5uwLgNJOZC)
