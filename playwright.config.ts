@@ -4,6 +4,7 @@ import { config } from "dotenv";
 config({ path: ".env.local", quiet: true });
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
+const googleIssuer = process.env.E2E_GOOGLE_ISSUER;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -33,12 +34,24 @@ export default defineConfig({
       testMatch: /\/(game|win|hostTransfer|appearance)\.\w+\.spec\.ts$/,
     },
   ],
-  webServer: {
-    // CI builds first and serves production output; `next dev` compiles
-    // routes on demand, which is slow and flaky on CI runners.
-    command: process.env.CI ? "bun run start:e2e" : "bun run dev:e2e",
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // CI builds first and serves production output; `next dev` compiles
+      // routes on demand, which is slow and flaky on CI runners.
+      command: process.env.CI ? "bun run start:e2e" : "bun run dev:e2e",
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    // Stands in for Google; the Google sign-in spec skips without it.
+    ...(googleIssuer === undefined
+      ? []
+      : [
+          {
+            command: "node e2e/oidc-mock.mjs",
+            url: `${googleIssuer}/.well-known/openid-configuration`,
+            reuseExistingServer: !process.env.CI,
+          },
+        ]),
+  ],
 });

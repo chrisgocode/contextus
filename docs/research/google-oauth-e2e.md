@@ -5,9 +5,9 @@ Google OAuth path (`auth:store` `userOAuth` branch) and keeps their data?
 
 **Answer:** Point Convex Auth's Google provider at a mock OIDC issuer when
 `E2E_TEST=1`, run [`oauth2-mock-server`][oms] next to the local Convex backend,
-and drive the real "Continue with Google" button. A prototype of this setup
-passed against #133's fix and failed on `main` (`played: 0`), so it tests the
-Google merge branch that production uses.
+and drive the real "Continue with Google" button. The resulting test passes
+with #133's fix and fails on `main` (`played: 0`), so it tests the Google
+merge branch that production uses.
 
 Versions checked: `@convex-dev/auth` 0.0.95, `@auth/core` 0.41.3,
 `oauth4webapi` 3.8.6, `oauth2-mock-server` 9.2.0.
@@ -89,8 +89,23 @@ whose source shows it checks PKCE and returns the nonce, and both are checks
 to give each test its own identity. Otherwise every worker signs in to the
 same account.
 
-The prototype passed the identity through a cookie set on the mock's origin:
-`beforeAuthorizeRedirect` maps the issued `code` to the cookie's value, and
+The first prototype passed the identity through a cookie on the mock's
+origin. It was flaky under parallel runs for two reasons, and the final mock
+(`e2e/oidc-mock.mjs`) avoids both:
+
+- **`beforeTokenSigning` runs twice per code exchange**, once for the access
+  token and once for the ID token. Removing the code's identity after the
+  first call left the ID token, which is the one Convex Auth reads, with the
+  default `sub`. The mapping now stays.
+- **The mock's `/authorize` redirected straight back.** The whole redirect
+  chain then finished while the Guest's `/signin` page was still loaded. Once
+  the merge deleted the Guest, that page's `StaleSessionSignOut` called
+  `signOut`, and by then the shared cookie held the _new_ account's token, so
+  it signed the new account out. Google shows a page first, which unloads the
+  app page before the callback runs. The mock now serves a small login page
+  at `/authorize` where the test types an account, and resubmits the request
+  with it. The page's form carries the identity, so the cookie is gone.
+
 `beforeTokenSigning` sets `sub`, `email`, `email_verified` and `name`. Setting
 `email_verified: true` matters, because Convex Auth links a new OAuth account
 to an existing user that has the same verified email (`implementation/users.js`,
@@ -113,49 +128,40 @@ account".
   `convex/tests/auth.test.ts` already does. It can't catch breakage in the
   verifier handoff, the HTTP actions or the middleware.
 
-## Proposed change
+## Implemented
 
-Files:
+- `convex/convex.config.ts` declares `E2E_GOOGLE_ISSUER`.
+- `convex/auth.ts` applies the `Google({ issuer })` override above.
+- `e2e/oidc-mock.mjs` wraps `OAuth2Service` in a Node HTTP server that adds
+  the login page, listening on `E2E_GOOGLE_ISSUER`.
+- `playwright.config.ts` also starts the mock when `E2E_GOOGLE_ISSUER` is set.
+- `scripts/setup-e2e-convex-env.mjs` sets `E2E_GOOGLE_ISSUER`,
+  `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` on the backend when the variable is
+  set, and CI sets `E2E_GOOGLE_ISSUER=http://localhost:8765`.
+- The test lives in `e2e/guestMerge.guest.spec.ts`, next to the password test:
+  1. As a Guest, create a room, start a game and guess `house`.
+  2. Open `/signin`, click **Continue with Google**, type the worker's e2e
+     account on the mock's page and sign in. The page lands on `/`.
+  3. Using the new token, poll `users.getUser` and `users.getActivityGraph`
+     until the email is the account's and one game has been played.
+  4. Open the room and check the guess is still there. Ending the room there
+     proves the account is still Host.
 
-- `convex/convex.config.ts`: declare `E2E_GOOGLE_ISSUER`.
-- `convex/auth.ts`: the `Google({ issuer })` override above.
-- `e2e/oidc-mock.mjs` (new): starts `oauth2-mock-server` on a fixed port
-  (e.g. 8765) with the identity hooks.
-- `playwright.config.ts`: make `webServer` an array and add the mock, so
-  Playwright starts it locally and in CI
-  (`{ command: "node e2e/oidc-mock.mjs", url: "http://localhost:8765/.well-known/openid-configuration" }`).
-- `scripts/setup-e2e-convex-env.mjs`: also set
-  `E2E_GOOGLE_ISSUER=http://localhost:8765`, `AUTH_GOOGLE_ID=e2e` and
-  `AUTH_GOOGLE_SECRET=e2e`.
-- `package.json`: add `oauth2-mock-server` as a dev dependency.
-- `e2e/googleMerge.guest.spec.ts` (new): the test below.
-- `docs/development.md`: document the mock and the new env var.
+Result on the local anonymous backend: it passed with #133's fix (45 of 45
+across three `--repeat-each=15` runs with 4 workers) and failed on `main`'s
+`auth.ts` and `guestMerge.ts` with `played: 0`, while sign-in itself
+succeeded.
 
-Test outline (as prototyped):
+Limits:
 
-1. As a Guest, create a room, start a game and guess `house`.
-2. Set the `e2e_identity` cookie on the mock's origin to a value unique to
-   this worker and run.
-3. Open `/signin` and click **Continue with Google**. The mock redirects
-   straight back, and the page lands on `/` with a new token.
-4. Using the new token, poll `users.getUser` and `users.getActivityGraph` until
-   the email is the mock identity's and one game has been played.
-5. Open the room and check the guess is still there. Ending the room there
-   proves the account is still Host.
-
-Prototype result on the local anonymous backend: passed with #133's fix, and
-failed on `main`'s `auth.ts`/`guestMerge.ts` with `played: 0` while sign-in
-itself succeeded.
-
-Open points:
-
-- Local runs: `docs/development.md` sets `SITE_URL` to port 3100. The mock
-  must run on the same machine as the Convex backend, which is true for the
-  local backend but not for a cloud dev deployment. There, `E2E_GOOGLE_ISSUER`
-  would have to be a publicly reachable URL, or the Google spec should be
-  skipped when the variable is unset.
-- The Guest-merge sign-out race (see the #109 spec) doesn't come up here,
-  because the Google redirect leaves the app before the merge runs.
+- The mock must run on the same machine as the Convex backend, which is true
+  for the local backend but not for a cloud dev deployment. The spec is
+  skipped when `E2E_GOOGLE_ISSUER` is unset.
+- The sign-out race above is a real app bug, not just a test artifact. A
+  Guest with another tab open, or a Google sign-in that redirects back
+  without showing a page, can have a stale Guest tab sign the new account
+  out. The test avoids it the way real Google usually does; the app still
+  needs a fix.
 
 [oms]: https://github.com/axa-group/oauth2-mock-server
 [navikt]: https://github.com/navikt/mock-oauth2-server

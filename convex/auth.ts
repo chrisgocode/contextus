@@ -20,7 +20,10 @@ const {
   isAuthenticated,
 } = convexAuth({
   providers: [
-    Google,
+    // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
+    env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined
+      ? Google({ issuer: env.E2E_GOOGLE_ISSUER })
+      : Google,
     Anonymous({
       profile: () => ({
         isAnonymous: true,

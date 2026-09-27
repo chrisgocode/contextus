@@ -6,6 +6,7 @@ import { v } from "convex/values";
 const app = defineApp({
   env: {
     E2E_TEST: v.optional(v.string()),
+    E2E_GOOGLE_ISSUER: v.optional(v.string()),
     POSTHOG_PROJECT_TOKEN: v.string(),
     POSTHOG_ENVIRONMENT: v.optional(v.string()),
   },

@@ -46,6 +46,7 @@ jobs:
       CONVEX_AGENT_MODE: anonymous
       E2E_ACCOUNT_NAMESPACE: ci
       E2E_PASSWORD: ci-e2e-password
+      E2E_GOOGLE_ISSUER: http://localhost:8765
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,7 +56,8 @@ jobs:
 
       # Backgrounded so Convex boots while the app builds. The build only needs
       # the backend's URL, which is fixed for a fresh anonymous deployment.
-      # The `check` job already typechecks convex/.
+      # The `check` job already typechecks convex/. Function logs go only to
+      # convex.log, which is uploaded when the job fails.
       - name: Start local Convex backend
         run: |
           nohup bash -c '
@@ -65,7 +67,7 @@ jobs:
               mv "$RUNNER_TEMP/convex.done.tmp" "$RUNNER_TEMP/convex.done"
               exit 0
             }
-            bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+            bunx convex dev --typecheck disable --tail-logs always > "$RUNNER_TEMP/convex.log" 2>&1 &
             configured=0
             for i in $(seq 1 180); do
               if [ "$configured" -eq 0 ] && [ -f .env.local ] && grep -q "^CONVEX_DEPLOYMENT=" .env.local; then
