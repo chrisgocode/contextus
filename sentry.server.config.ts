@@ -3,10 +3,10 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
-import { sentryEnabled, sentryEnvironment } from "@/lib/sentry";
+import { sentryDsn, sentryEnabled, sentryEnvironment } from "@/lib/sentry";
 
 Sentry.init({
-  dsn: "https://85ede5126abf32a201118c5f021bb7e9@o4511398152437760.ingest.us.sentry.io/4511405904297984",
+  dsn: sentryDsn,
   enabled: sentryEnabled,
   environment: sentryEnvironment,
 
@@ -16,7 +16,9 @@ Sentry.init({
   // Enable logs to be sent to Sentry
   enableLogs: true,
 
-  // Enable sending user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
+  // Send user PII (IP address, request headers, and so on) like
+  // `sendDefaultPii: true`, except cookies: those are the Convex Auth session
+  // tokens, and Sentry doesn't need them.
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/
+  dataCollection: { cookies: false },
 });

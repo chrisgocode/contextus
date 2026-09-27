@@ -111,7 +111,7 @@ Defined in `crons.ts`:
 
 ## Observability
 
-Sentry is configured for the client, server, and edge runtimes (`instrumentation*.ts`, `sentry.*.config.ts`). Browser events go through the `/monitoring` tunnel route so ad blockers don't drop them.
+Sentry is configured for the client, server, and edge runtimes (`instrumentation*.ts`, `sentry.*.config.ts`). Browser events go through the `/monitoring` tunnel (`app/monitoring/route.ts`) so ad blockers don't drop them; it forwards only envelopes for our DSN, without the session cookies. Server and edge events omit request cookies (`dataCollection: { cookies: false }`).
 
 PostHog records browser pageviews (`instrumentation-client.ts`) and identifies each player by Convex user ID with an `is_guest` flag, resetting on sign-out (`components/PostHogIdentity.tsx`). Like Sentry, it loads once the page is idle and only on production and preview Vercel deployments, and its events go through the `/ingest` proxy route (`app/ingest/[...path]/route.ts`), which forwards only the headers PostHog needs so session cookies never leave the app. Events carry a `deployment_environment` property so previews can be filtered out.
 
