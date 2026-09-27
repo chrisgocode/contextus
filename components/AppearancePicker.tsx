@@ -9,10 +9,22 @@ import {
 } from "@/components/ui/popover";
 import { colorStyles } from "@/lib/color-styles";
 
+// Background on one half, primary on the other. The outline is an opaque inset
+// ring painted over the fill: a translucent border lets the primary half show
+// through and poke past the circle's edge.
+const swatchClassName =
+  "block rounded-full inset-ring inset-ring-[color-mix(in_oklab,var(--foreground)_28%,var(--popover))]";
+
+function splitFill(background: string, primary: string) {
+  return `linear-gradient(135deg, ${background} 50%, ${primary} 50%)`;
+}
+
 export function AppearancePicker() {
   const headingId = useId();
   const [selected, setSelected] = useState("classic");
   const [saved, setSaved] = useState(true);
+  const selectedName =
+    colorStyles.find((style) => style.id === selected)?.name ?? "Classic";
 
   return (
     <Popover
@@ -22,40 +34,45 @@ export function AppearancePicker() {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline">
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Appearance"
+          title="Appearance"
+        >
+          {/* CSS variables track the active style without waiting for hydration. */}
           <span
             aria-hidden="true"
-            className="size-3 rounded-full border border-foreground/40 bg-primary"
+            className={`${swatchClassName} size-4`}
+            style={{
+              background: splitFill("var(--background)", "var(--primary)"),
+            }}
           />
-          Appearance
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
         aria-labelledby={headingId}
-        className="w-80 max-w-[calc(100vw-2rem)] rounded-lg motion-reduce:animate-none"
+        className="w-auto max-w-[calc(100vw-2rem)] gap-2 p-3 motion-reduce:animate-none"
       >
-        <div className="space-y-1">
-          <h2 id={headingId} className="font-semibold">
-            Color style
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Make Contextus feel like you.
-          </p>
-        </div>
-        <fieldset className="grid grid-cols-2 gap-2">
+        <h2 id={headingId} className="sr-only">
+          Color style
+        </h2>
+        <fieldset className="flex gap-2.5">
           <legend className="sr-only">Color style</legend>
           {colorStyles.map((style) => (
             <label
               key={style.id}
-              className="relative cursor-pointer rounded-md border border-border p-2 has-checked:border-foreground has-checked:bg-muted has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-foreground"
+              title={style.name}
+              className="cursor-pointer rounded-full has-focus-visible:outline-2 has-focus-visible:outline-offset-4 has-focus-visible:outline-foreground"
             >
               <input
                 type="radio"
                 name={headingId}
                 value={style.id}
+                aria-label={style.name}
                 checked={selected === style.id}
-                className="sr-only"
+                className="peer sr-only"
                 onChange={() => {
                   document.documentElement.dataset.colorStyle = style.id;
                   setSelected(style.id);
@@ -69,33 +86,22 @@ export function AppearancePicker() {
               />
               <span
                 aria-hidden="true"
-                className="mb-2 flex h-12 gap-1.5 overflow-hidden rounded-sm border border-white/15 p-2"
-                style={{ background: style.colors[0] }}
-              >
-                <span
-                  className="w-3 rounded-sm"
-                  style={{ background: style.colors[1] }}
-                />
-                <span className="flex flex-1 flex-col justify-between gap-1">
-                  <span className="h-1 w-3/4 rounded-sm bg-white/60" />
-                  <span className="h-1 w-1/2 rounded-sm bg-white/25" />
-                  <span
-                    className="h-3 rounded-sm"
-                    style={{ background: style.colors[2] }}
-                  />
-                </span>
-              </span>
-              <span className="flex items-center justify-between text-xs font-medium">
-                {style.name}
-                <span aria-hidden="true">
-                  {selected === style.id ? "✓" : ""}
-                </span>
-              </span>
+                className={`${swatchClassName} size-7 peer-checked:ring-2 peer-checked:ring-foreground peer-checked:ring-offset-2 peer-checked:ring-offset-popover`}
+                style={{
+                  background: splitFill(style.colors[0], style.colors[2]),
+                }}
+              />
             </label>
           ))}
         </fieldset>
+        <p
+          aria-hidden="true"
+          className="text-center text-xs text-muted-foreground"
+        >
+          {selectedName}
+        </p>
         {!saved && (
-          <p role="status" className="text-xs text-muted-foreground">
+          <p role="status" className="max-w-56 text-xs text-muted-foreground">
             Applied for now. Your browser couldn’t save this choice.
           </p>
         )}

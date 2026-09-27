@@ -342,7 +342,7 @@ function RoomLoaded({
 
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-2">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">Room</p>
           <h1 className="truncate font-mono text-3xl font-bold tracking-widest">
@@ -378,7 +378,8 @@ function RoomLoaded({
             </Button>
           )}
         </div>
-        <div className="col-span-2 flex justify-end">
+        {/* Phones give it its own row so the room code isn't truncated. */}
+        <div className="col-span-2 flex justify-end sm:col-span-1">
           <AppearancePicker />
         </div>
       </header>

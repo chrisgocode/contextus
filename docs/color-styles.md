@@ -1,15 +1,20 @@
 # UI color styles
 
-Six dark palettes are available from **Appearance → Color style** in the home,
+Six dark palettes are available from the **Appearance** icon button in the home,
 room, and profile headers. Classic preserves the original black/red defaults.
-Preview cards show the background, surface, and primary action color. Native
-radio controls support keyboard selection and expose the selected option to
-assistive technology.
+The button and each option show a two-tone swatch (background and primary action
+color); the selected style's name appears under the row, and each swatch names
+its style in a tooltip. Native radio controls support keyboard selection and
+expose the selected option to assistive technology.
 
 Appearance belongs alongside personal navigation, separate from room setup and
 host actions: guests and members can both change it, and the choice affects only
-their browser. The room header gives it its own row to avoid crowding phone-sized
-host controls. Existing typography and game-result/error colors stay intact.
+their browser. It is not shown on sign-in or on the static how-to-play and
+privacy pages: those are one-off or reading pages without an app header, and the
+saved style already applies there. The room header places it beside the room
+actions from the `sm` breakpoint up and on its own row on phones, where it would
+otherwise truncate the room code next to the host controls. Existing typography
+and game-result/error colors stay intact.
 
 ## Project comparisons
 
