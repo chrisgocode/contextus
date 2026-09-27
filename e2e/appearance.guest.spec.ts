@@ -16,10 +16,9 @@ test("guests can preview all six styles, keep their choice across pages and relo
     .evaluate((el) => getComputedStyle(el).backgroundColor);
 
   for (const name of ["Midnight", "Forest", "Plum", "Espresso", "Slate"]) {
-    await page.getByText(name, { exact: true }).click();
-    await expect(
-      page.getByRole("radio", { name: new RegExp(name) }),
-    ).toBeChecked();
+    await page.getByTitle(name).click();
+    await expect(page.getByRole("radio", { name })).toBeChecked();
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
     await expect(page.locator("body")).not.toHaveCSS(
       "background-color",
       classicBackground,
@@ -72,7 +71,7 @@ test("a storage write failure does not prevent changing colors", async ({
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Appearance" }).click();
-  await page.getByText("Forest", { exact: true }).click();
+  await page.getByTitle("Forest").click();
   await expect(page.getByRole("radio", { name: /Forest/ })).toBeChecked();
   await expect(page.getByRole("status")).toHaveText(
     "Applied for now. Your browser couldn’t save this choice.",
