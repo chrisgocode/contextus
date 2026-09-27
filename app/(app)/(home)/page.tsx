@@ -13,6 +13,7 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
+import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
@@ -33,20 +34,23 @@ export default function Home() {
   const isRegistered = isAuthenticated && currentUser?.isAnonymous === false;
 
   const header = (
-    <header className="flex items-center justify-between">
+    <header className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="text-2xl font-bold">Contextus</h1>
-      {isRegistered ? (
-        <Button
-          variant="outline"
-          onClick={() => {
-            if (currentUser?.username)
-              router.push(`/user/${currentUser.username}`);
-          }}
-          disabled={!currentUser?.username}
-        >
-          Profile
-        </Button>
-      ) : null}
+      <div className="flex items-center gap-2">
+        <AppearancePicker />
+        {isRegistered ? (
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (currentUser?.username)
+                router.push(`/user/${currentUser.username}`);
+            }}
+            disabled={!currentUser?.username}
+          >
+            Profile
+          </Button>
+        ) : null}
+      </div>
     </header>
   );
   const loadingOverlay =

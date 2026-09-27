@@ -30,7 +30,7 @@ export default defineConfig({
     {
       name: "mobile",
       use: devices["Pixel 7"],
-      testMatch: /\/(game|win|hostTransfer)\.\w+\.spec\.ts$/,
+      testMatch: /\/(game|win|hostTransfer|appearance)\.\w+\.spec\.ts$/,
     },
   ],
   webServer: {

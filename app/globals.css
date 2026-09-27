@@ -131,3 +131,58 @@
     @apply font-mono;
   }
 }
+
+/* Classic keeps the existing tokens unchanged. Other presets share neutral text
+   and semantic game/error colors, while tinting surfaces and primary actions. */
+.dark[data-color-style]:not([data-color-style="classic"]) {
+  --background: var(--style-background);
+  --card: var(--style-surface);
+  --popover: var(--style-surface);
+  --secondary: var(--style-raised);
+  --muted: var(--style-raised);
+  --accent: var(--style-raised);
+  --primary: var(--style-primary);
+  --primary-foreground: #fff;
+  --muted-foreground: #b8bbc5;
+  --ring: var(--style-ring);
+  --sidebar: var(--style-surface);
+  --sidebar-primary: var(--style-primary);
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: var(--style-raised);
+  --sidebar-ring: var(--style-ring);
+}
+[data-color-style="midnight"] {
+  --style-background: #111827;
+  --style-surface: #1e293b;
+  --style-raised: #293a52;
+  --style-primary: #2563eb;
+  --style-ring: #93c5fd;
+}
+[data-color-style="forest"] {
+  --style-background: #10251e;
+  --style-surface: #1b352b;
+  --style-raised: #29483c;
+  --style-primary: #047857;
+  --style-ring: #6ee7b7;
+}
+[data-color-style="plum"] {
+  --style-background: #241829;
+  --style-surface: #35233c;
+  --style-raised: #493150;
+  --style-primary: #7e22ce;
+  --style-ring: #d8b4fe;
+}
+[data-color-style="espresso"] {
+  --style-background: #251c16;
+  --style-surface: #38291f;
+  --style-raised: #4d392b;
+  --style-primary: #92400e;
+  --style-ring: #fcd34d;
+}
+[data-color-style="slate"] {
+  --style-background: #1e222b;
+  --style-surface: #2c3340;
+  --style-raised: #3d4657;
+  --style-primary: #be185d;
+  --style-ring: #f9a8d4;
+}
