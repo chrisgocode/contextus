@@ -11,15 +11,28 @@ export default defineConfig({
   fullyParallel: true,
   workers: 4,
   forbidOnly: Boolean(process.env.CI),
+  // Retries capture a trace of the failure; a test that passes only on retry
+  // still fails CI instead of hiding the flake.
   retries: process.env.CI ? 2 : 0,
+  failOnFlakyTests: Boolean(process.env.CI),
   reporter: process.env.CI
     ? [["github"], ["list"], ["html", { open: "never" }]]
     : "list",
   use: {
-    ...devices["Desktop Chrome"],
     baseURL,
     trace: "on-first-retry",
   },
+  projects: [
+    { name: "desktop", use: devices["Desktop Chrome"] },
+    // The core game flow again on a phone, where the room's sidebar, guess
+    // input and request bar stack. Only these specs, so the suite doesn't
+    // run twice.
+    {
+      name: "mobile",
+      use: devices["Pixel 7"],
+      testMatch: /\/(game|win|hostTransfer)\.\w+\.spec\.ts$/,
+    },
+  ],
   webServer: {
     // CI builds first and serves production output; `next dev` compiles
     // routes on demand, which is slow and flaky on CI runners.

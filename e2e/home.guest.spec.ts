@@ -33,6 +33,4 @@ test("joins another player's room as a guest", async ({
   await page.getByRole("button", { name: "Leave" }).click();
   await expect(page).toHaveURL("/");
   await expect(members).toHaveCount(1);
-
-  await endRoom(host.page);
 });

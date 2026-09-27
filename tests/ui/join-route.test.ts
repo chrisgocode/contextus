@@ -5,7 +5,7 @@ import { GET } from "@/app/join/route";
 describe("GET /join", () => {
   it("redirects to the normalized room code", () => {
     const response = GET(
-      new NextRequest("https://contextus.test/join?code=%20ab12%20"),
+      new NextRequest("https://contextus.test/join?room=%20ab12%20"),
     );
 
     expect(response.status).toBe(303);

@@ -61,7 +61,7 @@ bun run test:e2e       # headless
 bun run test:e2e:ui    # Playwright UI mode
 ```
 
-Playwright starts `bun run dev:e2e` if nothing is already running on the base URL (in CI it serves a production build with `bun run start:e2e`). Global setup and teardown purge the test accounts through `e2eCleanup.purgeAccount`. Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
+Playwright starts `bun run dev:e2e` if nothing is already running on the base URL (in CI it serves a production build with `bun run start:e2e`). Each test gets fresh registered accounts: the `createRegisteredUser` fixture purges its accounts through `e2eCleanup.purgeAccount` before sign-up and again in teardown, and global setup and teardown purge every account slot in case a run crashed. A test can create up to four registered users; set `E2E_REGISTERED_USERS_PER_TEST` to raise that. Fixture teardown also ends every room each browser context hosts, so a failing test can't leave rooms active. In CI a test that passes only on retry fails the run (`failOnFlakyTests`). Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
 
 With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` instead of calling Contexto, and skips the `wordDistances` cache so fake and real scores never mix: `wordN` is at distance N, `word0` is the answer, hints return `wordN`, and other plain words get a stable distance of 1000 or more. Any deployment with `E2E_TEST=1`, including your dev deployment, plays with fake distances.
 
