@@ -22,6 +22,9 @@ test("makes Home inert while a room opens", async ({
     },
   );
   await page.goto("/");
+  // Rendered once auth resolves on the client, so Home has hydrated and the
+  // Create button has its handler.
+  await expect(page.getByRole("button", { name: "Profile" })).toBeVisible();
 
   const createButton = page
     .locator("button")
