@@ -422,9 +422,15 @@ function RoomLoaded({
                       online ? "" : "opacity-50"
                     }`}
                   >
+                    {/* Filled vs. hollow, so status doesn't rely on colour. */}
                     <span
+                      role="img"
+                      aria-label={online ? "Online" : "Offline"}
+                      title={online ? "Online" : "Offline"}
                       className={`h-2 w-2 rounded-full ${
-                        online ? "bg-emerald-400" : "bg-muted-foreground/40"
+                        online
+                          ? "bg-emerald-400"
+                          : "border border-muted-foreground"
                       }`}
                     />
                     <Avatar className="h-6 w-6">
