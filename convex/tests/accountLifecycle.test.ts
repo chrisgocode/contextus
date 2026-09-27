@@ -7,9 +7,9 @@ import { USER_KEYED_TABLES } from "../lib/accountLifecycle";
 import { startGuestMerge } from "../lib/guestMerge";
 import schema from "../schema";
 import {
-  asUser,
   finishScheduledFunctions,
   seedUser,
+  sessionOf,
   setupTest,
 } from "../testHelpers.test";
 
@@ -244,9 +244,9 @@ test("guest merge moves every app row to the account and deletes the guest", asy
     (p) => p.merge !== "removeWithGuest",
   ).map((p) => `${p.table}.${p.field}`);
   await seedEveryTable(t, guest, fixture, movedKeys);
-  const guestSession = asUser(t, guest);
+  const guestSession = sessionOf(t, guest);
 
-  await guestSession.run((ctx) => startGuestMerge(ctx, target));
+  await t.run((ctx) => startGuestMerge(ctx, guestSession, target));
   await finishScheduledFunctions(t);
 
   expect(await referenceCounts(t, guest)).toEqual(countsWhere(() => true, 0));
