@@ -235,7 +235,7 @@ test("submit: rejected on ended game", async () => {
   });
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "apple" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Game is no longer in progress");
 });
 
 test("listForGame returns empty for ex-member after leaving room", async () => {

@@ -9,7 +9,9 @@ afterEach(() => {
 
 test("create requires auth", async () => {
   const t = setupTest();
-  await expect(t.mutation(api.rooms.create, {})).rejects.toThrow();
+  await expect(t.mutation(api.rooms.create, {})).rejects.toThrow(
+    "Not authenticated",
+  );
 });
 
 test("creating a Room records one analytics event", async () => {
@@ -252,17 +254,26 @@ test("join unknown code throws", async () => {
   const userId = await seedUser(t);
   await expect(
     asUser(t, userId).mutation(api.rooms.join, { code: "ZZZZZZ" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Room not found");
 });
 
 test("join is case-insensitive", async () => {
   const t = setupTest();
   const host = await seedUser(t);
   const other = await seedUser(t);
-  const { code } = await asUser(t, host).mutation(api.rooms.create, {});
+  const { code, roomId } = await asUser(t, host).mutation(api.rooms.create, {});
   await asUser(t, other).mutation(api.rooms.join, {
     code: code.toLowerCase(),
   });
+  const membership = await t.run(async (ctx) =>
+    ctx.db
+      .query("roomMembers")
+      .withIndex("by_room_user", (q) =>
+        q.eq("roomId", roomId).eq("userId", other),
+      )
+      .unique(),
+  );
+  expect(membership).not.toBeNull();
 });
 
 test("endRoom: only host can end", async () => {
@@ -273,7 +284,7 @@ test("endRoom: only host can end", async () => {
   await asUser(t, other).mutation(api.rooms.join, { code });
   await expect(
     asUser(t, other).mutation(api.rooms.endRoom, { roomId }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Host only");
   await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
   const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.status).toBe("ended");
@@ -287,7 +298,7 @@ test("join refused for ended room", async () => {
   await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
   await expect(
     asUser(t, other).mutation(api.rooms.join, { code }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Room not found");
 });
 
 test("leave removes membership", async () => {
