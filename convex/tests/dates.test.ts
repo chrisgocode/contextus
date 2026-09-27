@@ -1,20 +1,9 @@
 import { expect, test } from "vitest";
-import {
-  LAUNCH_DATE_UTC,
-  contextoGameIdForDate,
-  dateForContextoGameId,
-} from "../lib/dates";
+import { dateForContextoGameId } from "../lib/dates";
 
-test("gameId 1 = launch date", () => {
-  expect(contextoGameIdForDate(new Date(LAUNCH_DATE_UTC))).toBe(1);
-});
-
-test("gameId 1336 = 2026-05-16 UTC", () => {
-  expect(contextoGameIdForDate(new Date(Date.UTC(2026, 4, 16)))).toBe(1336);
-});
-
-test("roundtrip", () => {
-  for (const n of [1, 2, 100, 500, 1336, 2000]) {
-    expect(contextoGameIdForDate(dateForContextoGameId(n))).toBe(n);
-  }
+test.each([
+  [1, "2022-09-19T00:00:00.000Z"],
+  [1336, "2026-05-16T00:00:00.000Z"],
+])("Contexto game %i is played on %s", (gameId, date) => {
+  expect(dateForContextoGameId(gameId).toISOString()).toBe(date);
 });

@@ -2,14 +2,8 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import {
-  getCurrentUserId,
-  requireHostByRoom,
-  tryMemberByGame,
-  tryMemberByRoom,
-} from "./access";
+import { getCurrentUserId, requireHostByRoom, tryMemberByRoom } from "./access";
 import { upsertRoomActivity } from "./lib/roomActivity";
-import { loadPlayers } from "./lib/player";
 import { track } from "./analytics";
 
 export const start = mutation({
@@ -69,26 +63,6 @@ export const getActive = query({
         q.eq("roomId", roomId).eq("status", "in_progress"),
       )
       .first();
-  },
-});
-
-export const getById = query({
-  args: { gameId: v.id("games") },
-  handler: async (ctx, { gameId }) => {
-    const access = await tryMemberByGame(ctx, { gameId });
-    if (access === null) return null;
-    const { game } = access;
-    const players = await loadPlayers(
-      ctx,
-      game.winnerUserId === undefined ? [] : [game.winnerUserId],
-    );
-    return {
-      ...game,
-      winner:
-        game.winnerUserId === undefined
-          ? null
-          : players.get(game.winnerUserId)!,
-    };
   },
 });
 

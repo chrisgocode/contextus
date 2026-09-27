@@ -142,19 +142,6 @@ export async function tryMemberByGame(
   return { userId, room, game };
 }
 
-export async function requireMemberByRoom(
-  ctx: DbCtx,
-  args: ByRoom,
-): Promise<RoomAccess> {
-  const { userId, room } = await loadByRoom(ctx, args);
-  if (userId === null) throw new ConvexError(NOT_AUTHENTICATED_MESSAGE);
-  if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
-  if (!(await isMember(ctx, room._id, userId))) {
-    throw new ConvexError(NOT_MEMBER_MESSAGE);
-  }
-  return { userId, room };
-}
-
 export async function tryMemberByRoom(
   ctx: DbCtx,
   args: ByRoom,
@@ -178,16 +165,6 @@ export async function requireHostByGame(
   return { userId, room, game };
 }
 
-export async function tryHostByGame(
-  ctx: DbCtx,
-  args: ByGame,
-): Promise<GameAccess | null> {
-  const { userId, game, room } = await loadByGame(ctx, args);
-  if (userId === null || game === null || room === null) return null;
-  if (!(await isHost(ctx, room, userId))) return null;
-  return { userId, room, game };
-}
-
 export async function requireHostByRoom(
   ctx: DbCtx,
   args: ByRoom,
@@ -197,15 +174,5 @@ export async function requireHostByRoom(
   if (room === null) throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
   if (!(await isHost(ctx, room, userId)))
     throw new ConvexError(HOST_ONLY_MESSAGE);
-  return { userId, room };
-}
-
-export async function tryHostByRoom(
-  ctx: DbCtx,
-  args: ByRoom,
-): Promise<RoomAccess | null> {
-  const { userId, room } = await loadByRoom(ctx, args);
-  if (userId === null || room === null) return null;
-  if (!(await isHost(ctx, room, userId))) return null;
   return { userId, room };
 }
