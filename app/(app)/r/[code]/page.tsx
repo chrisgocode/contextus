@@ -10,6 +10,7 @@ import {
 } from "@/app/_components/AchievementUnlockQueue";
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
@@ -376,6 +377,9 @@ function RoomLoaded({
               <span className="hidden sm:inline">End room</span>
             </Button>
           )}
+        </div>
+        <div className="col-span-2 flex justify-end">
+          <AppearancePicker />
         </div>
       </header>
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { colorStyleScript } from "@/lib/color-styles";
 import { LazyToaster } from "@/components/LazyToaster";
 import { SITE_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("dark font-mono", jetbrainsMono.variable)}>
+    <html
+      suppressHydrationWarning
+      lang="en"
+      className={cn("dark font-mono", jetbrainsMono.variable)}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: colorStyleScript }} />
+      </head>
       <body className="antialiased">
         {children}
         <LazyToaster richColors position="top-center" />
