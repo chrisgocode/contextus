@@ -154,3 +154,70 @@ test("unknown-word 404 from the guess endpoint is returned, not thrown", async (
     unlockedAchievementIds: [],
   });
 });
+
+// Payloads recorded from api.contexto.me for puzzle 1336.
+test.each<{
+  name: string;
+  url: string;
+  payload: unknown;
+  call: Endpoint["call"];
+  expected: object;
+}>([
+  {
+    name: "guesses.submit",
+    url: "https://api.contexto.me/machado/en/game/1336/dogs",
+    payload: { distance: 36300, lemma: "dog", word: "dogs" },
+    call: (t, { host, gameId }) =>
+      asUser(t, host).action(api.guesses.submit, { gameId, word: " Dogs " }),
+    expected: { lemma: "dog", distance: 36300, won: false },
+  },
+  {
+    name: "hints.hostHint",
+    url: "https://api.contexto.me/machado/en/tip/1336/299",
+    payload: { distance: 299, lemma: "pomelo", word: "pomelo" },
+    call: (t, { host, gameId }) =>
+      asUser(t, host).action(api.hints.hostHint, { gameId }),
+    expected: { lemma: "pomelo", distance: 299 },
+  },
+  {
+    name: "giveup.hostGiveup",
+    url: "https://api.contexto.me/machado/en/giveup/1336",
+    payload: { distance: 0, lemma: "persimmon", word: "persimmon" },
+    call: (t, { host, gameId }) =>
+      asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
+    expected: { lemma: "persimmon" },
+  },
+])(
+  "$name requests $url and parses the reply",
+  async ({ url, payload, call, expected }) => {
+    const t = setupTest();
+    const game = await startedGame(t);
+    const fetch = vi.fn(async () => json(payload)());
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(call(t, game)).resolves.toMatchObject(expected);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(url);
+  },
+);
+
+test("a guess is sent as one encoded path segment", async () => {
+  const t = setupTest();
+  const { host, gameId } = await startedGame(t);
+  const fetch = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({ error: "I'm sorry, I don't know this word" }),
+        { status: 404 },
+      ),
+  );
+  vi.stubGlobal("fetch", fetch);
+
+  await asUser(t, host).action(api.guesses.submit, {
+    gameId,
+    word: "../giveup/1336",
+  });
+
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(
+    "https://api.contexto.me/machado/en/game/1336/..%2Fgiveup%2F1336",
+  );
+});

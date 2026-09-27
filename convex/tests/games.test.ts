@@ -81,6 +81,16 @@ test("start: refuses second active game in same room", async () => {
   ).rejects.toThrow("A game is already in progress");
 });
 
+test("start: refuses a Room that has ended", async () => {
+  const t = setupTest();
+  const { host, roomId } = await createRoomWith(t);
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
+
+  await expect(
+    asUser(t, host).mutation(api.games.start, { roomId, contextoGameId: 1336 }),
+  ).rejects.toThrow("Room not found");
+});
+
 test("start: rejects invalid Contexto game ids", async () => {
   const t = setupTest();
   const { host, roomId } = await createRoomWith(t);

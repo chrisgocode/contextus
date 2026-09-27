@@ -267,6 +267,21 @@ test("listForGame returns sorted asc + latest", async () => {
   expect(latest?.lemma).toBe("peach");
 });
 
+test("listForGame breaks a latest tie by insertion order", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  const t = setupTest();
+  fakeWordOracle({ guesses: { 1336: { hello: 42591, apple: 100 } } });
+  const { host, gameId } = await startedGame(t);
+  const u = asUser(t, host);
+  await u.action(api.guesses.submit, { gameId, word: "hello" });
+  await u.action(api.guesses.submit, { gameId, word: "apple" });
+
+  const { sorted, latest } = await u.query(api.guesses.listForGame, { gameId });
+  expect(new Set(sorted.map((g) => g.createdAt)).size).toBe(1);
+  expect(latest?.lemma).toBe("apple");
+});
+
 test("submit: canonicalized input is cached, no second fetch call", async () => {
   const t = setupTest();
   const oracle = fakeWordOracle({
