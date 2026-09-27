@@ -62,35 +62,67 @@ describe("Home", () => {
     expect(html).toContain("Join a room");
   });
 
-  it.each([
-    { isAuthenticated: true, signsIn: false },
-    { isAuthenticated: false, signsIn: true },
-  ])(
-    "waits for auth before creating a room (authenticated: $isAuthenticated)",
-    async ({ isAuthenticated, signsIn }) => {
-      mocks.useConvexAuth.mockReturnValue({
-        isAuthenticated: false,
-        isLoading: true,
-      });
-      mocks.create.mockResolvedValue({ code: "ABCDEF" });
-      const user = userEvent.setup();
-      const { rerender } = render(<Home />);
+  it("waits for auth to load before creating a signed-in user's room", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+    mocks.create.mockResolvedValue({ code: "ABCDEF" });
+    const user = userEvent.setup();
+    const { rerender } = render(<Home />);
 
-      await user.click(screen.getByRole("button", { name: "Create room" }));
-      expect(mocks.signIn).not.toHaveBeenCalled();
-      expect(mocks.create).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Create room" }));
+    expect(mocks.create).not.toHaveBeenCalled();
 
-      mocks.useConvexAuth.mockReturnValue({
-        isAuthenticated,
-        isLoading: false,
-      });
-      rerender(<Home />);
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    rerender(<Home />);
 
-      await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF"));
-      expect(mocks.signIn).toHaveBeenCalledTimes(signsIn ? 1 : 0);
-      expect(mocks.create).toHaveBeenCalledWith({});
-    },
-  );
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF"));
+    expect(mocks.signIn).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledWith({});
+  });
+
+  it("creates a new guest's room only once the client is signed in", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+    mocks.signIn.mockResolvedValue({ signingIn: true });
+    mocks.create.mockResolvedValue({ code: "ABCDEF" });
+    const user = userEvent.setup();
+    const { rerender } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "Create room" }));
+    expect(mocks.signIn).not.toHaveBeenCalled();
+
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: false,
+    });
+    rerender(<Home />);
+    await waitFor(() => expect(mocks.signIn).toHaveBeenCalledWith("anonymous"));
+
+    // signIn resolves before the Convex client sends the new token.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+    rerender(<Home />);
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    rerender(<Home />);
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF"));
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
 
   it("opens the room page to join, even before auth resolves", async () => {
     mocks.useConvexAuth.mockReturnValue({
@@ -107,6 +139,10 @@ describe("Home", () => {
   });
 
   it("offers account creation when a guest reaches the room limit", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
     mocks.create.mockRejectedValue({ data: "Guest room limit reached" });
     const user = userEvent.setup();
     render(<Home />);

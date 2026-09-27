@@ -83,21 +83,35 @@ export default function Home() {
 /**
  * Returns a function that resolves with `isAuthenticated` once Convex auth
  * has finished loading, so actions clicked early take the right path.
+ * With `untilAuthenticated`, it waits for a signed-in client instead:
+ * `signIn` resolves before the Convex client sends the new token.
  */
 function useSettledAuth() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const settled = useRef<boolean | null>(null);
-  const waiters = useRef<((isAuthenticated: boolean) => void)[]>([]);
+  const waiters = useRef<
+    {
+      untilAuthenticated: boolean;
+      resolve: (isAuthenticated: boolean) => void;
+    }[]
+  >([]);
   useEffect(() => {
     settled.current = isLoading ? null : isAuthenticated;
     if (isLoading) return;
-    for (const resolve of waiters.current.splice(0)) resolve(isAuthenticated);
+    waiters.current = waiters.current.filter((waiter) => {
+      if (waiter.untilAuthenticated && !isAuthenticated) return true;
+      waiter.resolve(isAuthenticated);
+      return false;
+    });
   }, [isLoading, isAuthenticated]);
   return useCallback(
-    () =>
-      settled.current !== null
+    (untilAuthenticated = false) =>
+      settled.current === true ||
+      (settled.current === false && !untilAuthenticated)
         ? Promise.resolve(settled.current)
-        : new Promise<boolean>((resolve) => waiters.current.push(resolve)),
+        : new Promise<boolean>((resolve) =>
+            waiters.current.push({ untilAuthenticated, resolve }),
+          ),
     [],
   );
 }
@@ -152,7 +166,10 @@ function CreateRoom({
           // The new room opens on the game setup calendar.
           preloadCalendar();
           try {
-            if (!(await settledAuth())) await signIn("anonymous");
+            if (!(await settledAuth())) {
+              await signIn("anonymous");
+              await settledAuth(true);
+            }
             const { code } = await create({});
             router.push(`/r/${code}`);
           } catch (err) {
