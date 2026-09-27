@@ -23,6 +23,9 @@ const UINT32_RANGE = 2 ** 32;
 
 // Uniform integer in [0, max) from a CSPRNG. Rejection sampling avoids modulo bias.
 export function randomInt(max: number): number {
+  if (!Number.isInteger(max) || max < 1 || max > UINT32_RANGE) {
+    throw new RangeError(`max must be an integer in [1, ${UINT32_RANGE}].`);
+  }
   const limit = UINT32_RANGE - (UINT32_RANGE % max);
   const buf = new Uint32Array(1);
   do {
