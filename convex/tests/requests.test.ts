@@ -111,7 +111,7 @@ test("create rejects host", async () => {
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Host should use the direct hint action");
 });
 
 test("create rejects non-member", async () => {
@@ -123,7 +123,7 @@ test("create rejects non-member", async () => {
       gameId,
       type: "giveup",
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Not a member of this room");
 });
 
 test("create rejects duplicate pending of same type", async () => {
@@ -135,7 +135,7 @@ test("create rejects duplicate pending of same type", async () => {
   });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("hint request already pending");
 });
 
 test("create allows different types from same requester", async () => {
@@ -167,7 +167,7 @@ test("create rejects when game not in_progress", async () => {
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Game is no longer in progress");
 });
 
 test("deny requires host", async () => {
@@ -182,7 +182,7 @@ test("deny requires host", async () => {
   );
   await expect(
     asUser(t, other).mutation(api.requests.deny, { requestId: req!._id }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Host only");
 });
 
 test("deny patches status to denied", async () => {
@@ -215,7 +215,7 @@ test("approve requires host", async () => {
   );
   await expect(
     asUser(t, other).action(api.requests.approve, { requestId: req!._id }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Host only");
 });
 
 test("approve rejects non-pending request", async () => {
@@ -231,7 +231,7 @@ test("approve rejects non-pending request", async () => {
   await asUser(t, host).mutation(api.requests.deny, { requestId: req!._id });
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId: req!._id }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Request not found or already handled");
 });
 
 async function createRequest(

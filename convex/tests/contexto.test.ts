@@ -115,7 +115,9 @@ describe.each(endpoints)("$name", ({ malformed, call }) => {
       const t = setupTest();
       const game = await startedGame(t);
       stubFetch(json(body));
-      await expect(call(t, game)).rejects.toBeInstanceOf(ConvexError);
+      await expect(call(t, game)).rejects.toThrow(
+        "Contexto returned an unexpected response",
+      );
     },
   );
 });
@@ -128,7 +130,7 @@ test("give-up with a malformed answer payload leaves the Game in_progress", asyn
     asUser(t, game.host).action(api.giveup.hostGiveup, {
       gameId: game.gameId,
     }),
-  ).rejects.toBeInstanceOf(ConvexError);
+  ).rejects.toThrow("Contexto returned an unexpected response");
   const row = await t.run(async (ctx) => ctx.db.get("games", game.gameId));
   expect(row?.status).toBe("in_progress");
   expect(row?.answerLemma).toBeUndefined();

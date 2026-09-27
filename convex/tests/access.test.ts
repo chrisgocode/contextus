@@ -1,4 +1,3 @@
-import { ConvexError } from "convex/values";
 import { describe, expect, test } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -63,7 +62,7 @@ describe("requireMemberByGame", () => {
     const s = await seedRoomWithGame();
     await expect(
       s.t.run((ctx) => requireMemberByGame(ctx, { gameId: s.gameId })),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Not authenticated");
   });
 
   test("throws when not a member", async () => {
@@ -72,7 +71,7 @@ describe("requireMemberByGame", () => {
       asUser(s.t, s.outsider).run((ctx) =>
         requireMemberByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Not a member of this room");
   });
 
   test("throws when game does not exist", async () => {
@@ -82,7 +81,7 @@ describe("requireMemberByGame", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireMemberByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Game not found");
   });
 });
 
@@ -152,7 +151,7 @@ describe("requireHostByGame", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Host only");
   });
 
   test("throws for outsider", async () => {
@@ -161,7 +160,7 @@ describe("requireHostByGame", () => {
       asUser(s.t, s.outsider).run((ctx) =>
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Host only");
   });
 });
 
@@ -180,7 +179,7 @@ describe("requireHostByRoom", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireHostByRoom(ctx, { roomId: s.roomId }),
       ),
-    ).rejects.toBeInstanceOf(ConvexError);
+    ).rejects.toThrow("Host only");
   });
 });
 

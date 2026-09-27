@@ -1,5 +1,4 @@
 import { expect, test, vi } from "vitest";
-import { ConvexError } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { requireRegisteredUser, requireUser } from "../access";
 import { GUEST_CLEANUP_ROW_BUDGET } from "../cleanup";
@@ -12,9 +11,9 @@ import {
 
 test("requireUser throws ConvexError when unauthenticated", async () => {
   const t = setupTest();
-  await expect(
-    t.run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toBeInstanceOf(ConvexError);
+  await expect(t.run(async (ctx) => await requireUser(ctx))).rejects.toThrow(
+    "Not authenticated",
+  );
 });
 
 test("requireUser returns userId when authenticated", async () => {

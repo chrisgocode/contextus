@@ -85,6 +85,7 @@ test.each([
     respond: () => Promise.reject(new TypeError("private network detail")),
     outcome: "unavailable",
     category: "contexto_unavailable",
+    message: "Contexto is unavailable, please try again",
   },
   {
     respond: () =>
@@ -93,6 +94,7 @@ test.each([
       ),
     outcome: "unavailable",
     category: "contexto_unavailable",
+    message: "Contexto is unavailable, please try again",
   },
   {
     respond: () =>
@@ -101,17 +103,18 @@ test.each([
       ),
     outcome: "unexpected_payload",
     category: "contexto_unexpected_payload",
+    message: "Contexto returned an unexpected response",
   },
 ])(
   "a failed oracle request reports $outcome without the raw error",
-  async ({ respond, outcome, category }) => {
+  async ({ respond, outcome, category, message }) => {
     const oracle = fakeWordOracle({});
     const { t, host, gameId, capture } = await game();
     oracle.distance.mockRestore();
     vi.stubGlobal("fetch", vi.fn(respond));
     await expect(
       asUser(t, host).action(api.guesses.submit, { gameId, word: "orange" }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(message);
     const events = capture.mock.calls.map(([, event]) => event);
     expect(
       events.filter((event) => event.event === "contexto_request"),
@@ -158,7 +161,7 @@ test("a cache write failure is not reported as Contexto being unavailable", asyn
   const { t, host, gameId, capture } = await game();
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "orange" }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("Validator error: Expected `number`");
   const events = capture.mock.calls.map(([, event]) => event);
   expect(
     events.filter((event) => event.event === "contexto_request"),
