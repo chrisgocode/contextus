@@ -54,7 +54,7 @@ E2E_ACCOUNT_NAMESPACE=local
 E2E_PASSWORD=<any password>
 ```
 
-The Google sign-in spec also needs `E2E_GOOGLE_ISSUER`, and is skipped without it. It only works against a local backend (`CONVEX_AGENT_MODE=anonymous npx convex dev`), because the backend must reach the mock issuer on `localhost`. Add `E2E_GOOGLE_ISSUER=http://localhost:8765` to `.env.local`, then run `node scripts/setup-e2e-convex-env.mjs` to set it on the backend along with the other e2e variables.
+The Google sign-in spec also needs `E2E_GOOGLE_ISSUER`, and is skipped without it. It only works against a local backend (`CONVEX_AGENT_MODE=anonymous npx convex dev`), because the backend must reach the mock issuer on `localhost`. Add `E2E_GOOGLE_ISSUER=http://localhost:8765` to `.env.local`, then run `node scripts/setup-e2e-convex-env.mjs`. It reads `.env.local` and sets the issuer on the backend along with the other e2e variables.
 
 Run:
 

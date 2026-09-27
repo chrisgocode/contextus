@@ -11,6 +11,11 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { config } from "dotenv";
+
+// Same source as playwright.config.ts, so local runs pick up E2E_BASE_URL and
+// E2E_GOOGLE_ISSUER. Variables already set, as in CI, win.
+config({ path: ".env.local", quiet: true });
 
 const siteUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const googleIssuer = process.env.E2E_GOOGLE_ISSUER;
