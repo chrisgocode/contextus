@@ -31,10 +31,18 @@ test("two registered players complete a cooperative game", async ({
     await partner.page.getByPlaceholder("Type a word…").fill("house");
     await partner.page.getByRole("button", { name: "Guess" }).click();
     await expect(
+      partner.page.getByRole("status", { name: "Already guessed" }),
+    ).toContainText("already guessed");
+    await expect(
+      partner.page.getByRole("status", { name: "Already guessed" }),
+    ).toContainText(/\d+/);
+    await expect(
       partner.page
-        .getByRole("alert")
-        .filter({ hasText: "The word was already guessed." }),
-    ).toHaveText("The word was already guessed.");
+        .getByText("All guesses (closest first)")
+        .locator("..")
+        .getByText("house", { exact: true })
+        .locator("../.."),
+    ).toHaveClass(/ring-foreground/);
   });
 
   await test.step("leave and resume the active puzzle", async () => {
