@@ -213,17 +213,20 @@ function JoinRoom({
         }}
       >
         <Input
-          name="code"
+          name="room"
           placeholder="ABCDEF"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           maxLength={6}
+          // Native validation, not a disabled button: the server renders an
+          // empty code, and a disabled button would block the pre-hydration
+          // submit.
+          required
+          pattern=".*\S.*"
           autoCapitalize="characters"
           className="uppercase"
         />
-        <Button type="submit" disabled={code.trim().length === 0}>
-          Join
-        </Button>
+        <Button type="submit">Join</Button>
       </form>
     </section>
   );
