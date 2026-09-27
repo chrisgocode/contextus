@@ -13,6 +13,13 @@ export function setupTest() {
   return t;
 }
 
+// Auth checks require the token's session row, so each seeded user gets one
+// for `asUser` to sign in with.
+const seededSessions = new WeakMap<
+  ReturnType<typeof setupTest>,
+  Map<Id<"users">, Id<"authSessions">>
+>();
+
 export async function seedUser(
   t: ReturnType<typeof setupTest>,
   attrs: {
@@ -27,8 +34,8 @@ export async function seedUser(
     guestPromptedGames?: number;
   } = {},
 ): Promise<Id<"users">> {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("users", {
+  const { userId, sessionId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
       name: attrs.name ?? "Test User",
       email: attrs.email ?? `u${Math.random().toString(36).slice(2)}@test.dev`,
       image: attrs.image,
@@ -39,30 +46,43 @@ export async function seedUser(
       guestCompletedGames: attrs.guestCompletedGames,
       guestPromptedGames: attrs.guestPromptedGames,
     });
-  });
-}
-
-export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
-  return t.withIdentity({
-    subject: `${userId}|test-session-${userId}`,
-    issuer: "test",
-  });
-}
-
-export async function asUserWithSession(
-  t: ReturnType<typeof setupTest>,
-  userId: Id<"users">,
-) {
-  const sessionId = await t.run(async (ctx) => {
-    return await ctx.db.insert("authSessions", {
+    const sessionId = await ctx.db.insert("authSessions", {
       userId,
       expirationTime: Date.now() + 60_000,
     });
+    return { userId, sessionId };
   });
+  const sessions =
+    seededSessions.get(t) ?? new Map<Id<"users">, Id<"authSessions">>();
+  sessions.set(userId, sessionId);
+  seededSessions.set(t, sessions);
+  return userId;
+}
+
+export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
+  const sessionId = seededSessions.get(t)?.get(userId);
+  if (sessionId === undefined) {
+    throw new Error(`asUser: ${userId} was not created with seedUser`);
+  }
   return t.withIdentity({
     subject: `${userId}|${sessionId}`,
     issuer: "test",
   });
+}
+
+// Runs scheduled functions to completion. Tests that inspect state between
+// scheduled batches install fake timers first; with real timers convex-test
+// also runs them on its own in the background.
+export async function finishScheduledFunctions(
+  t: ReturnType<typeof setupTest>,
+) {
+  const alreadyFake = vi.isFakeTimers();
+  if (!alreadyFake) vi.useFakeTimers();
+  try {
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  } finally {
+    if (!alreadyFake) vi.useRealTimers();
+  }
 }
 
 export type WordOracleMock = {

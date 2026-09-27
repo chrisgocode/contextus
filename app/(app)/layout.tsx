@@ -1,6 +1,7 @@
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { preconnect } from "react-dom";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
+import { StaleSessionSignOut } from "@/app/_components/StaleSessionSignOut";
 import { TimeZoneSync } from "@/app/_components/TimeZoneSync";
 
 // Routes that use Convex or auth live under this group. The server provider
@@ -21,6 +22,7 @@ export default function AppLayout({
       <ConvexClientProvider>
         {children}
         <TimeZoneSync />
+        <StaleSessionSignOut />
       </ConvexClientProvider>
     </ConvexAuthNextjsServerProvider>
   );

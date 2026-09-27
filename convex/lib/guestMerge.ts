@@ -1,7 +1,7 @@
-import { getAuthSessionId } from "@convex-dev/auth/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { getCurrentUserId } from "../access";
 import {
   type MergePhase,
   USER_KEYED_TABLES,
@@ -17,15 +17,6 @@ import { addDays } from "./localTime";
 import { mergeGuestIdentity, track } from "../analytics";
 
 type MergeCtx = Pick<MutationCtx, "db">;
-
-async function currentUserFromSession(
-  ctx: Pick<MutationCtx, "auth" | "db">,
-): Promise<Id<"users"> | null> {
-  const sessionId = await getAuthSessionId(ctx);
-  if (sessionId === null) return null;
-  const session = await ctx.db.get("authSessions", sessionId);
-  return session?.userId ?? null;
-}
 
 // Rows moved per transaction. Each moved row is patched off the guest's
 // index or deleted, so re-querying the guest index resumes where the last
@@ -51,18 +42,15 @@ export async function startGuestMerge(
   ctx: Pick<MutationCtx, "auth" | "db" | "scheduler">,
   targetUserId: Id<"users">,
 ): Promise<Id<"guestMerges"> | null> {
-  const guestUserId = await currentUserFromSession(ctx);
+  // Null once the guest's expiry cleanup has started, so cleanup and merge
+  // never both work on the same guest.
+  const guestUserId = await getCurrentUserId(ctx);
   if (guestUserId === null || guestUserId === targetUserId) return null;
   const [guest, target] = await Promise.all([
     ctx.db.get("users", guestUserId),
     ctx.db.get("users", targetUserId),
   ]);
-  if (
-    guest?.isAnonymous !== true ||
-    guest.guestCleanupStarted === true ||
-    target === null
-  )
-    return null;
+  if (guest?.isAnonymous !== true || target === null) return null;
   const existing = await ctx.db
     .query("guestMerges")
     .withIndex("by_guest_user", (q) => q.eq("guestUserId", guestUserId))
