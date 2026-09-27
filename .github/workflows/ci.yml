@@ -56,7 +56,8 @@ jobs:
 
       # Backgrounded so Convex boots while the app builds. The build only needs
       # the backend's URL, which is fixed for a fresh anonymous deployment.
-      # The `check` job already typechecks convex/.
+      # The `check` job already typechecks convex/. Function logs go only to
+      # convex.log, which is uploaded when the job fails.
       - name: Start local Convex backend
         run: |
           nohup bash -c '
@@ -66,7 +67,7 @@ jobs:
               mv "$RUNNER_TEMP/convex.done.tmp" "$RUNNER_TEMP/convex.done"
               exit 0
             }
-            bunx convex dev --typecheck disable --tail-logs disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+            bunx convex dev --typecheck disable --tail-logs always > "$RUNNER_TEMP/convex.log" 2>&1 &
             configured=0
             for i in $(seq 1 180); do
               if [ "$configured" -eq 0 ] && [ -f .env.local ] && grep -q "^CONVEX_DEPLOYMENT=" .env.local; then
