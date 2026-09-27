@@ -65,6 +65,10 @@ const convexAuthHandler = (
     _handler: (ctx: MutationCtx, args: { args: unknown }) => Promise<unknown>;
   }
 )._handler;
+// Fail the deploy, not the first sign-in, if an upgrade drops it.
+if (typeof convexAuthHandler !== "function") {
+  throw new Error("Convex Auth's store no longer exposes `_handler`");
+}
 
 // Convex Auth calls `auth:store` by name, so this replaces its store to start
 // a guest merge when a Guest signs in. Convex Auth never passes the Guest's
