@@ -448,3 +448,65 @@ test("E2E purge refuses an e2e email when E2E_TEST is off", async () => {
   ).rejects.toThrow("E2E cleanup is unavailable");
   expect(await t.run((ctx) => ctx.db.get("users", userId))).not.toBeNull();
 });
+
+describe("E2E guest expiry", () => {
+  test("is unavailable outside E2E runs", async () => {
+    vi.stubEnv("E2E_TEST", undefined);
+    const t = setupTest();
+    const guest = await seedUser(t, { isAnonymous: true });
+    await expect(
+      asUser(t, guest).mutation(api.e2eCleanup.expireCurrentGuest, {}),
+    ).rejects.toThrow("E2E cleanup is unavailable");
+  });
+
+  test("only expires anonymous callers", async () => {
+    vi.stubEnv("E2E_TEST", "1");
+    const t = setupTest();
+    const user = await seedUser(t);
+    await expect(
+      t.mutation(api.e2eCleanup.expireCurrentGuest, {}),
+    ).rejects.toThrow("Not authenticated");
+    await expect(
+      asUser(t, user).mutation(api.e2eCleanup.expireCurrentGuest, {}),
+    ).rejects.toThrow("E2E cleanup is unavailable");
+    expect(await t.run(async (ctx) => ctx.db.get("users", user))).toMatchObject(
+      { name: "Test User" },
+    );
+  });
+
+  test("expires the caller past one cleanup budget and leaves other guests", async () => {
+    vi.stubEnv("E2E_TEST", "1");
+    const t = setupTest();
+    const guest = await seedUser(t, { isAnonymous: true });
+    const other = await seedUser(t, { isAnonymous: true });
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 120; i++) {
+        await ctx.db.insert("userGameHistory", {
+          userId: guest,
+          contextoGameId: i,
+          firstPlayedAt: i,
+        });
+      }
+    });
+
+    await asUser(t, guest).mutation(api.e2eCleanup.expireCurrentGuest, {});
+
+    const result = await t.run(async (ctx) => ({
+      guest: await ctx.db.get("users", guest),
+      other: await ctx.db.get("users", other),
+      history: await ctx.db.query("userGameHistory").collect(),
+    }));
+    expect(result.guest).toMatchObject({
+      name: "Former Guest",
+      isAnonymous: false,
+    });
+    expect(result.other).toMatchObject({ isAnonymous: true });
+    expect(result.history).toEqual([]);
+    await expect(
+      asUser(t, guest).mutation(api.rooms.create, {}),
+    ).rejects.toThrow("Not authenticated");
+    await expect(
+      asUser(t, other).mutation(api.rooms.create, {}),
+    ).resolves.toMatchObject({ code: expect.any(String) });
+  });
+});

@@ -1,6 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { env, mutation, type MutationCtx } from "./_generated/server";
-import { deleteAccount } from "./lib/accountLifecycle";
+import { requireUser } from "./access";
+import { GUEST_CLEANUP_ROW_BUDGET } from "./cleanup";
+import { deleteAccount, expireGuest } from "./lib/accountLifecycle";
 
 const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u[01]@example\.com$/;
 
@@ -21,6 +23,25 @@ export const purgeAccount = mutation({
     // Rate limits are keyed by email, not user, so the registry can't see them.
     await deleteRateLimit(ctx, email);
     return { deleted: true };
+  },
+});
+
+// Runs guest expiry cleanup to completion on the caller alone. The scheduled
+// sweep would also expire other workers' guests.
+export const expireCurrentGuest = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (env.E2E_TEST !== "1") {
+      throw new ConvexError("E2E cleanup is unavailable");
+    }
+    const userId = await requireUser(ctx);
+    const user = await ctx.db.get("users", userId);
+    if (user?.isAnonymous !== true) {
+      throw new ConvexError("E2E cleanup is unavailable");
+    }
+    while (!(await expireGuest(ctx, userId, GUEST_CLEANUP_ROW_BUDGET)).done);
+    return null;
   },
 });
 
