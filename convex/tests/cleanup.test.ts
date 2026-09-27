@@ -436,3 +436,15 @@ test("E2E purge rejects other emails and clears rate limits and hosted Games", a
   });
   expect(remaining.otherUser).not.toBeNull();
 });
+
+test("E2E purge refuses an e2e email when E2E_TEST is off", async () => {
+  vi.stubEnv("E2E_TEST", undefined);
+  const t = setupTest();
+  const email = "contextus-e2e-local-w0-u0@example.com";
+  const userId = await seedUser(t, { email });
+
+  await expect(
+    t.mutation(api.e2eCleanup.purgeAccount, { email }),
+  ).rejects.toThrow("E2E cleanup is unavailable");
+  expect(await t.run((ctx) => ctx.db.get("users", userId))).not.toBeNull();
+});

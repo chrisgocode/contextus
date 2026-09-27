@@ -36,6 +36,30 @@ test("listPending returns empty for ex-member after leaving room", async () => {
   expect(res).toEqual([]);
 });
 
+test("listPending shows a non-Host only their own requests", async () => {
+  const t = setupTest();
+  const { host, other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  await asUser(t, other).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  await asUser(t, third).mutation(api.requests.create, {
+    gameId,
+    type: "giveup",
+  });
+
+  const requesters = async (userId: Id<"users">) =>
+    (await asUser(t, userId).query(api.requests.listPending, { gameId })).map(
+      (r) => r.requesterUserId,
+    );
+  expect(await requesters(other)).toEqual([other]);
+  expect(await requesters(third)).toEqual([third]);
+  expect(new Set(await requesters(host))).toEqual(new Set([other, third]));
+});
+
 test("create inserts pending row of correct type", async () => {
   const t = setupTest();
   const { other, gameId } = await startedGame(t);
