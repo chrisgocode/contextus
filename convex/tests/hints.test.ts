@@ -93,3 +93,48 @@ test("approve attributes hint to requester and marks request approved", async ()
   );
   expect(reqRow?.status).toBe("approved");
 });
+
+test("a hint is rejected when its tip is guessed while Contexto is fetching it", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ guesses: { 1336: { pomelo: 299 } } });
+  const { host, other, gameId } = await startedGame(t);
+  oracle.tip.mockImplementationOnce(async () => {
+    await asUser(t, other).action(api.guesses.submit, {
+      gameId,
+      word: "pomelo",
+    });
+    return { lemma: "pomelo", distance: 299 };
+  });
+
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).rejects.toThrow("Hint lemma already guessed");
+  expect(oracle.tip).toHaveBeenCalledTimes(1);
+});
+
+test("a walking hint gives up once every nearby tip is already guessed", async () => {
+  const t = setupTest();
+  const tips: Record<number, string> = {};
+  for (let distance = 2; distance <= 51; distance++) {
+    tips[distance] = `near${distance}`;
+  }
+  const oracle = fakeWordOracle({ tips: { 1336: tips } });
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (const [distance, lemma] of [[1, "close"], ...Object.entries(tips)]) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: host,
+        lemma: String(lemma),
+        distance: Number(distance),
+        source: "guess",
+        createdAt: 1,
+      });
+    }
+  });
+
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).rejects.toThrow("Could not find an unguessed hint");
+  expect(oracle.tip).toHaveBeenCalledTimes(50);
+});

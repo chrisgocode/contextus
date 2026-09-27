@@ -1,7 +1,12 @@
 import { expect, test, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
-import { asUser, seedUser, setupTest } from "../testHelpers.test";
+import {
+  asUser,
+  fakeWordOracle,
+  seedUser,
+  setupTest,
+} from "../testHelpers.test";
 import { posthog } from "../posthog";
 
 async function startedGame(t: ReturnType<typeof setupTest>) {
@@ -301,4 +306,52 @@ test("apply rejects a request whose type does not match the turn", async () => {
     }),
   ).rejects.toThrow("Request not found or already handled");
   expect(await snapshot(t, gameId)).toEqual(before);
+});
+
+test("an empty Guess is rejected without asking Contexto", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({});
+  const { host, gameId } = await startedGame(t);
+  await expect(
+    asUser(t, host).action(api.guesses.submit, { gameId, word: "   " }),
+  ).rejects.toThrow("Empty word");
+  expect(oracle.distance).not.toHaveBeenCalled();
+});
+
+// These Games end after the turn's early checks pass but before its write,
+// while Contexto is answering.
+test("a Guess is rejected when the Game ends while Contexto is scoring it", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ answers: { 1336: "persimmon" } });
+  const { host, other, gameId } = await startedGame(t);
+  oracle.distance.mockImplementationOnce(async () => {
+    await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
+    return { ok: true, lemma: "apple", distance: 5 };
+  });
+
+  await expect(
+    asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
+  ).rejects.toThrow("Game is no longer in progress");
+  const { game, guesses } = await snapshot(t, gameId);
+  expect(game?.status).toBe("given_up");
+  expect(guesses).toEqual([]);
+});
+
+test("a give-up is rejected when the Game is won while Contexto is answering", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ guesses: { 1336: { persimmon: 0 } } });
+  const { host, other, gameId } = await startedGame(t);
+  oracle.answer.mockImplementationOnce(async () => {
+    await asUser(t, other).action(api.guesses.submit, {
+      gameId,
+      word: "persimmon",
+    });
+    return { lemma: "persimmon" };
+  });
+
+  await expect(
+    asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
+  ).rejects.toThrow("Game is no longer in progress");
+  const { game } = await snapshot(t, gameId);
+  expect(game).toMatchObject({ status: "won", winnerUserId: other });
 });
