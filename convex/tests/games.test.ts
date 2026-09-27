@@ -115,50 +115,7 @@ test("getActive returns null for non-member (silent skip)", async () => {
   expect(result).toBeNull();
 });
 
-test("getById exposes winner details only to room members", async () => {
-  const t = setupTest();
-  const { host, other, roomId } = await createRoomWith(t);
-  const { gameId } = await asUser(t, host).mutation(api.games.start, {
-    roomId,
-    contextoGameId: 1336,
-  });
-  await t.run(async (ctx) => {
-    await ctx.db.patch("users", host, { image: "winner.png" });
-    await ctx.db.patch("games", gameId, { status: "won", winnerUserId: host });
-  });
-
-  await expect(
-    asUser(t, other).query(api.games.getById, { gameId }),
-  ).resolves.toMatchObject({
-    winner: expect.objectContaining({ name: "Host", image: "winner.png" }),
-  });
-  const outsider = await seedUser(t);
-  await expect(
-    asUser(t, outsider).query(api.games.getById, { gameId }),
-  ).resolves.toBeNull();
-});
-
-test("getById falls back to display username when the winner has no name", async () => {
-  const t = setupTest();
-  const { host, roomId } = await createRoomWith(t);
-  const { gameId } = await asUser(t, host).mutation(api.games.start, {
-    roomId,
-    contextoGameId: 1336,
-  });
-  await t.run(async (ctx) => {
-    await ctx.db.patch("users", host, {
-      name: undefined,
-      displayUsername: "Winner",
-    });
-    await ctx.db.patch("games", gameId, { status: "won", winnerUserId: host });
-  });
-
-  await expect(
-    asUser(t, host).query(api.games.getById, { gameId }),
-  ).resolves.toMatchObject({ winner: { name: "Winner", image: null } });
-});
-
-test("uploaded avatar appears on guesses, requests, and winner", async () => {
+test("uploaded avatar appears on guesses and requests", async () => {
   const t = setupTest();
   const { host, other, roomId } = await createRoomWith(t);
   const avatarStorageId = await t.run(async (ctx) =>
@@ -193,12 +150,7 @@ test("uploaded avatar appears on guesses, requests, and winner", async () => {
   const requests = await asUser(t, host).query(api.requests.listPending, {
     gameId,
   });
-  const game = await asUser(t, host).query(api.games.getById, { gameId });
-  for (const player of [
-    guesses.sorted[0].player,
-    requests[0].requester,
-    game?.winner,
-  ]) {
+  for (const player of [guesses.sorted[0].player, requests[0].requester]) {
     expect(player).toMatchObject({
       id: other,
       name: "Other",

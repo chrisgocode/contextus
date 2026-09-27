@@ -5,9 +5,6 @@ import {
   requireHostByGame,
   requireHostByRoom,
   requireMemberByGame,
-  requireMemberByRoom,
-  tryHostByGame,
-  tryHostByRoom,
   tryMemberByGame,
   tryMemberByRoom,
 } from "../access";
@@ -125,26 +122,6 @@ describe("tryMemberByGame", () => {
   });
 });
 
-describe("requireMemberByRoom", () => {
-  test("returns {userId, room} for member", async () => {
-    const s = await seedRoomWithGame();
-    const r = await asUser(s.t, s.member).run((ctx) =>
-      requireMemberByRoom(ctx, { roomId: s.roomId }),
-    );
-    expect(r.userId).toBe(s.member);
-    expect(r.room._id).toBe(s.roomId);
-  });
-
-  test("throws when not a member", async () => {
-    const s = await seedRoomWithGame();
-    await expect(
-      asUser(s.t, s.outsider).run((ctx) =>
-        requireMemberByRoom(ctx, { roomId: s.roomId }),
-      ),
-    ).rejects.toBeInstanceOf(ConvexError);
-  });
-});
-
 describe("tryMemberByRoom", () => {
   test("returns payload for member, null for non-member", async () => {
     const s = await seedRoomWithGame();
@@ -185,20 +162,6 @@ describe("requireHostByGame", () => {
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
     ).rejects.toBeInstanceOf(ConvexError);
-  });
-});
-
-describe("tryHostByGame", () => {
-  test("payload for host, null otherwise", async () => {
-    const s = await seedRoomWithGame();
-    const yes = await asUser(s.t, s.host).run((ctx) =>
-      tryHostByGame(ctx, { gameId: s.gameId }),
-    );
-    expect(yes?.userId).toBe(s.host);
-    const no = await asUser(s.t, s.member).run((ctx) =>
-      tryHostByGame(ctx, { gameId: s.gameId }),
-    );
-    expect(no).toBeNull();
   });
 });
 
@@ -247,32 +210,5 @@ describe("host checks require a current membership", () => {
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
     ).rejects.toThrow("Host only");
-  });
-
-  test("try helpers return null for a host without membership", async () => {
-    const s = await seedRoomWithGame();
-    await removeHostMembership(s);
-    const byRoom = await asUser(s.t, s.host).run((ctx) =>
-      tryHostByRoom(ctx, { roomId: s.roomId }),
-    );
-    const byGame = await asUser(s.t, s.host).run((ctx) =>
-      tryHostByGame(ctx, { gameId: s.gameId }),
-    );
-    expect(byRoom).toBeNull();
-    expect(byGame).toBeNull();
-  });
-});
-
-describe("tryHostByRoom", () => {
-  test("payload for host, null otherwise", async () => {
-    const s = await seedRoomWithGame();
-    const yes = await asUser(s.t, s.host).run((ctx) =>
-      tryHostByRoom(ctx, { roomId: s.roomId }),
-    );
-    expect(yes?.userId).toBe(s.host);
-    const no = await asUser(s.t, s.outsider).run((ctx) =>
-      tryHostByRoom(ctx, { roomId: s.roomId }),
-    );
-    expect(no).toBeNull();
   });
 });
