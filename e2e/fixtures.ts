@@ -64,8 +64,22 @@ export const test = base.extend<Fixtures>({
     const contexts: BrowserContext[] = [];
 
     await provide(async (options = {}) => {
+      // A new context doesn't inherit the project's device, so pass it on.
+      const {
+        baseURL,
+        viewport,
+        userAgent,
+        deviceScaleFactor,
+        isMobile,
+        hasTouch,
+      } = testInfo.project.use;
       const context = await browser.newContext({
-        baseURL: testInfo.project.use.baseURL,
+        baseURL,
+        viewport,
+        userAgent,
+        deviceScaleFactor,
+        isMobile,
+        hasTouch,
         ...options,
       });
       contexts.push(context);

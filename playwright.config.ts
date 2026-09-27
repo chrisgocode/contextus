@@ -19,10 +19,20 @@ export default defineConfig({
     ? [["github"], ["list"], ["html", { open: "never" }]]
     : "list",
   use: {
-    ...devices["Desktop Chrome"],
     baseURL,
     trace: "on-first-retry",
   },
+  projects: [
+    { name: "desktop", use: devices["Desktop Chrome"] },
+    // The core game flow again on a phone, where the room's sidebar, guess
+    // input and request bar stack. Only these specs, so the suite doesn't
+    // run twice.
+    {
+      name: "mobile",
+      use: devices["Pixel 7"],
+      testMatch: /\/(game|win|hostTransfer)\.\w+\.spec\.ts$/,
+    },
+  ],
   webServer: {
     // CI builds first and serves production output; `next dev` compiles
     // routes on demand, which is slow and flaky on CI runners.
