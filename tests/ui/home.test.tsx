@@ -159,6 +159,45 @@ describe("Home", () => {
     expect(mocks.push).toHaveBeenCalledWith("/signin");
   });
 
+  it("links a signed-out visitor to sign in", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/signin",
+    );
+  });
+
+  it("links a guest to sign in", () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    mocks.useQuery.mockImplementation((reference) =>
+      getFunctionName(reference) === "users:getUser"
+        ? { isAnonymous: true, username: "guest" }
+        : undefined,
+    );
+
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/signin",
+    );
+  });
+
+  it("hides sign in while auth is loading", () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+    });
+
+    render(<Home />);
+
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  });
+
   it("shows a registered user's rooms and starts a recent group again", async () => {
     mocks.useConvexAuth.mockReturnValue({
       isAuthenticated: true,
@@ -188,6 +227,7 @@ describe("Home", () => {
 
     expect(screen.getByText("Your active rooms")).toBeVisible();
     expect(screen.getByText("Alex + Blair")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Profile" }));
     expect(mocks.push).toHaveBeenCalledWith("/user/alex");
 

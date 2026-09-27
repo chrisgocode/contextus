@@ -24,7 +24,7 @@ import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
-  const { isAuthenticated } = useConvexAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
   const [openingRoom, setOpeningRoom] = useState(false);
   const currentUser = useQuery(
@@ -32,6 +32,9 @@ export default function Home() {
     isAuthenticated ? {} : "skip",
   );
   const isRegistered = isAuthenticated && currentUser?.isAnonymous === false;
+  // Signed-out visitors and guests need a way back to their account.
+  const canSignIn =
+    !isLoading && (!isAuthenticated || currentUser?.isAnonymous === true);
 
   const header = (
     <header className="flex flex-wrap items-center justify-between gap-3">
@@ -48,6 +51,10 @@ export default function Home() {
             disabled={!currentUser?.username}
           >
             Profile
+          </Button>
+        ) : canSignIn ? (
+          <Button asChild variant="outline">
+            <Link href="/signin">Sign in</Link>
           </Button>
         ) : null}
       </div>
