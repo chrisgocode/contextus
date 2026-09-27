@@ -60,6 +60,7 @@
     "dotenv": "^17.4.2",
     "husky": "^9.1.7",
     "jsdom": "^30.1.0",
+    "oauth2-mock-server": "^9.2.0",
     "oxfmt": "^0.70.0",
     "oxlint": "^1.85.0",
     "tailwindcss": "^4.3.3",

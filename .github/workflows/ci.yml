@@ -46,6 +46,7 @@ jobs:
       CONVEX_AGENT_MODE: anonymous
       E2E_ACCOUNT_NAMESPACE: ci
       E2E_PASSWORD: ci-e2e-password
+      E2E_GOOGLE_ISSUER: http://localhost:8765
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

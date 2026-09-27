@@ -54,6 +54,8 @@ E2E_ACCOUNT_NAMESPACE=local
 E2E_PASSWORD=<any password>
 ```
 
+The Google sign-in spec also needs `E2E_GOOGLE_ISSUER`, and is skipped without it. It only works against a local backend (`CONVEX_AGENT_MODE=anonymous npx convex dev`), because the backend must reach the mock issuer on `localhost`. Add `E2E_GOOGLE_ISSUER=http://localhost:8765` to `.env.local`, then run `node scripts/setup-e2e-convex-env.mjs` to set it on the backend along with the other e2e variables.
+
 Run:
 
 ```bash
@@ -63,13 +65,15 @@ bun run test:e2e:ui    # Playwright UI mode
 
 Playwright starts `bun run dev:e2e` if nothing is already running on the base URL (in CI it serves a production build with `bun run start:e2e`). Each test gets fresh registered accounts: the `createRegisteredUser` fixture purges its accounts through `e2eCleanup.purgeAccount` before sign-up and again in teardown, and global setup and teardown purge every account slot in case a run crashed. A test can create up to four registered users; set `E2E_REGISTERED_USERS_PER_TEST` to raise that. Fixture teardown also ends every room each browser context hosts, so a failing test can't leave rooms active. In CI a test that passes only on retry fails the run (`failOnFlakyTests`). Spec files are named `*.guest.spec.ts` or `*.registered.spec.ts` depending on which kind of user they test.
 
+With `E2E_GOOGLE_ISSUER` set, Playwright also starts `e2e/oidc-mock.mjs`, an [`oauth2-mock-server`](https://github.com/axa-group/oauth2-mock-server) issuer that stands in for Google. With `E2E_TEST=1`, `convex/auth.ts` points the Google provider at it, so the backend runs the real OAuth flow (discovery, PKCE, nonce and code exchange). Its sign-in page asks which account to use, and signs in as `<account>@example.com`. See `docs/research/google-oauth-e2e.md`.
+
 With `E2E_TEST=1`, the backend scores words with `convex/e2eWordOracle.ts` instead of calling Contexto, and skips the `wordDistances` cache so fake and real scores never mix: `wordN` is at distance N, `word0` is the answer, hints return `wordN`, and other plain words get a stable distance of 1000 or more. Any deployment with `E2E_TEST=1`, including your dev deployment, plays with fake distances.
 
 > **Do not set `E2E_TEST` on a production deployment.** It enables password sign-in, shortens guest lifetimes to one hour, and replaces Contexto with the fake word oracle.
 
 #### In CI
 
-The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwaway local Convex backend with `CONVEX_AGENT_MODE=anonymous npx convex dev`, then runs `scripts/setup-e2e-convex-env.mjs` to set `E2E_TEST`, `SITE_URL`, and a fresh Convex Auth signing key. Convex starts in the background while the app builds, since the build only needs the backend's fixed local URL. The build reuses a cached `.next/cache` and skips its type check (`SKIP_BUILD_TYPECHECK=1`), because the `check` job already runs `tsc`. Playwright's headless Chromium uses the runner's preinstalled system libraries, so the job has no apt step. When the job fails, the Playwright report, traces, and Convex log are uploaded as the `playwright-report` artifact.
+The `e2e` job in `.github/workflows/ci.yml` needs no secrets. It starts a throwaway local Convex backend with `CONVEX_AGENT_MODE=anonymous npx convex dev`, then runs `scripts/setup-e2e-convex-env.mjs` to set `E2E_TEST`, `SITE_URL`, a fresh Convex Auth signing key, and the mock Google issuer. Convex starts in the background while the app builds, since the build only needs the backend's fixed local URL. The build reuses a cached `.next/cache` and skips its type check (`SKIP_BUILD_TYPECHECK=1`), because the `check` job already runs `tsc`. Playwright's headless Chromium uses the runner's preinstalled system libraries, so the job has no apt step. When the job fails, the Playwright report, traces, and Convex log are uploaded as the `playwright-report` artifact.
 
 ## Code quality
 

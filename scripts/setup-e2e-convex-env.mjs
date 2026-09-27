@@ -1,6 +1,7 @@
 /**
  * Prepares a throwaway Convex deployment (the anonymous local backend in CI)
- * for Playwright: enables E2E_TEST and gives Convex Auth a fresh signing key.
+ * for Playwright: enables E2E_TEST, gives Convex Auth a fresh signing key, and
+ * points Google sign-in at the mock issuer when E2E_GOOGLE_ISSUER is set.
  *
  * Never run this against production: E2E_TEST enables password sign-in.
  */
@@ -12,6 +13,7 @@ import os from "os";
 import path from "path";
 
 const siteUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
+const googleIssuer = process.env.E2E_GOOGLE_ISSUER;
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -33,6 +35,14 @@ fs.writeFileSync(
     `SITE_URL=${siteUrl}`,
     `JWT_PRIVATE_KEY="${pem.trimEnd().replace(/\n/g, " ")}"`,
     `JWKS='${jwks}'`,
+    // Points Google sign-in at `e2e/oidc-mock.mjs`, which accepts any client.
+    ...(googleIssuer === undefined
+      ? []
+      : [
+          `E2E_GOOGLE_ISSUER=${googleIssuer}`,
+          "AUTH_GOOGLE_ID=e2e",
+          "AUTH_GOOGLE_SECRET=e2e",
+        ]),
   ].join("\n"),
 );
 
