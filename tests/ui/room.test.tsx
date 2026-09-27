@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
 import RoomPage from "@/app/(app)/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
-import { act, render, screen, userEvent, waitFor } from "./test-utils";
+import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(),
@@ -66,6 +66,7 @@ const room = {
   members: [
     { player: { image: null, name: "Alex" }, isHost: true, userId: "user" },
     { player: { image: null, name: "Blair" }, isHost: false, userId: "friend" },
+    { player: { image: null, name: "Casey" }, isHost: false, userId: "away" },
   ],
   room: { _id: "room", code: "ABCDEF", status: "active" },
   viewerUserId: "user",
@@ -190,6 +191,16 @@ describe("RoomPage", () => {
     await user.click(screen.getByRole("button", { name: /^End/ }));
     expect(mocks.endRoom).toHaveBeenCalledWith({ roomId: "room" });
     expect(mocks.push).toHaveBeenCalledWith("/");
+  });
+
+  it("labels each member's online status", async () => {
+    await renderRoom();
+
+    const status = (name: string) =>
+      within(screen.getByText(name).closest("li")!).getByRole("img");
+    expect(status("Alex")).toHaveAccessibleName("Online");
+    expect(status("Blair")).toHaveAccessibleName("Online");
+    expect(status("Casey")).toHaveAccessibleName("Offline");
   });
 
   it("lets an unauthenticated visitor join as a guest or sign in", async () => {
