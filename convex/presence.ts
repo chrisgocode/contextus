@@ -30,6 +30,9 @@ export const heartbeat = mutation({
   },
 });
 
+// No membership check: list and disconnect take the component's random room
+// and session tokens, which heartbeat hands out only to room members. Room ids
+// appear in URLs, so they are not accepted in place of a token.
 export const list = query({
   args: { roomToken: v.string() },
   handler: async (ctx, { roomToken }) => {
