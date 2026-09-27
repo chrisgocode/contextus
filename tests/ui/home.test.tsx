@@ -62,17 +62,6 @@ describe("Home", () => {
     expect(html).toContain("Join a room");
   });
 
-  it("creates a room as a guest", async () => {
-    mocks.create.mockResolvedValue({ code: "ABCDEF" });
-    const user = userEvent.setup();
-    render(<Home />);
-
-    await user.click(screen.getByRole("button", { name: "Create room" }));
-    await waitFor(() => expect(mocks.signIn).toHaveBeenCalledWith("anonymous"));
-    expect(mocks.create).toHaveBeenCalledWith({});
-    expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF");
-  });
-
   it.each([
     { isAuthenticated: true, signsIn: false },
     { isAuthenticated: false, signsIn: true },

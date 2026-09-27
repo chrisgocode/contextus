@@ -77,6 +77,9 @@ test("two registered players complete a cooperative game", async ({
     await expect(
       partner.page.getByRole("heading", { name: "Game given up" }),
     ).toBeVisible();
+    await expect(
+      partner.page.getByText(/^The answer was [^?\s]+$/),
+    ).toBeVisible();
   });
 
   await endRoom(host.page);

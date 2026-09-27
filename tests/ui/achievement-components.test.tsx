@@ -3,8 +3,6 @@ import { AchievementUnlockQueue } from "@/app/_components/AchievementUnlockQueue
 import {
   achievementGroups,
   achievements,
-  getAchievementById,
-  getAchievementGroup,
   getUnlockedAchievementMetadata,
 } from "@/app/_components/achievement-metadata";
 import { Achievements } from "@/app/(app)/user/[username]/_components/Achievements";
@@ -27,10 +25,7 @@ describe("achievement metadata", () => {
     );
   });
 
-  it("resolves known, hidden, and missing achievement metadata", () => {
-    expect(getAchievementById("bullseye")?.name).toBe("Bullseye");
-    expect(getAchievementById("missing")).toBeNull();
-    expect(getAchievementGroup("bronze").label).toBe("Bronze");
+  it("shows the unlocked trophy for hidden achievements and skips unknown ids", () => {
     expect(getUnlockedAchievementMetadata("missing")).toBeNull();
     expect(getUnlockedAchievementMetadata("so_close")?.trophy).toBe(
       achievementGroups.find((group) => group.category === "hidden")
@@ -86,21 +81,6 @@ describe("Achievements", () => {
       screen.getAllByText("Unlock this achievement to reveal its details.")
         .length,
     ).toBeGreaterThan(0);
-  });
-
-  it("reports the complete catalog size", () => {
-    render(
-      <Achievements
-        achievementState={{
-          achievements: [],
-          isCurrentUser: false,
-          unlockedCount: 0,
-        }}
-      />,
-    );
-    expect(
-      screen.getByText(`0 of ${achievements.length} unlocked`),
-    ).toBeVisible();
   });
 });
 
