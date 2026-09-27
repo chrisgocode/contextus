@@ -19,6 +19,11 @@ type Fixtures = {
   createRegisteredUser: (
     options?: BrowserContextOptions,
   ) => Promise<RegisteredUser>;
+  // Signs up a fresh registered account in an existing browser context, such
+  // as a Guest's, through the app's /api/auth proxy.
+  registerContext: (
+    context: BrowserContext,
+  ) => Promise<Omit<RegisteredUser, "page">>;
 };
 
 export const test = base.extend<Fixtures>({
@@ -27,22 +32,15 @@ export const test = base.extend<Fixtures>({
     await endHostedRooms(context);
   },
 
-  createRegisteredUser: async ({ browser }, provide, testInfo) => {
-    const contexts: BrowserContext[] = [];
+  registerContext: async ({}, provide, testInfo) => {
     const emails: string[] = [];
 
-    await provide(async (options = {}) => {
+    await provide(async (context) => {
       if (emails.length >= REGISTERED_USERS_PER_TEST) {
         throw new Error(
           `Each test supports at most ${REGISTERED_USERS_PER_TEST} registered users; raise E2E_REGISTERED_USERS_PER_TEST`,
         );
       }
-
-      const context = await browser.newContext({
-        baseURL: testInfo.project.use.baseURL,
-        ...options,
-      });
-      contexts.push(context);
       const email = e2eAccountEmail(testInfo.parallelIndex, emails.length);
       emails.push(email);
       // Teardown purges too, but one that never ran would leave the account.
@@ -52,14 +50,33 @@ export const test = base.extend<Fixtures>({
       const client = await clientFor(context);
       const user = await client?.query(api.users.getUser, {});
       if (!user) throw new Error(`Sign-up left ${email} signed out`);
-      return { email, name: user.player.name, page: await context.newPage() };
+      return { email, name: user.player.name };
+    });
+
+    await Promise.all(emails.map(purgeAccount));
+  },
+
+  createRegisteredUser: async (
+    { browser, registerContext },
+    provide,
+    testInfo,
+  ) => {
+    const contexts: BrowserContext[] = [];
+
+    await provide(async (options = {}) => {
+      const context = await browser.newContext({
+        baseURL: testInfo.project.use.baseURL,
+        ...options,
+      });
+      contexts.push(context);
+      const user = await registerContext(context);
+      return { ...user, page: await context.newPage() };
     });
 
     for (const context of contexts) {
       await endHostedRooms(context);
       await context.close();
     }
-    await Promise.all(emails.map(purgeAccount));
   },
 });
 
