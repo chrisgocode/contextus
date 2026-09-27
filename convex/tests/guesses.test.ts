@@ -246,8 +246,34 @@ test("listForGame returns empty for ex-member after leaving room", async () => {
   await asUser(t, other).mutation(api.rooms.leave, { roomId });
   const res = await asUser(t, other).query(api.guesses.listForGame, {
     gameId,
+    duplicate: "hello",
   });
-  expect(res).toEqual({ sorted: [], latest: null });
+  expect(res).toEqual({ sorted: [], latest: null, repeated: null });
+});
+
+test("listForGame returns a repeated guess beyond the 500 closest", async () => {
+  const t = setupTest();
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let distance = 0; distance <= 500; distance++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: host,
+        lemma: distance === 500 ? "distant" : `word${distance}`,
+        distance,
+        source: "guess",
+        createdAt: distance,
+      });
+    }
+  });
+
+  const { sorted, repeated } = await asUser(t, host).query(
+    api.guesses.listForGame,
+    { gameId, duplicate: "distant" },
+  );
+  expect(sorted).toHaveLength(500);
+  expect(sorted.some((g) => g.lemma === "distant")).toBe(false);
+  expect(repeated).toMatchObject({ lemma: "distant", distance: 500 });
 });
 
 test("listForGame returns sorted asc + latest", async () => {

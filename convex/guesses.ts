@@ -13,15 +13,24 @@ export const submit = action({
 });
 
 export const listForGame = query({
-  args: { gameId: v.id("games") },
-  handler: async (ctx, { gameId }) => {
+  args: { gameId: v.id("games"), duplicate: v.optional(v.string()) },
+  handler: async (ctx, { gameId, duplicate }) => {
     const access = await tryMemberByGame(ctx, { gameId });
-    if (access === null) return { sorted: [], latest: null };
+    if (access === null) return { sorted: [], latest: null, repeated: null };
     const sortedRaw = await ctx.db
       .query("gameGuesses")
       .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
       .order("asc")
       .take(500);
+    const repeatedRaw = duplicate
+      ? (sortedRaw.find((g) => g.lemma === duplicate) ??
+        (await ctx.db
+          .query("gameGuesses")
+          .withIndex("by_game_lemma", (q) =>
+            q.eq("gameId", gameId).eq("lemma", duplicate),
+          )
+          .unique()))
+      : null;
     const latestRaw =
       sortedRaw.length === 0
         ? null
@@ -32,10 +41,10 @@ export const listForGame = query({
             return a._creationTime > b._creationTime ? a : b;
           });
 
-    const players = await loadPlayers(
-      ctx,
-      sortedRaw.map((g) => g.userId),
-    );
+    const players = await loadPlayers(ctx, [
+      ...sortedRaw.map((g) => g.userId),
+      ...(repeatedRaw ? [repeatedRaw.userId] : []),
+    ]);
     const hydrate = (g: Doc<"gameGuesses">) => ({
       ...g,
       player: players.get(g.userId)!,
@@ -43,6 +52,7 @@ export const listForGame = query({
     return {
       sorted: sortedRaw.map(hydrate),
       latest: latestRaw === null ? null : hydrate(latestRaw),
+      repeated: repeatedRaw === null ? null : hydrate(repeatedRaw),
     };
   },
 });

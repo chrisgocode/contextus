@@ -17,10 +17,12 @@ export function GuessList({
   gameId: Id<"games">;
   duplicate: string | null;
 }) {
-  const data = useQuery(api.guesses.listForGame, { gameId });
+  const data = useQuery(api.guesses.listForGame, {
+    gameId,
+    duplicate: duplicate ?? undefined,
+  });
   if (data === undefined) return <GuessListSkeleton />;
-  const { sorted, latest } = data;
-  const repeated = sorted.find((g) => g.lemma === duplicate);
+  const { sorted, latest, repeated } = data;
   if (sorted.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">No guesses yet. Type one!</p>
@@ -31,6 +33,14 @@ export function GuessList({
       {repeated && (
         <div role="status" aria-label="Already guessed">
           <Row g={repeated} duplicate />
+        </div>
+      )}
+      {repeated && !sorted.some((g) => g._id === repeated._id) && (
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            Earlier guess
+          </p>
+          <Row g={repeated} highlight />
         </div>
       )}
       {latest && (
