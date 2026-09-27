@@ -59,13 +59,20 @@ export async function seedUser(
   return userId;
 }
 
-export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
+export function sessionOf(
+  t: ReturnType<typeof setupTest>,
+  userId: Id<"users">,
+): Id<"authSessions"> {
   const sessionId = seededSessions.get(t)?.get(userId);
   if (sessionId === undefined) {
-    throw new Error(`asUser: ${userId} was not created with seedUser`);
+    throw new Error(`${userId} was not created with seedUser`);
   }
+  return sessionId;
+}
+
+export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {
   return t.withIdentity({
-    subject: `${userId}|${sessionId}`,
+    subject: `${userId}|${sessionOf(t, userId)}`,
     issuer: "test",
   });
 }

@@ -1,7 +1,6 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { getCurrentUserId } from "../access";
 import {
   type MergePhase,
   USER_KEYED_TABLES,
@@ -35,22 +34,30 @@ const PHASES: MergeJob["phase"][] = [
   "finalize",
 ];
 
-// Starts moving the current guest session's data to `targetUserId`. Only
-// bounded work runs here because it shares the sign-in transaction; the
-// transfer itself runs in scheduled batches.
+// Starts moving the data of the guest signed in with `guestSessionId` to
+// `targetUserId`. Only bounded work runs here because it shares the sign-in
+// transaction; the transfer itself runs in scheduled batches.
 export async function startGuestMerge(
-  ctx: Pick<MutationCtx, "auth" | "db" | "scheduler">,
+  ctx: Pick<MutationCtx, "db" | "scheduler">,
+  guestSessionId: Id<"authSessions">,
   targetUserId: Id<"users">,
 ): Promise<Id<"guestMerges"> | null> {
-  // Null once the guest's expiry cleanup has started, so cleanup and merge
-  // never both work on the same guest.
-  const guestUserId = await getCurrentUserId(ctx);
-  if (guestUserId === null || guestUserId === targetUserId) return null;
+  const session = await ctx.db.get("authSessions", guestSessionId);
+  if (session === null || session.expirationTime <= Date.now()) return null;
+  const guestUserId = session.userId;
+  if (guestUserId === targetUserId) return null;
   const [guest, target] = await Promise.all([
     ctx.db.get("users", guestUserId),
     ctx.db.get("users", targetUserId),
   ]);
-  if (guest?.isAnonymous !== true || target === null) return null;
+  // Expiry cleanup and merge never both work on the same guest.
+  if (
+    guest?.isAnonymous !== true ||
+    guest.guestCleanupStarted === true ||
+    target === null
+  ) {
+    return null;
+  }
   const existing = await ctx.db
     .query("guestMerges")
     .withIndex("by_guest_user", (q) => q.eq("guestUserId", guestUserId))

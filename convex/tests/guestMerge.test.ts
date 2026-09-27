@@ -5,6 +5,7 @@ import {
   asUser,
   finishScheduledFunctions,
   seedUser,
+  sessionOf,
   setupTest,
 } from "../testHelpers.test";
 import { api, internal } from "../_generated/api";
@@ -15,8 +16,8 @@ async function mergeGuest(
   guest: Id<"users">,
   target: Id<"users">,
 ) {
-  const guestSession = asUser(t, guest);
-  await guestSession.run(async (ctx) => startGuestMerge(ctx, target));
+  const guestSession = sessionOf(t, guest);
+  await t.run(async (ctx) => startGuestMerge(ctx, guestSession, target));
   await finishScheduledFunctions(t);
 }
 
@@ -48,27 +49,19 @@ test("completed Guest merge records conversion and joins analytics identities", 
   });
 });
 
-test("startGuestMerge ignores sessions that cannot be merged", async () => {
+// auth.test.ts covers which sessions count as a live Guest.
+test("startGuestMerge ignores targets that cannot be merged into", async () => {
   const t = setupTest();
-  const registered = await seedUser(t, { isAnonymous: false });
-  const target = await seedUser(t);
-
-  await expect(
-    t.run(async (ctx) => startGuestMerge(ctx, target)),
-  ).resolves.toBeNull();
-  await expect(
-    asUser(t, target).run(async (ctx) => startGuestMerge(ctx, target)),
-  ).resolves.toBeNull();
-  await expect(
-    asUser(t, registered).run(async (ctx) => startGuestMerge(ctx, target)),
-  ).resolves.toBeNull();
-
   const guest = await seedUser(t, { isAnonymous: true });
   const missingTarget = await seedUser(t);
   await t.run(async (ctx) => ctx.db.delete("users", missingTarget));
-  await expect(
-    asUser(t, guest).run(async (ctx) => startGuestMerge(ctx, missingTarget)),
-  ).resolves.toBeNull();
+  const guestSession = sessionOf(t, guest);
+
+  for (const target of [guest, missingTarget]) {
+    await expect(
+      t.run(async (ctx) => startGuestMerge(ctx, guestSession, target)),
+    ).resolves.toBeNull();
+  }
 });
 
 test("guest merge moves guest room and progress rows to registered user", async () => {
@@ -706,16 +699,16 @@ test("repeated sign-in for a merging guest starts only one merge", async () => {
       uniqueSolves: 3,
     });
   });
-  const guestSession = asUser(t, guest);
+  const guestSession = sessionOf(t, guest);
 
-  const first = await guestSession.run(async (ctx) =>
-    startGuestMerge(ctx, target),
+  const first = await t.run(async (ctx) =>
+    startGuestMerge(ctx, guestSession, target),
   );
-  const retry = await guestSession.run(async (ctx) =>
-    startGuestMerge(ctx, target),
+  const retry = await t.run(async (ctx) =>
+    startGuestMerge(ctx, guestSession, target),
   );
-  const elsewhere = await guestSession.run(async (ctx) =>
-    startGuestMerge(ctx, otherTarget),
+  const elsewhere = await t.run(async (ctx) =>
+    startGuestMerge(ctx, guestSession, otherTarget),
   );
   const jobs = await t.run(async (ctx) =>
     ctx.db.query("guestMerges").collect(),
@@ -801,8 +794,8 @@ test("guest expiry cleanup leaves a merging guest's rows for the merge", async (
       firstPlayedAt: 1,
     });
   });
-  const guestSession = asUser(t, guest);
-  await guestSession.run(async (ctx) => startGuestMerge(ctx, target));
+  const guestSession = sessionOf(t, guest);
+  await t.run(async (ctx) => startGuestMerge(ctx, guestSession, target));
 
   await t.mutation(internal.cleanup.removeExpiredGuests, {});
   await finishScheduledFunctions(t);
@@ -826,7 +819,7 @@ test("guest cannot start merging after expiry cleanup has begun", async () => {
     guestExpiresAt: Date.now() - 1,
   });
   const target = await seedUser(t);
-  const guestSession = asUser(t, guest);
+  const guestSession = sessionOf(t, guest);
   await t.run(async (ctx) => {
     const accountId = await ctx.db.insert("authAccounts", {
       userId: guest,
@@ -850,7 +843,7 @@ test("guest cannot start merging after expiry cleanup has begun", async () => {
 
   await t.mutation(internal.cleanup.removeExpiredGuests, {});
   await expect(
-    guestSession.run(async (ctx) => startGuestMerge(ctx, target)),
+    t.run(async (ctx) => startGuestMerge(ctx, guestSession, target)),
   ).resolves.toBeNull();
   await finishScheduledFunctions(t);
   const result = await t.run(async (ctx) => ({
@@ -877,9 +870,9 @@ test("guest merge picks up rows a stale guest tab wrote after their phase", asyn
     roomId,
     contextoGameId: 1336,
   });
-  const guestSession = asUser(t, guest);
-  const mergeId = await guestSession.run(async (ctx) =>
-    startGuestMerge(ctx, target),
+  const guestSession = sessionOf(t, guest);
+  const mergeId = await t.run(async (ctx) =>
+    startGuestMerge(ctx, guestSession, target),
   );
   if (mergeId === null) throw new Error("merge did not start");
 
@@ -932,8 +925,8 @@ test("guest merge re-sweep counts a stale tab's repeat solve once", async () => 
         });
       }
     });
-    const mergeId = await asUser(t, guest).run(async (ctx) =>
-      startGuestMerge(ctx, target),
+    const mergeId = await t.run(async (ctx) =>
+      startGuestMerge(ctx, sessionOf(t, guest), target),
     );
     if (mergeId === null) throw new Error("merge did not start");
     const phase = () =>
