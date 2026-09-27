@@ -141,7 +141,7 @@ describe("SignIn", () => {
 
 it("reports uncaught application errors", async () => {
   const error = new Error("boom");
-  render(<GlobalError error={error} />);
+  render(<GlobalError error={error} />, { container: document });
   expect(screen.getByText("Application error 0")).toBeVisible();
   await waitFor(() =>
     expect(mocks.captureException).toHaveBeenCalledWith(error),

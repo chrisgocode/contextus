@@ -20,6 +20,8 @@ export default defineConfig({
         test: {
           name: "convex",
           environment: "edge-runtime",
+          // Convex Auth logs every `auth:store` call at INFO.
+          env: { AUTH_LOG_LEVEL: "ERROR" },
           server: { deps: { inline: ["convex-test"] } },
           include: ["convex/tests/**/*.test.ts"],
         },
