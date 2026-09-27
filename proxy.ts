@@ -1,19 +1,8 @@
-import {
-  convexAuthNextjsMiddleware,
-  createRouteMatcher,
-  nextjsMiddlewareRedirect,
-} from "@convex-dev/auth/nextjs/server";
+import { convexAuthNextjsMiddleware } from "@convex-dev/auth/nextjs/server";
 
-const isProtectedRoute = createRouteMatcher(["/server"]);
-
-export default convexAuthNextjsMiddleware(
-  async (request, { convexAuth }) => {
-    if (isProtectedRoute(request) && !(await convexAuth.isAuthenticated())) {
-      return nextjsMiddlewareRedirect(request, "/signin");
-    }
-  },
-  { cookieConfig: { maxAge: 60 * 60 * 24 * 30 } },
-);
+export default convexAuthNextjsMiddleware(undefined, {
+  cookieConfig: { maxAge: 60 * 60 * 24 * 30 },
+});
 
 export const config = {
   // The following matcher runs middleware on all routes except static assets,
