@@ -1,4 +1,4 @@
-export const HINT_FLOOR = 299;
+const HINT_FLOOR = 299;
 export const MAX_WALK_ITERATIONS = 50;
 
 export function initialHintTarget(best: number | null): number {
