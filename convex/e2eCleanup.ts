@@ -4,7 +4,7 @@ import { requireUser } from "./access";
 import { GUEST_CLEANUP_ROW_BUDGET } from "./cleanup";
 import { deleteAccount, expireGuest } from "./lib/accountLifecycle";
 
-const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u[01]@example\.com$/;
+const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u\d+@example\.com$/;
 
 export const purgeAccount = mutation({
   args: { email: v.string() },

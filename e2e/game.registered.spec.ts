@@ -1,4 +1,4 @@
-import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
+import { createRoom, expect, roomMemberItems, test } from "./fixtures";
 
 test("two registered players complete a cooperative game", async ({
   createRegisteredUser,
@@ -81,6 +81,4 @@ test("two registered players complete a cooperative game", async ({
       partner.page.getByText(/^The answer was [^?\s]+$/),
     ).toBeVisible();
   });
-
-  await endRoom(host.page);
 });

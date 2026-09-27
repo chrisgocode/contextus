@@ -63,8 +63,9 @@ test("plays again with the same registered group", async ({
   await expect(partner.page).toHaveURL("/");
 
   await host.page
+    .getByRole("listitem")
+    .filter({ hasText: partner.name })
     .getByRole("button", { name: "Play Contextus" })
-    .first()
     .click();
   await expect(host.page).toHaveURL(/\/r\/[A-Z0-9]{6}$/);
   expect(host.page.url()).not.toBe(originalUrl);
@@ -72,8 +73,6 @@ test("plays again with the same registered group", async ({
   await partner.page.getByRole("link", { name: "Join" }).click();
   await expect(partner.page).toHaveURL(host.page.url());
   await expect(members).toHaveCount(2);
-
-  await endRoom(host.page);
 });
 
 test("stays signed in across the static How to play page", async ({
