@@ -11,9 +11,10 @@ Appearance belongs alongside personal navigation, separate from room setup and
 host actions: guests and members can both change it, and the choice affects only
 their browser. It is not shown on sign-in or on the static how-to-play and
 privacy pages: those are one-off or reading pages without an app header, and the
-saved style already applies there. The room header places it beside the room
-actions from the `sm` breakpoint up and on its own row on phones, where it would
-otherwise truncate the room code next to the host controls. Existing typography
+saved style already applies there. The room header keeps it on the same row as
+the room actions at every width; on phones the Copy button becomes an icon (a
+check once copied) so the room code still fits beside the host controls at
+360px. Existing typography
 and game-result/error colors stay intact.
 
 ## Project comparisons

@@ -2,6 +2,8 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -342,21 +344,28 @@ function RoomLoaded({
 
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-2">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">Room</p>
           <h1 className="truncate font-mono text-3xl font-bold tracking-widest">
             {room.code}
           </h1>
         </div>
-        <div className="flex flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
+        {/* Phones get an icon-only Copy so the room code and the appearance
+            picker both fit on one row beside the host controls. */}
+        <div className="flex flex-nowrap items-center justify-end gap-1 sm:gap-2">
           <Button
             variant="outline"
             onClick={onCopy}
-            className="shrink-0 px-2 sm:min-w-28 sm:px-2.5"
+            className="w-8 shrink-0 px-0 sm:w-auto sm:min-w-28 sm:px-2.5"
           >
-            <span className="sm:hidden">{copied ? "Copied" : "Copy"}</span>
-            <span className="hidden sm:inline">
+            <HugeiconsIcon
+              icon={copied ? Tick02Icon : Copy01Icon}
+              strokeWidth={2}
+              aria-hidden="true"
+              className="size-4 sm:hidden"
+            />
+            <span className="sr-only sm:not-sr-only">
               {copied ? "Copied!" : "Copy code"}
             </span>
           </Button>
@@ -377,9 +386,6 @@ function RoomLoaded({
               <span className="hidden sm:inline">End room</span>
             </Button>
           )}
-        </div>
-        {/* Phones give it its own row so the room code isn't truncated. */}
-        <div className="col-span-2 flex justify-end sm:col-span-1">
           <AppearancePicker />
         </div>
       </header>
