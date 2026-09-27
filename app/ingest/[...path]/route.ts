@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-// First-party proxy for PostHog, like Sentry's /monitoring tunnel, so ad
+// First-party proxy for PostHog, like the Sentry /monitoring tunnel, so ad
 // blockers don't drop events. A plain rewrite would forward every request
 // header, including the Convex Auth session cookies, so only the headers
 // PostHog needs are passed on.

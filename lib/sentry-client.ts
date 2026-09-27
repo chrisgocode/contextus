@@ -1,5 +1,5 @@
 import type * as SentrySdk from "@sentry/nextjs";
-import { sentryEnabled, sentryEnvironment } from "./sentry";
+import { sentryDsn, sentryEnabled, sentryEnvironment } from "./sentry";
 
 type Sentry = typeof SentrySdk;
 
@@ -24,7 +24,10 @@ export function loadSentry(): Promise<Sentry> {
 function importAndInit(): Promise<Sentry> {
   return import("@sentry/nextjs").then((Sentry) => {
     Sentry.init({
-      dsn: "https://85ede5126abf32a201118c5f021bb7e9@o4511398152437760.ingest.us.sentry.io/4511405904297984",
+      dsn: sentryDsn,
+      // Send events through our own origin so ad blockers don't drop them
+      // (see app/monitoring/route.ts).
+      tunnel: "/monitoring",
       enabled: sentryEnabled,
       environment: sentryEnvironment,
 
