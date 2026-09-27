@@ -21,5 +21,5 @@ Sentry.init({
   // `sendDefaultPii: true`, except cookies: those are the Convex Auth session
   // tokens, and Sentry doesn't need them.
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/
-  dataCollection: { cookies: false },
+  dataCollection: { userInfo: true, cookies: false },
 });
