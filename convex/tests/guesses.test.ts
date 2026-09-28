@@ -297,6 +297,31 @@ test("findByLemma returns a guess beyond the 500 closest", async () => {
   ).toBeNull();
 });
 
+test("listForGame returns the newest guess as latest beyond the 500 closest", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let distance = 0; distance <= 500; distance++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: distance === 500 ? other : host,
+        lemma: distance === 500 ? "newest" : `word${distance}`,
+        distance,
+        source: "guess",
+        createdAt: distance,
+      });
+    }
+  });
+
+  const { sorted, latest } = await asUser(t, host).query(
+    api.guesses.listForGame,
+    { gameId },
+  );
+  expect(sorted.some((g) => g.lemma === "newest")).toBe(false);
+  expect(latest).toMatchObject({ lemma: "newest", distance: 500 });
+  expect(latest?.player.name).toBe("Other");
+});
+
 test("listForGame returns sorted asc + latest", async () => {
   const t = setupTest();
   fakeWordOracle({

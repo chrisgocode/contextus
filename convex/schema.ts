@@ -149,6 +149,10 @@ export default defineSchema({
       v.literal("given_up"),
     ),
     winnerUserId: v.optional(v.id("users")),
+    // Real guesses across all players. Kept on the Game so it survives a
+    // Guest's per-game stats being deleted on expiry. Absent on Games
+    // started before the counter existed.
+    realGuessCount: v.optional(v.number()),
     answerLemma: v.optional(v.string()),
     startedAt: v.number(),
     endedAt: v.optional(v.number()),
