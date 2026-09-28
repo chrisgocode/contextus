@@ -5,6 +5,8 @@ const BASE = "https://api.contexto.me/machado/en";
 export const UNAVAILABLE_MESSAGE = "Contexto is unavailable, please try again";
 export const UNEXPECTED_PAYLOAD_MESSAGE =
   "Contexto returned an unexpected response";
+// A hung Contexto would otherwise hold the Game turn until the action times out.
+const TIMEOUT_MS = 8_000;
 
 // Contexto's JSON is untrusted, so every field is checked before use.
 type ContextoBody = {
@@ -13,19 +15,23 @@ type ContextoBody = {
   error?: unknown;
 } | null;
 
-// Fetches and parses a Contexto endpoint. Transport failures, 5xx responses
-// and non-JSON bodies throw a user-facing ConvexError. 4xx responses are
-// returned so callers can surface Contexto's `{ error }` body.
+// Fetches and parses a Contexto endpoint. Transport failures, timeouts, 5xx
+// responses and non-JSON bodies throw a user-facing ConvexError. 4xx
+// responses are returned so callers can surface Contexto's `{ error }` body.
 async function request(
   url: string,
 ): Promise<{ ok: boolean; body: ContextoBody }> {
   let res: Response;
   let body: ContextoBody;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal: controller.signal });
     body = (await res.json()) as ContextoBody;
   } catch {
     throw new ConvexError(UNAVAILABLE_MESSAGE);
+  } finally {
+    clearTimeout(timer);
   }
   if (res.status >= 500) throw new ConvexError(UNAVAILABLE_MESSAGE);
   return { ok: res.ok, body };

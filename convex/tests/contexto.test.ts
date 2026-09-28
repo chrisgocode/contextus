@@ -122,6 +122,64 @@ describe.each(endpoints)("$name", ({ malformed, call }) => {
   );
 });
 
+// Contexto accepts the connection but stalls; only the abort signal ends the
+// request.
+const abortPromise = (signal: AbortSignal | null | undefined) =>
+  new Promise<never>((_resolve, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason));
+  });
+
+const hangs = {
+  "never sends a response": (init?: RequestInit) => abortPromise(init?.signal),
+  "never finishes the response body": async (init?: RequestInit) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          abortPromise(init?.signal).catch((e: unknown) => controller.error(e));
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ),
+};
+
+test.each(
+  endpoints.flatMap(({ name, call }) =>
+    Object.entries(hangs).map(([hang, respond]) => ({
+      name,
+      hang,
+      respond,
+      call,
+    })),
+  ),
+)("$name throws ConvexError when Contexto $hang", async ({ respond, call }) => {
+  const t = setupTest();
+  const game = await startedGame(t);
+  // The timeout starts just before fetch, which can be several real ticks
+  // away on a cold module load, so only advance the clock once it is armed.
+  let fetched!: () => void;
+  const fetchCalled = new Promise<void>((resolve) => (fetched = resolve));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url: string, init?: RequestInit) => {
+      fetched();
+      return respond(init);
+    }),
+  );
+  vi.useFakeTimers();
+  try {
+    const result = call(t, game).catch((e: unknown) => e);
+    await fetchCalled;
+    await vi.advanceTimersByTimeAsync(10_000);
+    const error = await result;
+    expect(error).toBeInstanceOf(ConvexError);
+    expect((error as ConvexError<string>).data).toBe(
+      "Contexto is unavailable, please try again",
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("give-up with a malformed answer payload leaves the Game in_progress", async () => {
   const t = setupTest();
   const game = await startedGame(t);
@@ -196,7 +254,7 @@ test.each<{
     vi.stubGlobal("fetch", fetch);
 
     await expect(call(t, game)).resolves.toMatchObject(expected);
-    expect(fetch).toHaveBeenCalledExactlyOnceWith(url);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(url, expect.anything());
   },
 );
 
@@ -219,5 +277,6 @@ test("a guess is sent as one encoded path segment", async () => {
 
   expect(fetch).toHaveBeenCalledExactlyOnceWith(
     "https://api.contexto.me/machado/en/game/1336/..%2Fgiveup%2F1336",
+    expect.anything(),
   );
 });
