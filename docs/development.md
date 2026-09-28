@@ -100,7 +100,7 @@ Repository secrets: `CONVEX_DEPLOY_KEY` (production deploy key), `VERCEL_TOKEN`,
 
 **Convex:** set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and the Convex Auth keys on the production deployment in the Convex dashboard.
 
-**Frontend:** Vercel. `vercel.json` turns off Git deployments for `main`, so production deploys only come from the Deploy workflow. PR preview deployments still build. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
+**Frontend:** Vercel. `vercel.json` turns off Git deployments for every branch, so the Deploy workflow is the only way anything reaches Vercel. There are no PR preview deployments: a preview skipped by Vercel's Ignored Build Step still counts toward the Hobby plan's 100 deployments a day. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.
 
