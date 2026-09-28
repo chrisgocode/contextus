@@ -26,7 +26,9 @@ import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
-  const [openingRoom, setOpeningRoom] = useState(false);
+  const [openingRoom, setOpeningRoom] = useState<false | "waiting" | "unknown">(
+    false,
+  );
   const currentUser = useQuery(
     api.users.getUser,
     isAuthenticated ? {} : "skip",
@@ -68,7 +70,7 @@ export default function Home() {
         aria-label="Opening room"
         className="fixed inset-0 z-50 overflow-auto bg-background"
       >
-        <RoomSkeleton />
+        <RoomSkeleton waiting={openingRoom === "waiting"} />
       </div>,
       document.body,
     );
@@ -79,7 +81,7 @@ export default function Home() {
   return (
     <>
       {loadingOverlay}
-      <div inert={openingRoom} className="contents">
+      <div inert={Boolean(openingRoom)} className="contents">
         {header}
         <HomeIntro />
         <CreateRoom onOpeningChange={setOpeningRoom} />
@@ -154,7 +156,7 @@ function HomeIntro() {
 function CreateRoom({
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: boolean) => void;
+  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
 }) {
   const router = useRouter();
   const { signIn } = useAuthActions();
@@ -173,7 +175,7 @@ function CreateRoom({
         onClick={async () => {
           setError(null);
           setBusy(true);
-          onOpeningChange(true);
+          onOpeningChange("waiting");
           // The new room opens on the game setup calendar.
           preloadCalendar();
           try {
@@ -224,7 +226,7 @@ function CreateRoom({
 function JoinRoom({
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: boolean) => void;
+  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
 }) {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -236,7 +238,7 @@ function JoinRoom({
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          onOpeningChange(true);
+          onOpeningChange("unknown");
           router.push(roomPath(code));
         }}
       >

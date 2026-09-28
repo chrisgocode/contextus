@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function RoomSkeleton() {
+export function RoomSkeleton({ waiting = false }: { waiting?: boolean }) {
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
@@ -20,39 +20,45 @@ export function RoomSkeleton() {
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <div className="min-w-0">
           <section className="rounded-lg border p-6 flex flex-col items-center gap-4">
-            <Skeleton className="h-7 w-56 max-w-full" />
-            <div className="flex w-62 flex-col gap-2 p-3">
-              <div className="flex h-8 items-center justify-between">
-                <Skeleton className="size-8" />
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="size-8" />
-              </div>
-              <div className="grid grid-cols-7">
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex size-8 items-center justify-center"
-                  >
-                    <Skeleton className="h-3 w-4" />
+            {waiting ? (
+              <>
+                <Skeleton className="h-7 w-56 max-w-full" />
+                <div className="flex w-62 flex-col gap-2 p-3">
+                  <div className="flex h-8 items-center justify-between">
+                    <Skeleton className="size-8" />
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="size-8" />
                   </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-y-1">
-                {Array.from({ length: 35 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex size-8 items-center justify-center"
-                  >
-                    <Skeleton className="size-6 rounded-full" />
+                  <div className="grid grid-cols-7">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex size-8 items-center justify-center"
+                      >
+                        <Skeleton className="h-3 w-4" />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex w-full flex-col gap-2">
-              <Skeleton className="h-5 w-60 max-w-full" />
-              <Skeleton className="h-5 w-28 sm:hidden" />
-            </div>
-            <Skeleton className="h-8 w-24 rounded-none" />
+                  <div className="grid grid-cols-7 gap-y-1">
+                    {Array.from({ length: 35 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex size-8 items-center justify-center"
+                      >
+                        <Skeleton className="size-6 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex w-full flex-col gap-2">
+                  <Skeleton className="h-5 w-60 max-w-full" />
+                  <Skeleton className="h-5 w-28 sm:hidden" />
+                </div>
+                <Skeleton className="h-8 w-24 rounded-none" />
+              </>
+            ) : (
+              <Skeleton className="h-80 w-full rounded-none" />
+            )}
           </section>
         </div>
         <aside className="flex flex-col gap-4">
