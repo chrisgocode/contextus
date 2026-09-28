@@ -111,6 +111,7 @@ it.each(["", "__Host-"])(
   async (prefix) => {
     const response = NextResponse.json({ tokens: { token: "new" } });
     response.cookies.set(`${prefix}__convexAuthJWT`, "new");
+    response.cookies.set(`${prefix}__convexAuthRefreshToken`, "refresh");
     response.cookies.set(`${prefix}__convexAuthOAuthVerifier`, "", {
       expires: new Date(0),
     });
@@ -129,6 +130,7 @@ it.each(["", "__Host-"])(
 
     expect(result?.headers.getSetCookie()).toEqual([
       expect.stringContaining(`${prefix}__convexAuthJWT=new`),
+      expect.stringContaining(`${prefix}__convexAuthRefreshToken=refresh`),
     ]);
     expect(result?.headers.has("x-middleware-set-cookie")).toBe(false);
   },
