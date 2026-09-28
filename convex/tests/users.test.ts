@@ -363,6 +363,38 @@ test("updateProfile deletes the replaced avatar file", async () => {
   expect(stored?.avatarStorageId).toBe(second);
 });
 
+test("updateProfile keeps a replaced avatar another user still uses", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "sharedavatar",
+    displayUsername: "SharedAvatar",
+  });
+  const other = await seedUser(t);
+  // Before ownership checks, two users could point at the same file.
+  const shared = await storeUpload(
+    t,
+    new Blob(["shared"], { type: "image/png" }),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch("users", user, { avatarStorageId: shared });
+    await ctx.db.patch("users", other, { avatarStorageId: shared });
+  });
+  const replacement = await storeUpload(
+    t,
+    new Blob(["replacement"], { type: "image/png" }),
+  );
+
+  await asUser(t, user).mutation(api.users.updateProfile, {
+    name: "Shared Avatar",
+    username: "SharedAvatar",
+    avatarStorageId: replacement,
+  });
+
+  await expect(
+    t.run(async (ctx) => ctx.db.system.get("_storage", shared)),
+  ).resolves.not.toBeNull();
+});
+
 test("registered users never receive guest account prompts", async () => {
   const t = setupTest();
   const user = await seedUser(t, {

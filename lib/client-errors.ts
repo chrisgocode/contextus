@@ -50,7 +50,9 @@ export function expectedClientErrorMessage(
     if (
       /^Username must be \d+-\d+ characters\.$/.test(data) ||
       data === "Username can only contain letters and numbers." ||
-      data === "Username is already taken."
+      data === "Username is already taken." ||
+      data === "Profile image must be 1 MB or smaller." ||
+      data === "Profile image must be a PNG, JPEG, WebP or GIF."
     )
       return data;
   }

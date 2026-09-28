@@ -153,12 +153,19 @@ export function ProfileClient({ username }: { username: string }) {
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null;
     if (file === null) return;
-    if (!AVATAR_ACCEPT.split(",").includes(file.type)) {
-      setError("Please choose a PNG, JPEG, WebP or GIF image.");
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setError("Profile image must be 1 MB or smaller.");
+    const invalidReason = !AVATAR_ACCEPT.split(",").includes(file.type)
+      ? "Please choose a PNG, JPEG, WebP or GIF image."
+      : file.size > MAX_AVATAR_BYTES
+        ? "Profile image must be 1 MB or smaller."
+        : null;
+    if (invalidReason !== null) {
+      // Drop any earlier pick so Save can't upload a file the user replaced.
+      setSelectedAvatarFile(null);
+      setSelectedAvatarPreview((previous) => {
+        if (previous !== null) URL.revokeObjectURL(previous);
+        return null;
+      });
+      setError(invalidReason);
       return;
     }
     setSelectedAvatarFile(file);

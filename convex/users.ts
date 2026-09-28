@@ -206,7 +206,16 @@ export const updateProfile = mutation({
         );
       }
       if (previousAvatarId !== undefined) {
-        await ctx.storage.delete(previousAvatarId);
+        // Users could share a file before the check above existed.
+        const previousUsers = await ctx.db
+          .query("users")
+          .withIndex("by_avatarStorageId", (q) =>
+            q.eq("avatarStorageId", previousAvatarId),
+          )
+          .take(2);
+        if (previousUsers.every(({ _id }) => _id === currentUserId)) {
+          await ctx.storage.delete(previousAvatarId);
+        }
       }
     }
 
