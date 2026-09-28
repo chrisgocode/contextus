@@ -15,9 +15,15 @@
 - [ ] `bun run test:e2e` for user-facing flows, or not applicable
 - [ ] `bun run build`
 
-## UI evidence
+## Evidence
 
-<!-- Add before/after screenshots or a recording for visible UI changes. Remove this section if not applicable. -->
+### UI evidence
+
+<!-- Required for visible UI changes. Add before/after screenshots or a recording. Remove this subsection if not applicable. -->
+
+### API evidence
+
+<!-- Required for Convex query/mutation/action/HTTP endpoint changes. Show before/after request and response payloads. Remove this subsection if not applicable. -->
 
 ## Deployment considerations
 
