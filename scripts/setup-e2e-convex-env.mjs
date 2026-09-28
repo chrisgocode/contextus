@@ -3,7 +3,8 @@
  * for Playwright: enables E2E_TEST, gives Convex Auth a fresh signing key, and
  * points Google sign-in at the mock issuer when E2E_GOOGLE_ISSUER is set.
  *
- * Never run this against production: E2E_TEST enables password sign-in.
+ * Refuses to run unless the deployment is local: E2E_TEST enables password
+ * sign-in and fake puzzle answers, and the new signing key signs everyone out.
  */
 
 import { generateKeyPairSync } from "crypto";
@@ -12,11 +13,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { config } from "dotenv";
+import { localConvexEnv } from "./local-convex-env.mjs";
 
 // Same source as playwright.config.ts, so local runs pick up E2E_BASE_URL and
 // E2E_GOOGLE_ISSUER. Variables already set, as in CI, win.
 config({ path: ".env.local", quiet: true });
 
+const childEnv = localConvexEnv();
 const siteUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const googleIssuer = process.env.E2E_GOOGLE_ISSUER;
 
@@ -54,7 +57,7 @@ fs.writeFileSync(
 const result = spawnSync(
   "npx",
   ["convex", "env", "set", "--force", "--from-file", envFile],
-  { stdio: "inherit" },
+  { stdio: "inherit", env: childEnv },
 );
 fs.rmSync(path.dirname(envFile), { recursive: true });
 process.exit(result.status ?? 1);

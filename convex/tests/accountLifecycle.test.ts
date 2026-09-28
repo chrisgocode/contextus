@@ -1,6 +1,6 @@
 import type { GenericValidator } from "convex/values";
 import { afterEach, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { USER_KEYED_TABLES } from "../lib/accountLifecycle";
@@ -293,7 +293,7 @@ test("E2E purge leaves no row referencing the account", async () => {
   const userId = await seedUser(t, { email });
   await seedEveryTable(t, userId, fixture);
 
-  await t.mutation(api.e2eCleanup.purgeAccount, { email });
+  await t.mutation(internal.e2eCleanup.purgeAccount, { email });
 
   expect(await referenceCounts(t, userId)).toEqual(countsWhere(() => true, 0));
   expect(await t.run((ctx) => ctx.db.get("users", userId))).toBeNull();

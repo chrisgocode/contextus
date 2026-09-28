@@ -427,7 +427,9 @@ test("E2E purge rejects other emails and clears rate limits and hosted Games", a
   const userId = await seedUser(t, { email });
   const otherUserId = await seedUser(t, { email: "person@example.com" });
   await expect(
-    t.mutation(api.e2eCleanup.purgeAccount, { email: "person@example.com" }),
+    t.mutation(internal.e2eCleanup.purgeAccount, {
+      email: "person@example.com",
+    }),
   ).rejects.toThrow("E2E cleanup is unavailable");
   const { roomId } = await asUser(t, userId).mutation(api.rooms.create, {});
   const { gameId } = await asUser(t, userId).mutation(api.games.start, {
@@ -450,7 +452,7 @@ test("E2E purge rejects other emails and clears rate limits and hosted Games", a
     });
   });
 
-  await t.mutation(api.e2eCleanup.purgeAccount, { email });
+  await t.mutation(internal.e2eCleanup.purgeAccount, { email });
 
   const remaining = await t.run(async (ctx) => ({
     user: await ctx.db.get("users", userId),
@@ -477,7 +479,7 @@ test("E2E purge refuses an e2e email when E2E_TEST is off", async () => {
   const userId = await seedUser(t, { email });
 
   await expect(
-    t.mutation(api.e2eCleanup.purgeAccount, { email }),
+    t.mutation(internal.e2eCleanup.purgeAccount, { email }),
   ).rejects.toThrow("E2E cleanup is unavailable");
   expect(await t.run((ctx) => ctx.db.get("users", userId))).not.toBeNull();
 });

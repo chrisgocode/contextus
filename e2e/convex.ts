@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { BrowserContext } from "@playwright/test";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import { withoutDeployKey } from "../scripts/local-convex-env.mjs";
 
 function convexUrl() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -31,8 +34,14 @@ export async function clientFor(context: BrowserContext) {
   return client;
 }
 
+// Internal, so it runs through the CLI's admin access. Never with a deploy key,
+// which could aim it at production.
 export async function purgeAccount(email: string) {
-  await convexClient().mutation(api.e2eCleanup.purgeAccount, { email });
+  await promisify(execFile)(
+    "npx",
+    ["convex", "run", "e2eCleanup:purgeAccount", JSON.stringify({ email })],
+    { env: withoutDeployKey() },
+  );
 }
 
 // Ends every room this context's user hosts, so a failed test can't leave
