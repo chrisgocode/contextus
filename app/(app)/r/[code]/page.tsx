@@ -77,9 +77,17 @@ export default function RoomPage({
   }, [data, router]);
 
   useEffect(() => {
+    // Auth can change outside this page; its previous join failure is no longer relevant.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setJoinError(null);
+    joiningRef.current = false;
+  }, [isAuthenticated, data?.viewerUserId]);
+
+  useEffect(() => {
     if (
       data &&
       isAuthenticated &&
+      data.viewerUserId !== null &&
       data.room.status === "active" &&
       !isMember &&
       joinError === null &&
