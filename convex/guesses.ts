@@ -22,20 +22,16 @@ export const listForGame = query({
       .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
       .order("asc")
       .take(500);
-    const latestRaw =
-      sortedRaw.length === 0
-        ? null
-        : sortedRaw.reduce((a, b) => {
-            if (a.createdAt !== b.createdAt) {
-              return a.createdAt > b.createdAt ? a : b;
-            }
-            return a._creationTime > b._creationTime ? a : b;
-          });
+    const latestRaw = await ctx.db
+      .query("gameGuesses")
+      .withIndex("by_game_created", (q) => q.eq("gameId", gameId))
+      .order("desc")
+      .first();
 
-    const players = await loadPlayers(
-      ctx,
-      sortedRaw.map((g) => g.userId),
-    );
+    const players = await loadPlayers(ctx, [
+      ...sortedRaw.map((g) => g.userId),
+      ...(latestRaw ? [latestRaw.userId] : []),
+    ]);
     const hydrate = (g: Doc<"gameGuesses">) => ({
       ...g,
       player: players.get(g.userId)!,

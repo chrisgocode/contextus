@@ -176,6 +176,37 @@ test("a winning guess credits the winner quality achievements and active guesser
   await expect(statsFor(t, other)).resolves.toMatchObject({ uniqueSolves: 1 });
 });
 
+test("team guess achievements count real guesses beyond the first 500 rows", async () => {
+  const t = setupTest();
+  fakeWordOracle({
+    guesses: {
+      1336: { one: 5, two: 4, three: 3, four: 2, five: 1, answer: 0 },
+    },
+  });
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 500; i++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: host,
+        lemma: `hint${i}`,
+        distance: 1000 + i,
+        source: "hint",
+        createdAt: i,
+      });
+    }
+  });
+
+  for (const word of ["one", "two", "three", "four", "five", "answer"]) {
+    await asUser(t, host).action(api.guesses.submit, { gameId, word });
+  }
+
+  await expect(achievementIds(t, host)).resolves.toEqual(
+    expect.arrayContaining(["sharp_mind", "mind_reader"]),
+  );
+  await expect(achievementIds(t, host)).resolves.not.toContain("psychic");
+});
+
 test("a teammate without a real guess gets no win achievements", async () => {
   const t = setupTest();
   fakeWordOracle({ guesses: { 1336: { answer: 0 } } });

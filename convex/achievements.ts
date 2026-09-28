@@ -237,12 +237,10 @@ function createConvexAchievementRepository(
 
     async countTeamRealGuesses(gameId) {
       let count = 0;
-      const guesses = await ctx.db
-        .query("gameGuesses")
-        .withIndex("by_game_created", (q) => q.eq("gameId", gameId))
-        .take(500);
-      for (const guess of guesses) {
-        if (guess.source === "guess") count += 1;
+      for await (const row of ctx.db
+        .query("gamePlayerStats")
+        .withIndex("by_game_user", (q) => q.eq("gameId", gameId))) {
+        count += row.realGuessCount;
       }
       return count;
     },
