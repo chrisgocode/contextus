@@ -39,7 +39,7 @@ flowchart LR
 | `users.ts`           | Profiles, usernames, avatar upload, activity graph, guest account prompt                         |
 | `cleanup.ts`         | Host migration, idle-room shutdown, expired-guest anonymization                                  |
 | `crons.ts`           | Schedules the cleanup jobs                                                                       |
-| `e2eCleanup.ts`      | Purges Playwright test accounts (only usable when `E2E_TEST=1`)                                  |
+| `e2eCleanup.ts`      | Purges Playwright test accounts (internal; only usable when `E2E_TEST=1`)                        |
 
 Pure logic lives in `convex/lib/` so it can be unit tested without a database. This includes the guess decision logic (`gameTransitions.ts`), achievement rules, hint targeting (`hint.ts`), room cleanup decisions (`cleanup.ts`), room codes, and usernames.
 

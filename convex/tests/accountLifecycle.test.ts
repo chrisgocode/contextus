@@ -1,12 +1,13 @@
 import type { GenericValidator } from "convex/values";
 import { afterEach, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { USER_KEYED_TABLES } from "../lib/accountLifecycle";
 import { startGuestMerge } from "../lib/guestMerge";
 import schema from "../schema";
 import {
+  E2E_DEPLOYMENT_URL,
   finishScheduledFunctions,
   seedUser,
   sessionOf,
@@ -287,13 +288,17 @@ test("guest expiry deletes private rows and keeps shared room history", async ()
 
 test("E2E purge leaves no row referencing the account", async () => {
   vi.stubEnv("E2E_TEST", "1");
+  vi.stubEnv("CONVEX_CLOUD_URL", E2E_DEPLOYMENT_URL);
   const t = setupTest();
   const fixture = await seedFixture(t);
   const email = "contextus-e2e-local-w0-u0@example.com";
   const userId = await seedUser(t, { email });
   await seedEveryTable(t, userId, fixture);
 
-  await t.mutation(api.e2eCleanup.purgeAccount, { email });
+  await t.mutation(internal.e2eCleanup.purgeAccount, {
+    email,
+    deploymentUrl: E2E_DEPLOYMENT_URL,
+  });
 
   expect(await referenceCounts(t, userId)).toEqual(countsWhere(() => true, 0));
   expect(await t.run((ctx) => ctx.db.get("users", userId))).toBeNull();

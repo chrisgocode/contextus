@@ -1,16 +1,28 @@
 import { ConvexError, v } from "convex/values";
-import { env, mutation, type MutationCtx } from "./_generated/server";
+import {
+  env,
+  internalMutation,
+  mutation,
+  type MutationCtx,
+} from "./_generated/server";
 import { requireUser } from "./access";
 import { GUEST_CLEANUP_ROW_BUDGET } from "./cleanup";
 import { deleteAccount, expireGuest } from "./lib/accountLifecycle";
 
 const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u\d+@example\.com$/;
 
-export const purgeAccount = mutation({
-  args: { email: v.string() },
+// Internal, so only an admin key (`npx convex run`) can delete accounts. The
+// CLI picks its deployment separately from the app, so the caller names the
+// backend under test and any other backend refuses.
+export const purgeAccount = internalMutation({
+  args: { email: v.string(), deploymentUrl: v.string() },
   returns: v.object({ deleted: v.boolean() }),
-  handler: async (ctx, { email }) => {
-    if (env.E2E_TEST !== "1" || !E2E_EMAIL.test(email)) {
+  handler: async (ctx, { email, deploymentUrl }) => {
+    if (
+      env.E2E_TEST !== "1" ||
+      deploymentUrl !== env.CONVEX_CLOUD_URL ||
+      !E2E_EMAIL.test(email)
+    ) {
       throw new ConvexError("E2E cleanup is unavailable");
     }
     const user = await ctx.db

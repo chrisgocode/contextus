@@ -3,6 +3,7 @@ import { api, internal } from "../_generated/api";
 import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../lib/cleanup";
 import type { Id } from "../_generated/dataModel";
 import {
+  E2E_DEPLOYMENT_URL,
   asUser,
   fakeWordOracle,
   finishScheduledFunctions,
@@ -422,12 +423,16 @@ test("expired guests share a row budget and all eventually finish", async () => 
 
 test("E2E purge rejects other emails and clears rate limits and hosted Games", async () => {
   vi.stubEnv("E2E_TEST", "1");
+  vi.stubEnv("CONVEX_CLOUD_URL", E2E_DEPLOYMENT_URL);
   const t = setupTest();
   const email = "contextus-e2e-local-w0-u0@example.com";
   const userId = await seedUser(t, { email });
   const otherUserId = await seedUser(t, { email: "person@example.com" });
   await expect(
-    t.mutation(api.e2eCleanup.purgeAccount, { email: "person@example.com" }),
+    t.mutation(internal.e2eCleanup.purgeAccount, {
+      email: "person@example.com",
+      deploymentUrl: E2E_DEPLOYMENT_URL,
+    }),
   ).rejects.toThrow("E2E cleanup is unavailable");
   const { roomId } = await asUser(t, userId).mutation(api.rooms.create, {});
   const { gameId } = await asUser(t, userId).mutation(api.games.start, {
@@ -450,7 +455,10 @@ test("E2E purge rejects other emails and clears rate limits and hosted Games", a
     });
   });
 
-  await t.mutation(api.e2eCleanup.purgeAccount, { email });
+  await t.mutation(internal.e2eCleanup.purgeAccount, {
+    email,
+    deploymentUrl: E2E_DEPLOYMENT_URL,
+  });
 
   const remaining = await t.run(async (ctx) => ({
     user: await ctx.db.get("users", userId),
@@ -477,7 +485,10 @@ test("E2E purge refuses an e2e email when E2E_TEST is off", async () => {
   const userId = await seedUser(t, { email });
 
   await expect(
-    t.mutation(api.e2eCleanup.purgeAccount, { email }),
+    t.mutation(internal.e2eCleanup.purgeAccount, {
+      email,
+      deploymentUrl: E2E_DEPLOYMENT_URL,
+    }),
   ).rejects.toThrow("E2E cleanup is unavailable");
   expect(await t.run((ctx) => ctx.db.get("users", userId))).not.toBeNull();
 });
@@ -494,6 +505,7 @@ describe("E2E guest expiry", () => {
 
   test("only expires anonymous callers", async () => {
     vi.stubEnv("E2E_TEST", "1");
+    vi.stubEnv("CONVEX_CLOUD_URL", E2E_DEPLOYMENT_URL);
     const t = setupTest();
     const user = await seedUser(t);
     await expect(
@@ -509,6 +521,7 @@ describe("E2E guest expiry", () => {
 
   test("expires the caller past one cleanup budget and leaves other guests", async () => {
     vi.stubEnv("E2E_TEST", "1");
+    vi.stubEnv("CONVEX_CLOUD_URL", E2E_DEPLOYMENT_URL);
     const t = setupTest();
     const guest = await seedUser(t, { isAnonymous: true });
     const other = await seedUser(t, { isAnonymous: true });
