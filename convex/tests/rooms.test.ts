@@ -352,8 +352,11 @@ test("listMine returns active rooms for user, newest activity first", async () =
   const t = setupTest();
   const userId = await seedUser(t);
   const u = asUser(t, userId);
+  vi.useFakeTimers();
   const r1 = await u.mutation(api.rooms.create, {});
+  vi.advanceTimersByTime(1000);
   const r2 = await u.mutation(api.rooms.create, {});
+  vi.advanceTimersByTime(1000);
   // touch r1 to be newer
   await u.mutation(api.rooms.join, { code: r1.code });
   const rooms = await u.query(api.rooms.listMine, {});
