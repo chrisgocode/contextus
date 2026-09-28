@@ -104,6 +104,39 @@ describe("cleanup.tick", () => {
     expect(room?.hostUserId).toBe(member);
     expect(room?.status).not.toBe("ended");
   });
+
+  test("ends every idle room when there are more active rooms than one read allows", async () => {
+    const t = setupTest({ transactionLimits: { documentsRead: 200 } });
+    const hostUser = await seedUser(t);
+    const idleAt = Date.now() - IDLE_TIMEOUT_MS - 1000;
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 300; i++) {
+        const roomId = await ctx.db.insert("rooms", {
+          code: `IDLE${i}`,
+          hostUserId: hostUser,
+          status: "active",
+        });
+        await ctx.db.insert("roomMembers", {
+          roomId,
+          userId: hostUser,
+          joinedAt: i,
+          active: true,
+        });
+        await ctx.db.insert("roomActivity", { roomId, lastActivityAt: idleAt });
+      }
+    });
+
+    await t.action(internal.cleanup.tick, {});
+    await finishScheduledFunctions(t);
+
+    const active = await t.run(async (ctx) =>
+      ctx.db
+        .query("rooms")
+        .withIndex("by_status", (q) => q.eq("status", "active"))
+        .take(1),
+    );
+    expect(active).toEqual([]);
+  });
 });
 
 async function backdateRoomActivity(

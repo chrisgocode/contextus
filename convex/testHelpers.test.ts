@@ -6,9 +6,11 @@ import type { Id } from "./_generated/dataModel";
 import { contextoOracle } from "./contexto";
 import schema from "./schema";
 
-export function setupTest() {
+export function setupTest(
+  options: Pick<Parameters<typeof convexTest>[0], "transactionLimits"> = {},
+) {
   const modules = import.meta.glob("./**/!(*.test).*s");
-  const t = convexTest(schema, modules);
+  const t = convexTest({ schema, modules, ...options });
   registerPresence(t);
   return t;
 }
