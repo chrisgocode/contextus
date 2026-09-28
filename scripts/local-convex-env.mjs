@@ -5,13 +5,21 @@ const LOCAL_DEPLOYMENT = /^(local:local-|anonymous:anonymous-)[^:]+$/;
 // the CLI loads `.env.local` and `.env` itself, so deleting the key from the
 // child's environment isn't enough: it's set to "", which the CLI treats as
 // unset and dotenv never overrides.
-export function withoutDeployKey(env = process.env) {
+/**
+ * @template {Record<string, string | undefined>} Env
+ * @param {Env} env
+ */
+export function withoutDeployKey(env) {
   return { ...env, CONVEX_DEPLOY_KEY: "", CONVEX_DEPLOYMENT_TOKEN: "" };
 }
 
 // Like `withoutDeployKey`, but throws unless the deployment is a local or
 // anonymous backend, or self-hosted on 127.0.0.1, and pins the CLI to it.
-export function localConvexEnv(env = process.env) {
+/**
+ * @template {Record<string, string | undefined>} Env
+ * @param {Env} env
+ */
+export function localConvexEnv(env) {
   const deployment = env.CONVEX_DEPLOYMENT ?? "";
   const selfHostedUrl = env.CONVEX_SELF_HOSTED_URL ?? "";
 

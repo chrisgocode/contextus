@@ -6,6 +6,9 @@ import type { Id } from "./_generated/dataModel";
 import { contextoOracle } from "./contexto";
 import schema from "./schema";
 
+// The backend `e2eCleanup.purgeAccount` tests pretend to run on.
+export const E2E_DEPLOYMENT_URL = "http://127.0.0.1:3210";
+
 export function setupTest(
   options: Pick<Parameters<typeof convexTest>[0], "transactionLimits"> = {},
 ) {

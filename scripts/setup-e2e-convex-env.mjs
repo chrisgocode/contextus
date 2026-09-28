@@ -19,7 +19,7 @@ import { localConvexEnv } from "./local-convex-env.mjs";
 // E2E_GOOGLE_ISSUER. Variables already set, as in CI, win.
 config({ path: ".env.local", quiet: true });
 
-const childEnv = localConvexEnv();
+const childEnv = localConvexEnv(process.env);
 const siteUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const googleIssuer = process.env.E2E_GOOGLE_ISSUER;
 

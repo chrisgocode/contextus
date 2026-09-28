@@ -35,12 +35,14 @@ export async function clientFor(context: BrowserContext) {
 }
 
 // Internal, so it runs through the CLI's admin access. Never with a deploy key,
-// which could aim it at production.
+// which could aim it at production. The CLI picks its own deployment, so the
+// mutation refuses unless it's the one the app under test uses.
 export async function purgeAccount(email: string) {
+  const args = JSON.stringify({ email, deploymentUrl: convexUrl() });
   await promisify(execFile)(
     "npx",
-    ["convex", "run", "e2eCleanup:purgeAccount", JSON.stringify({ email })],
-    { env: withoutDeployKey() },
+    ["convex", "run", "e2eCleanup:purgeAccount", args],
+    { env: withoutDeployKey(process.env) },
   );
 }
 

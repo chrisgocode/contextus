@@ -11,12 +11,18 @@ import { deleteAccount, expireGuest } from "./lib/accountLifecycle";
 
 const E2E_EMAIL = /^contextus-e2e-[a-z0-9-]{1,32}-w\d+-u\d+@example\.com$/;
 
-// Internal, so only an admin key (`npx convex run`) can delete accounts.
+// Internal, so only an admin key (`npx convex run`) can delete accounts. The
+// CLI picks its deployment separately from the app, so the caller names the
+// backend under test and any other backend refuses.
 export const purgeAccount = internalMutation({
-  args: { email: v.string() },
+  args: { email: v.string(), deploymentUrl: v.string() },
   returns: v.object({ deleted: v.boolean() }),
-  handler: async (ctx, { email }) => {
-    if (env.E2E_TEST !== "1" || !E2E_EMAIL.test(email)) {
+  handler: async (ctx, { email, deploymentUrl }) => {
+    if (
+      env.E2E_TEST !== "1" ||
+      deploymentUrl !== env.CONVEX_CLOUD_URL ||
+      !E2E_EMAIL.test(email)
+    ) {
       throw new ConvexError("E2E cleanup is unavailable");
     }
     const user = await ctx.db
