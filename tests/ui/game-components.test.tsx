@@ -287,7 +287,7 @@ describe("GuessList", () => {
     found = null,
   }: {
     sorted: ReturnType<typeof guess>[];
-    found?: ReturnType<typeof guess> | null;
+    found?: ReturnType<typeof guess> | null | "loading";
   }) {
     convex.useQuery.mockImplementation((reference, args) => {
       if (args === "skip") return undefined;
@@ -297,7 +297,9 @@ describe("GuessList", () => {
           ? { sorted, latest: null }
           : undefined;
       }
-      if (name === "guesses:findByLemma") return found;
+      if (name === "guesses:findByLemma") {
+        return found === "loading" ? undefined : found;
+      }
       throw new Error(`Unexpected query: ${name}`);
     });
   }
@@ -329,6 +331,16 @@ describe("GuessList", () => {
           args !== "skip",
       ),
     ).toBe(false);
+  });
+
+  it("confirms a duplicate outside the displayed list while it loads", () => {
+    mockGuessQueries({ sorted: [guess("close", "near", 1)], found: "loading" });
+
+    render(<GuessList gameId={"game" as never} duplicate="distant" />);
+    expect(screen.getByText("All guesses (closest first)")).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "Already guessed" }),
+    ).toHaveTextContent(/distant\s*\(already guessed\)/);
   });
 
   it("shows a repeated guess outside the displayed list", () => {

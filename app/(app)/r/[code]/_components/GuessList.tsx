@@ -33,6 +33,9 @@ export function GuessList({
   if (data === undefined) return <GuessListSkeleton />;
   const { sorted, latest } = data;
   const repeated = inList ?? outsideList ?? null;
+  // Confirm the duplicate while findByLemma loads; the lemma is all we know.
+  const repeatedLoading =
+    duplicate !== null && inList === undefined && outsideList === undefined;
   if (sorted.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">No guesses yet. Type one!</p>
@@ -40,9 +43,18 @@ export function GuessList({
   }
   return (
     <div className="flex flex-col gap-3">
-      {repeated && (
+      {(repeated || repeatedLoading) && (
         <div role="status" aria-label="Already guessed">
-          <Row g={repeated} duplicate />
+          {repeated ? (
+            <Row g={repeated} duplicate />
+          ) : (
+            <div className="rounded-md bg-neutral-900/60 px-3 py-2.5 font-semibold text-white">
+              {duplicate}
+              <span className="ml-2 text-sm font-normal">
+                (already guessed)
+              </span>
+            </div>
+          )}
         </div>
       )}
       {repeated && !sorted.some((g) => g._id === repeated._id) && (
