@@ -38,7 +38,9 @@ bun run dev
 | `AUTH_GOOGLE_SECRET`                | Convex dashboard env vars                    | Google sign-in     | OAuth client secret                                                                           |
 | `E2E_TEST`                          | Convex env (`npx convex env set E2E_TEST 1`) | E2E tests          | Enables password auth, short guest lifetimes, and a fake word oracle. Never set in production |
 | `E2E_PASSWORD`                      | `.env.local`                                 | E2E tests          | Password for the generated test accounts                                                      |
-| `CONVEX_DEPLOY_KEY`                 | Vercel / GitHub secrets                      | Production deploys | See [development guide](docs/development.md#deployment)                                       |
+| `CONVEX_DEPLOY_KEY`                 | GitHub secrets                               | Production deploys | See [development guide](docs/development.md#deployment)                                       |
+| `VERCEL_TOKEN`                      | GitHub secrets                               | Production deploys | Plus `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` as GitHub variables                              |
+| `RELEASE_PLEASE_TOKEN`              | GitHub secrets                               | Release PRs        | Fine-grained PAT: contents and pull requests read/write                                       |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Vercel env vars                              | Browser analytics  | PostHog project token. Analytics loads only on production and preview deployments             |
 | `POSTHOG_PROJECT_TOKEN`             | Convex env                                   | All deployments    | Use `disabled` in dev and e2e; set the PostHog project token in production and preview        |
 | `POSTHOG_ENVIRONMENT`               | Convex env                                   | Analytics          | `production` or `preview`; leave unset in dev and e2e                                         |

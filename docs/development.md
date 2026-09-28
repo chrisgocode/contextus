@@ -92,9 +92,15 @@ Linting uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (`.oxlintrc.json`)
 
 ## Deployment
 
-**Convex:** `.github/workflows/deploy-convex.yml` runs `convex deploy` on every push to `main`. It needs a production deploy key stored as the `CONVEX_DEPLOY_KEY` repository secret. Set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and the Convex Auth keys on the production deployment in the Convex dashboard.
+Merging to `main` does not deploy. [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) keeps a `chore(main): release X.Y.Z` PR open that collects every merged commit into `CHANGELOG.md` and bumps the version in `package.json`. To ship, merge the release PR: it tags `vX.Y.Z`, publishes a GitHub Release, and runs `.github/workflows/deploy.yml` on the tag. The deploy job uses the `Production` environment, so it waits until a required reviewer approves it in the Actions tab. Deploy runs `convex deploy`, then `vercel deploy --prod`, so the new frontend never goes live against old functions. To redeploy or roll back, run the Deploy workflow from `main` with an earlier tag. It only accepts `vX.Y.Z` tags on `main`. See [ADR 0003](adr/0003-batched-releases.md).
 
-**Frontend:** Vercel. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables, then push. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
+Commit types decide the version bump: `fix` bumps the patch and `feat` the minor, and before 1.0 a breaking change bumps the minor too. Only `feat`, `fix`, `perf`, and `revert` commits appear in the changelog.
+
+Repository secrets: `CONVEX_DEPLOY_KEY` (production deploy key), `VERCEL_TOKEN`, and `RELEASE_PLEASE_TOKEN`, a fine-grained PAT with read and write access to contents and pull requests on this repo. release-please needs a PAT because a PR opened with `GITHUB_TOKEN` doesn't trigger CI, and the release PR needs its required checks. Repository variables: `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`, from `.vercel/project.json` after `vercel link`.
+
+**Convex:** set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and the Convex Auth keys on the production deployment in the Convex dashboard.
+
+**Frontend:** Vercel. `vercel.json` turns off Git deployments for `main`, so production deploys only come from the Deploy workflow. PR preview deployments still build. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.
 
