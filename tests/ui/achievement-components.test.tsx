@@ -116,6 +116,36 @@ describe("AchievementUnlockQueue", () => {
     vi.runAllTimers();
     expect(onItemDone).toHaveBeenCalledOnce();
   });
+
+  it("keeps the same live region mounted while the queue fills", () => {
+    const bronze = achievementGroups[0];
+    const { container, rerender } = render(
+      <AchievementUnlockQueue items={[]} onItemDone={vi.fn()} />,
+    );
+    const liveRegion = container.querySelector("[aria-live]");
+    expect(liveRegion).not.toBeNull();
+
+    rerender(
+      <AchievementUnlockQueue
+        items={[
+          {
+            achievementName: "Bullseye",
+            category: "bronze",
+            categoryLabel: bronze.label,
+            key: "bullseye",
+            trophy: bronze.image,
+            trophyAlt: "Bronze trophy",
+          },
+        ]}
+        onItemDone={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[aria-live]")).toBe(liveRegion);
+    expect(liveRegion).toHaveTextContent(
+      "Bronze achievement unlocked: Bullseye",
+    );
+  });
 });
 
 it("summarizes profile activity for the current year", () => {
