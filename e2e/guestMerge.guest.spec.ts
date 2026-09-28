@@ -17,6 +17,16 @@ async function playAsGuest(page: Page) {
   return roomUrl;
 }
 
+// Another tab left open as the Guest. Once the merge deletes the Guest it
+// must pick up the new account, not sign out the session the shared cookie
+// now holds (#139).
+async function openGuestTab(context: BrowserContext) {
+  const tab = await context.newPage();
+  await tab.goto("/");
+  await expect(tab.getByText("Your active rooms")).toBeVisible();
+  return tab;
+}
+
 async function expectGuestDataKept(
   context: BrowserContext,
   page: Page,
@@ -44,40 +54,71 @@ async function expectGuestDataKept(
   await endRoom(page);
 }
 
-test("a Guest who signs in with Google keeps their room and activity", async ({
-  context,
-  page,
-}) => {
-  const issuer = process.env.E2E_GOOGLE_ISSUER;
-  test.skip(issuer === undefined, "Needs E2E_GOOGLE_ISSUER");
-  // A fresh account, as `registerContext` gives the password test. Global
-  // teardown purges it.
-  const email = e2eAccountEmail(test.info().parallelIndex, 0);
-  await purgeAccount(email);
-  const roomUrl = await test.step("play as a Guest", () => playAsGuest(page));
-  const guestToken = await authToken(context);
+async function expectSignedIn(
+  context: BrowserContext,
+  tabs: Page[],
+  email: string,
+) {
+  for (const tab of tabs) {
+    await expect(tab.getByRole("button", { name: "Profile" })).toBeVisible();
+  }
+  const account = await clientFor(context);
+  expect((await account?.query(api.users.getUser, {}))?.email).toBe(email);
+}
 
-  await test.step("sign in with Google", async () => {
-    // The page refreshes its token on load, and that response clears the
-    // OAuth verifier cookie. Signing in before it lands fails (#144).
-    const refreshed = page.waitForResponse(
-      (res) =>
-        res.url().endsWith("/api/auth") &&
-        (res.request().postData()?.includes('"refreshToken"') ?? false),
-    );
-    await page.goto("/signin");
-    await refreshed;
-    await page.getByRole("button", { name: "Continue with Google" }).click();
-    // The mock signs in whichever account is typed, as `${account}@example.com`.
-    await page.getByLabel("Account").fill(email.split("@")[0]);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("/");
-    expect(await authToken(context)).not.toBe(guestToken);
+for (const { authorize, returning } of [
+  { authorize: "after a login page", returning: false },
+  // The page that started sign-in stays loaded through the redirects.
+  { authorize: "straight back", returning: true },
+]) {
+  test(`a Guest who signs in with Google keeps their room and activity (redirect ${authorize})`, async ({
+    context,
+    page,
+  }) => {
+    const issuer = process.env.E2E_GOOGLE_ISSUER;
+    test.skip(issuer === undefined, "Needs E2E_GOOGLE_ISSUER");
+    // A fresh account, as `registerContext` gives the password test. Global
+    // teardown purges it.
+    const email = e2eAccountEmail(test.info().parallelIndex, 0);
+    const name = email.split("@")[0];
+    await purgeAccount(email);
+    const roomUrl = await test.step("play as a Guest", () => playAsGuest(page));
+    const guestToken = await authToken(context);
+    const otherTab = await openGuestTab(context);
+
+    await test.step("sign in with Google", async () => {
+      // The mock signs in whichever account is typed or set in its `account`
+      // cookie, as `${account}@example.com`.
+      if (returning) {
+        await context.addCookies([
+          { name: "account", value: name, url: issuer },
+        ]);
+      }
+      // The page refreshes its token on load, and that response clears the
+      // OAuth verifier cookie. Signing in before it lands fails (#144).
+      const refreshed = page.waitForResponse(
+        (res) =>
+          res.url().endsWith("/api/auth") &&
+          (res.request().postData()?.includes('"refreshToken"') ?? false),
+      );
+      await page.goto("/signin");
+      await refreshed;
+      await page.getByRole("button", { name: "Continue with Google" }).click();
+      if (!returning) {
+        await page.getByLabel("Account").fill(name);
+        await page.getByRole("button", { name: "Sign in" }).click();
+      }
+      await page.waitForURL("/");
+      expect(await authToken(context)).not.toBe(guestToken);
+    });
+
+    await test.step("the account keeps the Guest's room and activity", () =>
+      expectGuestDataKept(context, page, email, roomUrl));
+
+    await test.step("both tabs stay signed in to the account", () =>
+      expectSignedIn(context, [page, otherTab], email));
   });
-
-  await test.step("the account keeps the Guest's room and activity", () =>
-    expectGuestDataKept(context, page, email, roomUrl));
-});
+}
 
 test("a Guest who signs in with a password keeps their room and activity", async ({
   context,
@@ -86,13 +127,10 @@ test("a Guest who signs in with a password keeps their room and activity", async
 }) => {
   const roomUrl = await test.step("play as a Guest", () => playAsGuest(page));
   const guestToken = await authToken(context);
+  const otherTab = await openGuestTab(context);
 
   const { email } =
     await test.step("sign up from the Guest's browser", async () => {
-      // Leave the app as a Google redirect would. A Guest tab left open signs
-      // out once the merge deletes the Guest, and the shared cookie would take
-      // the new account's session with it (#139).
-      await page.goto("about:blank");
       const user = await registerContext(context);
       expect(await authToken(context)).not.toBe(guestToken);
       return user;
@@ -100,4 +138,7 @@ test("a Guest who signs in with a password keeps their room and activity", async
 
   await test.step("the account keeps the Guest's room and activity", () =>
     expectGuestDataKept(context, page, email, roomUrl));
+
+  await test.step("the Guest's other tab stays signed in to the account", () =>
+    expectSignedIn(context, [otherTab], email));
 });

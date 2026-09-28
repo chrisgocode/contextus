@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import { backfillMissingUsernames } from "../users";
-import { asUser, seedUser, setupTest } from "../testHelpers.test";
+import { asUser, seedUser, sessionOf, setupTest } from "../testHelpers.test";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -26,6 +26,25 @@ test("getUser returns profile fields for the current user", async () => {
     displayUsername: "BriskAbacus12",
     isCurrentUser: true,
   });
+});
+
+test("staleSession names the caller's session once it no longer signs them in", async () => {
+  const t = setupTest();
+  const live = await seedUser(t);
+  const deleted = await seedUser(t, { isAnonymous: true });
+  const cleanupStarted = await seedUser(t, { isAnonymous: true });
+  await t.run(async (ctx) => {
+    await ctx.db.delete("authSessions", sessionOf(t, deleted));
+    await ctx.db.delete("users", deleted);
+    await ctx.db.patch("users", cleanupStarted, { guestCleanupStarted: true });
+  });
+
+  const staleSession = (userId: typeof live) =>
+    asUser(t, userId).query(api.users.staleSession, {});
+  expect(await staleSession(live)).toBeNull();
+  expect(await staleSession(deleted)).toBe(sessionOf(t, deleted));
+  expect(await staleSession(cleanupStarted)).toBe(sessionOf(t, cleanupStarted));
+  expect(await t.query(api.users.staleSession, {})).toBeNull();
 });
 
 test("getByUsername resolves normalized usernames and keeps email private", async () => {

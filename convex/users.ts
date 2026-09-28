@@ -1,3 +1,4 @@
+import { getAuthSessionId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -52,6 +53,19 @@ export const getUser = query({
       isAnonymous: user.isAnonymous === true,
       isCurrentUser: requestedUserId === currentUserId,
     };
+  },
+});
+
+// The session in the caller's access token once it no longer signs them in,
+// so the client can sign out exactly that session and not whichever one the
+// shared auth cookie holds by then.
+export const staleSession = query({
+  args: {},
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    const sessionId = await getAuthSessionId(ctx);
+    if (sessionId === null) return null;
+    return (await getCurrentUserId(ctx)) === null ? sessionId : null;
   },
 });
 
