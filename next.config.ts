@@ -33,6 +33,26 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: deployedEnvironment,
     NEXT_PUBLIC_POSTHOG_ENVIRONMENT: deployedEnvironment,
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // No page may be framed, so another site can't overlay a room and
+          // trick a Host into clicking End room or Approve. X-Frame-Options
+          // covers browsers that predate frame-ancestors.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Room URLs carry the join code; send only the origin off-site.
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
