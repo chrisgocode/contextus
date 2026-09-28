@@ -46,6 +46,7 @@ export default function RoomPage({
   const [copied, setCopied] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
+  const joinGenerationRef = useRef(0);
   const leavingRef = useRef(false);
 
   // Start fetching the calendar chunk now rather than once the room and game
@@ -77,9 +78,18 @@ export default function RoomPage({
   }, [data, router]);
 
   useEffect(() => {
+    // Auth can change outside this page; its previous join failure is no longer relevant.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setJoinError(null);
+    joiningRef.current = false;
+    joinGenerationRef.current += 1;
+  }, [isAuthenticated, data?.viewerUserId]);
+
+  useEffect(() => {
     if (
       data &&
       isAuthenticated &&
+      data.viewerUserId !== null &&
       data.room.status === "active" &&
       !isMember &&
       joinError === null &&
@@ -87,8 +97,10 @@ export default function RoomPage({
       !joiningRef.current
     ) {
       joiningRef.current = true;
+      const generation = joinGenerationRef.current;
       join({ code: upper })
         .catch((err) => {
+          if (generation !== joinGenerationRef.current) return;
           const isRoomLimit = getErrorData(err) === "Guest room limit reached";
           const message = isRoomLimit
             ? "Guest room limit reached"
@@ -103,7 +115,8 @@ export default function RoomPage({
           }
         })
         .finally(() => {
-          joiningRef.current = false;
+          if (generation === joinGenerationRef.current)
+            joiningRef.current = false;
         });
     }
   }, [data, isAuthenticated, isMember, join, joinError, upper]);
@@ -139,6 +152,14 @@ export default function RoomPage({
           router.push(`/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`)
         }
       />
+    );
+  }
+  if (data.viewerUserId === null) {
+    return (
+      <Centered>
+        <p>Session expired. Signing you out…</p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+      </Centered>
     );
   }
   if (!isMember && joinError === "Guest room limit reached") {

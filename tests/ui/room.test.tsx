@@ -206,6 +206,121 @@ describe("RoomPage", () => {
     expect(mocks.push).toHaveBeenCalledWith("/signin?redirectTo=%2Fr%2FABCDEF");
   });
 
+  it("retries joining after a failed join and a new guest sign-in", async () => {
+    let isAuthenticated = true;
+    let viewerUserId: string | null = "old-guest";
+    let joined = false;
+    mocks.useConvexAuth.mockImplementation(() => ({
+      isAuthenticated,
+      isLoading: false,
+    }));
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode")
+        return {
+          ...room,
+          viewerUserId,
+          members: joined ? [{ ...room.members[0], userId: "new-guest" }] : [],
+        };
+      if (name === "games:getActive" || name === "games:listFinished")
+        return undefined;
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    mocks.join.mockRejectedValueOnce(new Error("Session expired"));
+    mocks.join.mockResolvedValue(null);
+    mocks.signIn.mockResolvedValue(null);
+    const view = await renderRoom();
+    await screen.findByText("Could not join room. Try again.");
+
+    isAuthenticated = false;
+    viewerUserId = null;
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Join as guest" }));
+
+    isAuthenticated = true;
+    viewerUserId = "new-guest";
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    await waitFor(() => expect(mocks.join).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByText("Could not join room. Try again."),
+    ).not.toBeInTheDocument();
+
+    joined = true;
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    expect(screen.getByRole("heading", { name: "ABCDEF" })).toBeVisible();
+  });
+
+  it("ignores a previous viewer's join failure while the new join is pending", async () => {
+    let viewerUserId = "old-guest";
+    let rejectOld!: (error: Error) => void;
+    let resolveNew!: (value: null) => void;
+    mocks.join
+      .mockImplementationOnce(
+        () => new Promise((_, reject) => (rejectOld = reject)),
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveNew = resolve)),
+      );
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode")
+        return { ...room, viewerUserId, members: [] };
+      if (name === "games:getActive" || name === "games:listFinished")
+        return undefined;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    const view = await renderRoom();
+    expect(mocks.join).toHaveBeenCalledTimes(1);
+
+    viewerUserId = "new-guest";
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    await waitFor(() => expect(mocks.join).toHaveBeenCalledTimes(2));
+    await act(async () => rejectOld(new Error("Old session expired")));
+
+    expect(
+      screen.queryByText("Could not join room. Try again."),
+    ).not.toBeInTheDocument();
+    expect(reportClientError).not.toHaveBeenCalled();
+    expect(mocks.join).toHaveBeenCalledTimes(2);
+    await act(async () => resolveNew(null));
+  });
+
+  it("waits for a stale session to sign out before joining", async () => {
+    mocks.join.mockRejectedValue(new Error("Session expired"));
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode")
+        return { ...room, viewerUserId: null, members: [] };
+      if (name === "games:getActive" || name === "games:listFinished")
+        return undefined;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    await renderRoom();
+
+    expect(mocks.join).not.toHaveBeenCalled();
+    expect(reportClientError).not.toHaveBeenCalled();
+    expect(screen.getByText("Session expired. Signing you out…")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+  });
+
   it("offers account creation when automatic guest joining hits the limit", async () => {
     mocks.join.mockRejectedValue({ data: "Guest room limit reached" });
     mocks.useQuery.mockImplementation((reference) => {
