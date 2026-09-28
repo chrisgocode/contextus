@@ -246,12 +246,24 @@ test("listForGame returns empty for ex-member after leaving room", async () => {
   await asUser(t, other).mutation(api.rooms.leave, { roomId });
   const res = await asUser(t, other).query(api.guesses.listForGame, {
     gameId,
-    duplicate: "hello",
   });
-  expect(res).toEqual({ sorted: [], latest: null, repeated: null });
+  expect(res).toEqual({ sorted: [], latest: null });
 });
 
-test("listForGame returns a repeated guess beyond the 500 closest", async () => {
+test("findByLemma returns null for ex-member after leaving room", async () => {
+  const t = setupTest();
+  fakeWordOracle({ guesses: { 1336: { hello: 42591 } } });
+  const { host, other, roomId, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "hello" });
+  await asUser(t, other).mutation(api.rooms.leave, { roomId });
+  const res = await asUser(t, other).query(api.guesses.findByLemma, {
+    gameId,
+    lemma: "hello",
+  });
+  expect(res).toBeNull();
+});
+
+test("findByLemma returns a guess beyond the 500 closest", async () => {
   const t = setupTest();
   const { host, gameId } = await startedGame(t);
   await t.run(async (ctx) => {
@@ -267,13 +279,22 @@ test("listForGame returns a repeated guess beyond the 500 closest", async () => 
     }
   });
 
-  const { sorted, repeated } = await asUser(t, host).query(
-    api.guesses.listForGame,
-    { gameId, duplicate: "distant" },
-  );
+  const u = asUser(t, host);
+  const { sorted } = await u.query(api.guesses.listForGame, { gameId });
   expect(sorted).toHaveLength(500);
   expect(sorted.some((g) => g.lemma === "distant")).toBe(false);
-  expect(repeated).toMatchObject({ lemma: "distant", distance: 500 });
+  const found = await u.query(api.guesses.findByLemma, {
+    gameId,
+    lemma: "distant",
+  });
+  expect(found).toMatchObject({
+    lemma: "distant",
+    distance: 500,
+    player: { name: expect.any(String) },
+  });
+  expect(
+    await u.query(api.guesses.findByLemma, { gameId, lemma: "missing" }),
+  ).toBeNull();
 });
 
 test("listForGame returns sorted asc + latest", async () => {

@@ -272,27 +272,76 @@ describe("PendingRequestsSidebar", () => {
 });
 
 describe("GuessList", () => {
+  const guess = (id: string, lemma: string, distance: number) => ({
+    _id: id,
+    lemma,
+    distance,
+    source: "guess",
+    player: { name: "Alex", image: null },
+  });
+
+  // Convex returns undefined while a subscription with new arguments loads,
+  // so each query only answers for the arguments it was loaded with.
+  function mockGuessQueries({
+    sorted,
+    found = null,
+  }: {
+    sorted: ReturnType<typeof guess>[];
+    found?: ReturnType<typeof guess> | null;
+  }) {
+    convex.useQuery.mockImplementation((reference, args) => {
+      if (args === "skip") return undefined;
+      const name = getFunctionName(reference);
+      if (name === "guesses:listForGame") {
+        return Object.keys(args).length === 1
+          ? { sorted, latest: null }
+          : undefined;
+      }
+      if (name === "guesses:findByLemma") return found;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+  }
+
   it("prompts for a first guess when there are none", () => {
-    convex.useQuery.mockReturnValue({ sorted: [], latest: null });
+    mockGuessQueries({ sorted: [] });
     render(<GuessList gameId={"game" as never} duplicate={null} />);
     expect(screen.getByText("No guesses yet. Type one!")).toBeVisible();
   });
 
+  it("keeps the list and highlights the repeated guess on a duplicate", () => {
+    mockGuessQueries({
+      sorted: [guess("close", "near", 1), guess("far", "apple", 40)],
+    });
+    const { rerender } = render(
+      <GuessList gameId={"game" as never} duplicate={null} />,
+    );
+    rerender(<GuessList gameId={"game" as never} duplicate="apple" />);
+
+    expect(screen.getByText("All guesses (closest first)")).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "Already guessed" }),
+    ).toHaveTextContent("apple");
+    expect(screen.queryByText("Earlier guess")).toBeNull();
+    expect(
+      convex.useQuery.mock.calls.some(
+        ([reference, args]) =>
+          getFunctionName(reference) === "guesses:findByLemma" &&
+          args !== "skip",
+      ),
+    ).toBe(false);
+  });
+
   it("shows a repeated guess outside the displayed list", () => {
-    const guess = {
-      _id: "far",
-      lemma: "distant",
-      distance: 500,
-      source: "guess",
-      player: { name: "Alex", image: null },
-    };
-    convex.useQuery.mockReturnValue({
-      sorted: [{ ...guess, _id: "close", lemma: "near", distance: 1 }],
-      latest: null,
-      repeated: guess,
+    mockGuessQueries({
+      sorted: [guess("close", "near", 1)],
+      found: guess("far", "distant", 500),
     });
 
     render(<GuessList gameId={"game" as never} duplicate="distant" />);
+    expect(convex.useQuery).toHaveBeenCalledWith(expect.anything(), {
+      gameId: "game",
+      lemma: "distant",
+    });
     expect(
       screen.getByRole("status", { name: "Already guessed" }),
     ).toHaveTextContent("distant");
