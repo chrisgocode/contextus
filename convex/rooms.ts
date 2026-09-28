@@ -16,6 +16,9 @@ const MAX_CODE_RETRIES = 10;
 const MAX_GUEST_ACTIVE_ROOMS = 3;
 // ponytail: scans 100 memberships; add a per-user recent-group index if users outgrow it.
 const MAX_RECENT_MEMBERSHIPS = 100;
+// listMine ranks at most this many of the newest active memberships. Idle
+// rooms end after 30 minutes, so hitting this needs 50+ live rooms at once.
+const MAX_ACTIVE_MEMBERSHIPS = 50;
 
 async function requireGuestRoomSlot(
   ctx: Pick<MutationCtx, "db">,
@@ -291,10 +294,19 @@ export const listMine = query({
   handler: async (ctx) => {
     const userId = await getCurrentUserId(ctx);
     if (userId === null) return [];
-    const memberships = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+    // Memberships created before the `active` flag have no value; newer
+    // writes always set it, so that set can't grow.
+    const byActive = (active: true | undefined) =>
+      ctx.db
+        .query("roomMembers")
+        .withIndex("by_user_and_active", (q) =>
+          q.eq("userId", userId).eq("active", active),
+        )
+        .order("desc")
+        .take(MAX_ACTIVE_MEMBERSHIPS);
+    const memberships = (
+      await Promise.all([byActive(true), byActive(undefined)])
+    ).flat();
     const fetched = await Promise.all(
       memberships.map((m) => ctx.db.get("rooms", m.roomId)),
     );

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   internalAction,
   internalMutation,
@@ -11,14 +12,20 @@ import { onlineUserIdsForRoom } from "./presence";
 
 export const GUEST_CLEANUP_ROW_BUDGET = 100;
 
+const ROOM_CLEANUP_PAGE_SIZE = 50;
+
 export const _listActiveRoomIds = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const rooms = await ctx.db
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }) => {
+    const result = await ctx.db
       .query("rooms")
       .withIndex("by_status", (q) => q.eq("status", "active"))
-      .collect();
-    return rooms.map((r) => r._id);
+      .paginate({ cursor, numItems: ROOM_CLEANUP_PAGE_SIZE });
+    return {
+      roomIds: result.page.map((r) => r._id),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
   },
 });
 
@@ -114,12 +121,27 @@ export const removeExpiredGuests = internalMutation({
   },
 });
 
+// Handles one page of active rooms, then schedules itself for the next page.
 export const tick = internalAction({
-  args: {},
-  handler: async (ctx) => {
-    const roomIds = await ctx.runQuery(internal.cleanup._listActiveRoomIds, {});
-    for (const roomId of roomIds) {
-      await ctx.runMutation(internal.cleanup._cleanupRoom, { roomId });
+  args: { cursor: v.optional(v.string()) },
+  handler: async (ctx, { cursor }) => {
+    const {
+      roomIds,
+      isDone,
+      continueCursor,
+    }: { roomIds: Id<"rooms">[]; isDone: boolean; continueCursor: string } =
+      await ctx.runQuery(internal.cleanup._listActiveRoomIds, {
+        cursor: cursor ?? null,
+      });
+    await Promise.all(
+      roomIds.map((roomId) =>
+        ctx.runMutation(internal.cleanup._cleanupRoom, { roomId }),
+      ),
+    );
+    if (!isDone) {
+      await ctx.scheduler.runAfter(0, internal.cleanup.tick, {
+        cursor: continueCursor,
+      });
     }
   },
 });

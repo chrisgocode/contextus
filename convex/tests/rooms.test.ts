@@ -352,12 +352,58 @@ test("listMine returns active rooms for user, newest activity first", async () =
   const t = setupTest();
   const userId = await seedUser(t);
   const u = asUser(t, userId);
+  vi.useFakeTimers();
   const r1 = await u.mutation(api.rooms.create, {});
+  vi.advanceTimersByTime(1000);
   const r2 = await u.mutation(api.rooms.create, {});
+  vi.advanceTimersByTime(1000);
   // touch r1 to be newer
   await u.mutation(api.rooms.join, { code: r1.code });
   const rooms = await u.query(api.rooms.listMine, {});
   expect(rooms.map((r) => r.code)).toEqual([r1.code, r2.code]);
+});
+
+test("listMine includes active rooms whose membership predates the active flag", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  await t.run(async (ctx) => {
+    const roomId = await ctx.db.insert("rooms", {
+      code: "LEGACY",
+      hostUserId: userId,
+      status: "active",
+    });
+    await ctx.db.insert("roomMembers", { roomId, userId, joinedAt: 0 });
+  });
+
+  const rooms = await asUser(t, userId).query(api.rooms.listMine, {});
+
+  expect(rooms.map((r) => r.code)).toEqual(["LEGACY"]);
+});
+
+test("listMine reads a bounded amount for a user with many ended rooms", async () => {
+  const t = setupTest({ transactionLimits: { documentsRead: 200 } });
+  const userId = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 300; i++) {
+      const roomId = await ctx.db.insert("rooms", {
+        code: `ENDED${i}`,
+        hostUserId: userId,
+        status: "ended",
+      });
+      await ctx.db.insert("roomMembers", {
+        roomId,
+        userId,
+        joinedAt: i,
+        active: false,
+      });
+    }
+  });
+  const u = asUser(t, userId);
+  const { code } = await u.mutation(api.rooms.create, {});
+
+  const rooms = await u.query(api.rooms.listMine, {});
+
+  expect(rooms.map((r) => r.code)).toEqual([code]);
 });
 
 test("listRecentGroups returns a registered user's ended room", async () => {
