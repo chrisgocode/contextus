@@ -21,6 +21,10 @@ import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
 
+// Mirrors the limits updateProfile enforces on the server.
+const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const MAX_AVATAR_BYTES = 1024 * 1024;
+
 export function ProfileSkeleton() {
   return (
     <>
@@ -149,8 +153,12 @@ export function ProfileClient({ username }: { username: string }) {
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null;
     if (file === null) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+    if (!AVATAR_ACCEPT.split(",").includes(file.type)) {
+      setError("Please choose a PNG, JPEG, WebP or GIF image.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError("Profile image must be 1 MB or smaller.");
       return;
     }
     setSelectedAvatarFile(file);
@@ -241,7 +249,7 @@ export function ProfileClient({ username }: { username: string }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={AVATAR_ACCEPT}
             className="hidden"
             onChange={handleAvatarChange}
           />

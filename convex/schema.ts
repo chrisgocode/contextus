@@ -23,6 +23,7 @@ export default defineSchema({
     .index("email", ["email"])
     .index("phone", ["phone"])
     .index("by_username", ["username"])
+    .index("by_avatarStorageId", ["avatarStorageId"])
     .index("by_is_anonymous_and_guest_expires_at", [
       "isAnonymous",
       "guestExpiresAt",
