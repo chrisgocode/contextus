@@ -35,6 +35,7 @@ export const start = mutation({
       roomId,
       contextoGameId,
       status: "in_progress",
+      realGuessCount: 0,
       startedAt: now,
     });
     await upsertHistory(ctx, userId, contextoGameId);

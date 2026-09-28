@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { expireGuest } from "../lib/accountLifecycle";
 import {
   asUser,
   fakeWordOracle,
@@ -204,6 +205,26 @@ test("team guess achievements count real guesses beyond the first 500 rows", asy
   await expect(achievementIds(t, host)).resolves.toEqual(
     expect.arrayContaining(["sharp_mind", "mind_reader"]),
   );
+  await expect(achievementIds(t, host)).resolves.not.toContain("psychic");
+});
+
+test("team guess achievements still count an expired Guest's real guesses", async () => {
+  const t = setupTest();
+  fakeWordOracle({
+    guesses: { 1336: { one: 4, two: 3, three: 2, four: 1, answer: 0 } },
+  });
+  const { host, other, gameId } = await startedGame(t);
+  await asUser(t, other).action(api.guesses.submit, { gameId, word: "one" });
+  await asUser(t, other).action(api.guesses.submit, { gameId, word: "two" });
+  await t.run(async (ctx) => {
+    while (!(await expireGuest(ctx, other, 100)).done);
+  });
+
+  for (const word of ["three", "four", "answer"]) {
+    await asUser(t, host).action(api.guesses.submit, { gameId, word });
+  }
+
+  await expect(achievementIds(t, host)).resolves.toContain("mind_reader");
   await expect(achievementIds(t, host)).resolves.not.toContain("psychic");
 });
 

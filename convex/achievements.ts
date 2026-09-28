@@ -150,6 +150,14 @@ function createConvexAchievementRepository(
     },
 
     async recordRealGuess(event) {
+      const game = await ctx.db.get("games", event.gameId);
+      if (game !== null) {
+        const teamCount =
+          game.realGuessCount ?? (await sumPlayerRealGuesses(ctx, game._id));
+        await ctx.db.patch("games", game._id, {
+          realGuessCount: teamCount + 1,
+        });
+      }
       const existing = await ctx.db
         .query("gamePlayerStats")
         .withIndex("by_game_user", (q) =>
@@ -236,13 +244,8 @@ function createConvexAchievementRepository(
     },
 
     async countTeamRealGuesses(gameId) {
-      let count = 0;
-      for await (const row of ctx.db
-        .query("gamePlayerStats")
-        .withIndex("by_game_user", (q) => q.eq("gameId", gameId))) {
-        count += row.realGuessCount;
-      }
-      return count;
+      const game = await ctx.db.get("games", gameId);
+      return game?.realGuessCount ?? (await sumPlayerRealGuesses(ctx, gameId));
     },
 
     async getTimeZone(userId) {
@@ -272,6 +275,16 @@ function createConvexAchievementRepository(
       return rows.map((row) => row.dayKey);
     },
   };
+}
+
+async function sumPlayerRealGuesses(ctx: MutationCtx, gameId: Id<"games">) {
+  let count = 0;
+  for await (const row of ctx.db
+    .query("gamePlayerStats")
+    .withIndex("by_game_user", (q) => q.eq("gameId", gameId))) {
+    count += row.realGuessCount;
+  }
+  return count;
 }
 
 async function getStatsRow(ctx: MutationCtx, userId: Id<"users">) {
