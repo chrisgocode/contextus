@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   internalAction,
   internalMutation,
@@ -124,10 +125,14 @@ export const removeExpiredGuests = internalMutation({
 export const tick = internalAction({
   args: { cursor: v.optional(v.string()) },
   handler: async (ctx, { cursor }) => {
-    const { roomIds, isDone, continueCursor } = await ctx.runQuery(
-      internal.cleanup._listActiveRoomIds,
-      { cursor: cursor ?? null },
-    );
+    const {
+      roomIds,
+      isDone,
+      continueCursor,
+    }: { roomIds: Id<"rooms">[]; isDone: boolean; continueCursor: string } =
+      await ctx.runQuery(internal.cleanup._listActiveRoomIds, {
+        cursor: cursor ?? null,
+      });
     await Promise.all(
       roomIds.map((roomId) =>
         ctx.runMutation(internal.cleanup._cleanupRoom, { roomId }),
