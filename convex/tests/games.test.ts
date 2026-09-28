@@ -100,6 +100,15 @@ test("start: rejects invalid Contexto game ids", async () => {
   ).rejects.toThrow("Invalid game id");
 });
 
+test("start: rejects non-integer Contexto game ids", async () => {
+  const t = setupTest();
+  const { host, roomId } = await createRoomWith(t);
+
+  await expect(
+    asUser(t, host).mutation(api.games.start, { roomId, contextoGameId: 1.5 }),
+  ).rejects.toThrow("Invalid game id");
+});
+
 test("getActive returns the active game for a member", async () => {
   const t = setupTest();
   const { host, other, roomId } = await createRoomWith(t);
