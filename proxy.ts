@@ -15,6 +15,32 @@ export default async function proxy(
   if (request.nextUrl.pathname === "/api/auth/stale") {
     return signOutStaleSession(request, event);
   }
+  if (request.method === "POST" && request.nextUrl.pathname === "/api/auth") {
+    const body = await request
+      .clone()
+      .json()
+      .catch(() => null);
+    if (
+      body?.action === "auth:signIn" &&
+      body.args?.refreshToken !== undefined
+    ) {
+      const response = await authMiddleware(request, event);
+      // Convex Auth clears the OAuth verifier on every token refresh. A late
+      // refresh must not erase the verifier from an in-progress Google sign-in.
+      if (response) {
+        const cookies = response.headers
+          .getSetCookie()
+          .filter(
+            (cookie) => !/^(?:__Host-)?__convexAuthOAuthVerifier=/.test(cookie),
+          );
+        response.headers.delete("set-cookie");
+        response.headers.delete("x-middleware-set-cookie");
+        for (const cookie of cookies)
+          response.headers.append("set-cookie", cookie);
+      }
+      return response;
+    }
+  }
   return authMiddleware(request, event);
 }
 

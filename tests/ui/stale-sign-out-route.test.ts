@@ -1,4 +1,4 @@
-import { type NextFetchEvent, NextRequest } from "next/server";
+import { type NextFetchEvent, NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -105,3 +105,33 @@ describe("POST /api/auth/stale", () => {
     expect(auth.middleware).toHaveBeenCalledWith(request, event);
   });
 });
+
+it.each(["", "__Host-"])(
+  "keeps the OAuth verifier when a %s token refresh completes",
+  async (prefix) => {
+    const response = NextResponse.json({ tokens: { token: "new" } });
+    response.cookies.set(`${prefix}__convexAuthJWT`, "new");
+    response.cookies.set(`${prefix}__convexAuthRefreshToken`, "refresh");
+    response.cookies.set(`${prefix}__convexAuthOAuthVerifier`, "", {
+      expires: new Date(0),
+    });
+    auth.middleware.mockResolvedValue(response);
+
+    const result = await proxy(
+      new NextRequest("http://localhost:3100/api/auth", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "auth:signIn",
+          args: { refreshToken: "dummy" },
+        }),
+      }),
+      event,
+    );
+
+    expect(result?.headers.getSetCookie()).toEqual([
+      expect.stringContaining(`${prefix}__convexAuthJWT=new`),
+      expect.stringContaining(`${prefix}__convexAuthRefreshToken=refresh`),
+    ]);
+    expect(result?.headers.has("x-middleware-set-cookie")).toBe(false);
+  },
+);
