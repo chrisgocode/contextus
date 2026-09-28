@@ -360,6 +360,23 @@ test("listMine returns active rooms for user, newest activity first", async () =
   expect(rooms.map((r) => r.code)).toEqual([r1.code, r2.code]);
 });
 
+test("listMine includes active rooms whose membership predates the active flag", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  await t.run(async (ctx) => {
+    const roomId = await ctx.db.insert("rooms", {
+      code: "LEGACY",
+      hostUserId: userId,
+      status: "active",
+    });
+    await ctx.db.insert("roomMembers", { roomId, userId, joinedAt: 0 });
+  });
+
+  const rooms = await asUser(t, userId).query(api.rooms.listMine, {});
+
+  expect(rooms.map((r) => r.code)).toEqual(["LEGACY"]);
+});
+
 test("listMine reads a bounded amount for a user with many ended rooms", async () => {
   const t = setupTest({ transactionLimits: { documentsRead: 200 } });
   const userId = await seedUser(t);
