@@ -22,7 +22,9 @@ export default async function proxy(
 // uses the auth cookie, which every tab shares, so once another tab has signed
 // in it holds a different session. Sign out only when the cookie still holds
 // the page's session; otherwise leave the cookie alone and let the page reload
-// to pick it up.
+// to pick it up. A sign-in response that lands between this check and the
+// sign-out response still has its cookies cleared, since a response can't clear
+// cookies conditionally; the page's delay before asking keeps that unlikely.
 async function signOutStaleSession(
   request: NextRequest,
   event: NextFetchEvent,
@@ -30,12 +32,16 @@ async function signOutStaleSession(
   if (request.method !== "POST") {
     return new Response("Invalid method", { status: 405 });
   }
-  const body: { sessionId?: unknown } = await request.json().catch(() => ({}));
+  const body: unknown = await request.json().catch(() => null);
+  const sessionId =
+    typeof body === "object" && body !== null && "sessionId" in body
+      ? body.sessionId
+      : undefined;
   const cookieToken = await convexAuthNextjsToken();
   if (
-    typeof body.sessionId !== "string" ||
+    typeof sessionId !== "string" ||
     cookieToken === undefined ||
-    sessionOf(cookieToken) !== body.sessionId
+    sessionOf(cookieToken) !== sessionId
   ) {
     return new Response(null, { status: 204 });
   }

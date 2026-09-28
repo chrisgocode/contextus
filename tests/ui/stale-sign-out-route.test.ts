@@ -73,6 +73,21 @@ describe("POST /api/auth/stale", () => {
     expect(auth.middleware).not.toHaveBeenCalled();
   });
 
+  it("does nothing with a body that isn't an object", async () => {
+    auth.cookieToken.mockResolvedValue(accessToken("guest", "s1"));
+
+    const response = await proxy(
+      new NextRequest("https://contextus.test/api/auth/stale", {
+        method: "POST",
+        body: "null",
+      }),
+      event,
+    );
+
+    expect(response?.status).toBe(204);
+    expect(auth.middleware).not.toHaveBeenCalled();
+  });
+
   it("only accepts POST", async () => {
     const response = await proxy(
       new NextRequest("https://contextus.test/api/auth/stale"),
