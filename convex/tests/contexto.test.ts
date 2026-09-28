@@ -122,6 +122,43 @@ describe.each(endpoints)("$name", ({ malformed, call }) => {
   );
 });
 
+// Contexto accepts the connection but never answers; only the abort signal
+// ends the request.
+function stubHungFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    ),
+  );
+}
+
+test.each(endpoints)(
+  "$name throws ConvexError when Contexto never answers",
+  async ({ call }) => {
+    const t = setupTest();
+    const game = await startedGame(t);
+    stubHungFetch();
+    vi.useFakeTimers();
+    try {
+      const result = call(t, game).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const error = await result;
+      expect(error).toBeInstanceOf(ConvexError);
+      expect((error as ConvexError<string>).data).toBe(
+        "Contexto is unavailable, please try again",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
 test("give-up with a malformed answer payload leaves the Game in_progress", async () => {
   const t = setupTest();
   const game = await startedGame(t);
@@ -196,7 +233,7 @@ test.each<{
     vi.stubGlobal("fetch", fetch);
 
     await expect(call(t, game)).resolves.toMatchObject(expected);
-    expect(fetch).toHaveBeenCalledExactlyOnceWith(url);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(url, expect.anything());
   },
 );
 
@@ -219,5 +256,6 @@ test("a guess is sent as one encoded path segment", async () => {
 
   expect(fetch).toHaveBeenCalledExactlyOnceWith(
     "https://api.contexto.me/machado/en/game/1336/..%2Fgiveup%2F1336",
+    expect.anything(),
   );
 });
