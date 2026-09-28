@@ -441,7 +441,8 @@ export async function performTurn(
       requestId,
     });
     userId = pre.userId;
-    if (turn.kind !== "giveup") await enforceRateLimit(ctx, turn.kind, userId);
+    // Hints spend their tokens per tip, in performHint.
+    if (turn.kind !== "hint") await enforceRateLimit(ctx, turn.kind, userId);
     const oracle = puzzleWordOracle(ctx, pre.contextoGameId, (request) =>
       contextoRequests.push(request),
     );
@@ -461,13 +462,17 @@ export async function performTurn(
         break;
       }
       case "hint": {
+        const hintUserId = userId;
         result = await performHint(
           ctx,
           gameId,
           oracle,
           pre.best,
           requestId,
-          () => tipsTried++,
+          async () => {
+            await enforceRateLimit(ctx, "hint", hintUserId);
+            tipsTried++;
+          },
         );
         break;
       }
@@ -602,12 +607,12 @@ async function performHint(
   oracle: PuzzleWordOracle,
   best: number | null,
   requestId: Id<"pendingRequests"> | undefined,
-  onTip: () => void,
+  onTip: () => Promise<void>,
 ): Promise<ScoredLemma> {
   let target = initialHintTarget(best);
   const walking = best === 1;
   for (let i = 0; i < MAX_WALK_ITERATIONS; i++) {
-    onTip();
+    await onTip();
     const tip = await oracle.tip(target);
     const result: ApplyResult = await ctx.runMutation(internal.turns._apply, {
       gameId,

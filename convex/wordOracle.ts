@@ -164,6 +164,32 @@ export const _cachedDistance = internalQuery({
   },
 });
 
+// Unknown words cost one Contexto request to learn again, so a week is plenty.
+const UNKNOWN_WORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const UNKNOWN_WORD_PRUNE_BATCH = 500;
+
+// Deletes a batch of unknown words older than the TTL, then schedules itself
+// until none are left.
+export const pruneUnknownWords = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - UNKNOWN_WORD_TTL_MS;
+    const expired = await ctx.db
+      .query("unknownWords")
+      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
+      .take(UNKNOWN_WORD_PRUNE_BATCH);
+    for (const row of expired) await ctx.db.delete("unknownWords", row._id);
+    if (expired.length === UNKNOWN_WORD_PRUNE_BATCH) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.wordOracle.pruneUnknownWords,
+        {},
+      );
+    }
+    return null;
+  },
+});
+
 export const _cacheUnknownWord = internalMutation({
   args: { contextoGameId: v.number(), word: v.string(), error: v.string() },
   handler: async (ctx, { contextoGameId, word, error }) => {

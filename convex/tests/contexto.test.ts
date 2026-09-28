@@ -44,6 +44,12 @@ const failures = {
       status: 500,
       headers: { "content-type": "application/json" },
     }),
+  // Only a 404 means the word is unknown; anything else may clear up later.
+  "a 429 with a JSON error body": () =>
+    new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "content-type": "application/json" },
+    }),
   "a 404 with an HTML body": () =>
     new Response("<html>Not Found</html>", { status: 404 }),
   "a 200 with a non-JSON body": () => new Response("not json", { status: 200 }),

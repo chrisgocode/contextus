@@ -20,7 +20,7 @@ type ContextoBody = {
 // responses are returned so callers can surface Contexto's `{ error }` body.
 async function request(
   url: string,
-): Promise<{ ok: boolean; body: ContextoBody }> {
+): Promise<{ ok: boolean; status: number; body: ContextoBody }> {
   let res: Response;
   let body: ContextoBody;
   const controller = new AbortController();
@@ -34,7 +34,7 @@ async function request(
     clearTimeout(timer);
   }
   if (res.status >= 500) throw new ConvexError(UNAVAILABLE_MESSAGE);
-  return { ok: res.ok, body };
+  return { ok: res.ok, status: res.status, body };
 }
 
 function parseScoredLemma(body: ContextoBody): {
@@ -52,9 +52,10 @@ function parseScoredLemma(body: ContextoBody): {
 export const contextoOracle: WordOracle = {
   async distance(contextoGameId, word) {
     const url = `${BASE}/game/${contextoGameId}/${encodeURIComponent(word)}`;
-    const { ok, body } = await request(url);
-    // Contexto answers unknown words with a 404 and an `{ error }` body.
-    if (typeof body?.error === "string")
+    const { ok, status, body } = await request(url);
+    // Contexto answers unknown words with a 404 and an `{ error }` body. Other
+    // errors, like a 429, may clear up, so they must not be cached as unknown.
+    if (status === 404 && typeof body?.error === "string")
       return { ok: false, error: body.error };
     if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
     return { ok: true, ...parseScoredLemma(body) };

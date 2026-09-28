@@ -10,5 +10,11 @@ crons.interval(
   internal.cleanup.removeExpiredGuests,
   {},
 );
+crons.interval(
+  "unknown word cleanup",
+  { hours: 24 },
+  internal.wordOracle.pruneUnknownWords,
+  {},
+);
 
 export default crons;

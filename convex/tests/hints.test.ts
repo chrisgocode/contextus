@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { MAX_WALK_ITERATIONS } from "../lib/hint";
 import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import {
   asUser,
@@ -116,7 +117,7 @@ test("a hint is rejected when its tip is guessed while Contexto is fetching it",
 test("a walking hint gives up once every nearby tip is already guessed", async () => {
   const t = setupTest();
   const tips: Record<number, string> = {};
-  for (let distance = 2; distance <= 51; distance++) {
+  for (let distance = 2; distance <= MAX_WALK_ITERATIONS + 1; distance++) {
     tips[distance] = `near${distance}`;
   }
   const oracle = fakeWordOracle({ tips: { 1336: tips } });
@@ -137,19 +138,34 @@ test("a walking hint gives up once every nearby tip is already guessed", async (
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
   ).rejects.toThrow("Could not find an unguessed hint");
-  expect(oracle.tip).toHaveBeenCalledTimes(50);
+  expect(oracle.tip).toHaveBeenCalledTimes(MAX_WALK_ITERATIONS);
 });
 
-test("hostHint: rate limits each host", async () => {
+test("hostHint: spends a rate limit token per tip it asks for", async () => {
   const t = setupTest();
-  // Each hint halves the best distance, so every hint asks for a new tip.
-  const tips: Record<number, string> = {};
-  for (let d = 299; d >= 1; d = Math.floor(d / 2)) tips[d] = `tip${d}`;
-  const oracle = fakeWordOracle({ tips: { 1336: tips } });
+  const guessed = ["two", "three", "four", "five", "six"];
+  const oracle = fakeWordOracle({
+    guesses: {
+      1336: {
+        close: 1,
+        ...Object.fromEntries(guessed.map((w, i) => [w, i + 2])),
+      },
+    },
+    tips: {
+      1336: {
+        ...Object.fromEntries(guessed.map((w, i) => [i + 2, w])),
+        7: "seven",
+        8: "eight",
+      },
+    },
+  });
   const { host, gameId } = await startedGame(t);
-  for (let i = 0; i < rateLimits.hint.capacity; i++) {
-    await asUser(t, host).action(api.hints.hostHint, { gameId });
+  for (const word of ["close", ...guessed]) {
+    await asUser(t, host).action(api.guesses.submit, { gameId, word });
   }
+  // Walks past distances 2 to 6 to reach 7: six tips.
+  await asUser(t, host).action(api.hints.hostHint, { gameId });
+  // Needs seven more tips to reach 8, which the bucket can't cover.
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
   ).rejects.toThrow(RATE_LIMITED_MESSAGE);

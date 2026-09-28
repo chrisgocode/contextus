@@ -16,7 +16,9 @@ export const RATE_LIMITED_MESSAGE =
 // well under that, and cap how many users a script can mint to multiply it.
 export const rateLimits = {
   guess: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 20 },
-  hint: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 5 },
+  // Spent per tip requested, so a hint that walks past guessed words costs more.
+  hint: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 10 },
+  giveup: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 5 },
   createRoom: { kind: "token bucket", rate: 20, period: HOUR, capacity: 10 },
   // Guest sign-ups carry no identity to key on, so this one is shared.
   createGuest: { kind: "token bucket", rate: 60, period: MINUTE, capacity: 60 },

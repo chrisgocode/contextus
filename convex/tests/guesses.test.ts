@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import { MAX_WORD_LENGTH } from "../turns";
 import {
@@ -469,4 +469,29 @@ test("submit: legacy cache rows without canonical lemma are served", async () =>
   });
   expect(res).toMatchObject({ lemma: "legacy", distance: 77, won: false });
   expect(oracle.distance).not.toHaveBeenCalled();
+});
+
+test("unknown words are forgotten after a week", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  const t = setupTest();
+  const insert = (word: string) =>
+    t.run((ctx) =>
+      ctx.db.insert("unknownWords", {
+        contextoGameId: 1336,
+        word,
+        error: "I'm sorry, I don't know this word",
+      }),
+    );
+  await insert("old");
+  vi.setSystemTime(new Date("2026-01-07T00:00:00.000Z"));
+  await insert("recent");
+  vi.setSystemTime(new Date("2026-01-08T00:00:01.000Z"));
+
+  await t.mutation(internal.wordOracle.pruneUnknownWords, {});
+
+  const words = await t.run(async (ctx) =>
+    (await ctx.db.query("unknownWords").collect()).map((row) => row.word),
+  );
+  expect(words).toEqual(["recent"]);
 });

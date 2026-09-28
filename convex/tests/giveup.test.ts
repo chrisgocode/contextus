@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import {
   asUser,
   fakeWordOracle,
@@ -140,4 +141,23 @@ test("game completion credits participants beyond the first page", async () => {
   }));
   expect(credited.first?.guestCompletedGames).toBe(1);
   expect(credited.last?.guestCompletedGames).toBe(1);
+});
+
+test("hostGiveup: rate limits each host", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ answers: { 1336: "persimmon" } });
+  const { host, roomId, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
+  for (let i = 1; i <= rateLimits.giveup.capacity; i++) {
+    const next = await asUser(t, host).mutation(api.games.start, {
+      roomId,
+      contextoGameId: 1336,
+    });
+    const giveup = asUser(t, host).action(api.giveup.hostGiveup, {
+      gameId: next.gameId,
+    });
+    if (i < rateLimits.giveup.capacity) await giveup;
+    else await expect(giveup).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  }
+  expect(oracle.answer).toHaveBeenCalledTimes(rateLimits.giveup.capacity);
 });
