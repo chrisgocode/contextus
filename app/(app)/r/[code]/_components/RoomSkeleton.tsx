@@ -57,7 +57,10 @@ export function RoomSkeleton({ waiting = false }: { waiting?: boolean }) {
                 <Skeleton className="h-8 w-24 rounded-none" />
               </>
             ) : (
-              <Skeleton className="h-80 w-full rounded-none" />
+              <div className="flex w-full flex-col gap-4">
+                <Skeleton className="h-7 w-48" />
+                <Skeleton className="h-64 w-full" />
+              </div>
             )}
           </section>
         </div>
