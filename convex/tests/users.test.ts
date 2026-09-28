@@ -1,7 +1,13 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import { backfillMissingUsernames } from "../users";
-import { asUser, seedUser, sessionOf, setupTest } from "../testHelpers.test";
+import {
+  asUser,
+  seedUser,
+  sessionOf,
+  setupTest,
+  storeUpload,
+} from "../testHelpers.test";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -231,8 +237,9 @@ test("registered users can upload and read a profile image", async () => {
     username: "avataruser",
     displayUsername: "AvatarUser",
   });
-  const avatarStorageId = await t.run(async (ctx) =>
-    ctx.storage.store(new Blob(["avatar"], { type: "image/png" })),
+  const avatarStorageId = await storeUpload(
+    t,
+    new Blob(["avatar"], { type: "image/png" }),
   );
 
   await expect(
@@ -248,6 +255,144 @@ test("registered users can upload and read a profile image", async () => {
     username: "avataruser",
   });
   expect(profile?.image).toMatch(/^https?:\/\/.*\/api\/storage\//);
+});
+
+test("updateProfile rejects oversized and non-raster avatar uploads", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "avatarlimits",
+    displayUsername: "AvatarLimits",
+  });
+  const oversized = await storeUpload(
+    t,
+    new Blob([new Uint8Array(1024 * 1024 + 1)], { type: "image/png" }),
+  );
+  const svg = await storeUpload(
+    t,
+    new Blob(["<svg xmlns='http://www.w3.org/2000/svg'/>"], {
+      type: "image/svg+xml",
+    }),
+  );
+  const untyped = await storeUpload(t, new Blob(["avatar"]));
+
+  await expect(
+    asUser(t, user).mutation(api.users.updateProfile, {
+      name: "Avatar Limits",
+      username: "AvatarLimits",
+      avatarStorageId: oversized,
+    }),
+  ).rejects.toThrow("Profile image must be 1 MB or smaller.");
+  for (const avatarStorageId of [svg, untyped]) {
+    await expect(
+      asUser(t, user).mutation(api.users.updateProfile, {
+        name: "Avatar Limits",
+        username: "AvatarLimits",
+        avatarStorageId,
+      }),
+    ).rejects.toThrow("Profile image must be a PNG, JPEG, WebP or GIF.");
+  }
+});
+
+test("updateProfile rejects another user's avatar file", async () => {
+  const t = setupTest();
+  const owner = await seedUser(t, {
+    username: "avatarowner",
+    displayUsername: "AvatarOwner",
+  });
+  const thief = await seedUser(t, {
+    username: "avatarthief",
+    displayUsername: "AvatarThief",
+  });
+  const avatarStorageId = await storeUpload(
+    t,
+    new Blob(["avatar"], { type: "image/png" }),
+  );
+  await asUser(t, owner).mutation(api.users.updateProfile, {
+    name: "Avatar Owner",
+    username: "AvatarOwner",
+    avatarStorageId,
+  });
+
+  await expect(
+    asUser(t, thief).mutation(api.users.updateProfile, {
+      name: "Avatar Thief",
+      username: "AvatarThief",
+      avatarStorageId,
+    }),
+  ).rejects.toThrow("Uploaded profile image was not found.");
+});
+
+test("updateProfile deletes the replaced avatar file", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "avatarswap",
+    displayUsername: "AvatarSwap",
+  });
+  const first = await storeUpload(
+    t,
+    new Blob(["first"], { type: "image/png" }),
+  );
+  const second = await storeUpload(
+    t,
+    new Blob(["second"], { type: "image/webp" }),
+  );
+  const save = (avatarStorageId?: typeof first) =>
+    asUser(t, user).mutation(api.users.updateProfile, {
+      name: "Avatar Swap",
+      username: "AvatarSwap",
+      ...(avatarStorageId === undefined ? {} : { avatarStorageId }),
+    });
+
+  await save(first);
+  await save(first);
+  await save();
+  await expect(
+    t.run(async (ctx) => ctx.db.system.get("_storage", first)),
+  ).resolves.not.toBeNull();
+
+  await save(second);
+  const [firstFile, secondFile, stored] = await t.run(async (ctx) =>
+    Promise.all([
+      ctx.db.system.get("_storage", first),
+      ctx.db.system.get("_storage", second),
+      ctx.db.get("users", user),
+    ]),
+  );
+  expect(firstFile).toBeNull();
+  expect(secondFile).not.toBeNull();
+  expect(stored?.avatarStorageId).toBe(second);
+});
+
+test("updateProfile keeps a replaced avatar another user still uses", async () => {
+  const t = setupTest();
+  const user = await seedUser(t, {
+    username: "sharedavatar",
+    displayUsername: "SharedAvatar",
+  });
+  const other = await seedUser(t);
+  // Before ownership checks, two users could point at the same file.
+  const shared = await storeUpload(
+    t,
+    new Blob(["shared"], { type: "image/png" }),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch("users", user, { avatarStorageId: shared });
+    await ctx.db.patch("users", other, { avatarStorageId: shared });
+  });
+  const replacement = await storeUpload(
+    t,
+    new Blob(["replacement"], { type: "image/png" }),
+  );
+
+  await asUser(t, user).mutation(api.users.updateProfile, {
+    name: "Shared Avatar",
+    username: "SharedAvatar",
+    avatarStorageId: replacement,
+  });
+
+  await expect(
+    t.run(async (ctx) => ctx.db.system.get("_storage", shared)),
+  ).resolves.not.toBeNull();
 });
 
 test("registered users never receive guest account prompts", async () => {

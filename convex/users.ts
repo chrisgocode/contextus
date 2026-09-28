@@ -15,6 +15,15 @@ const ACTIVITY_DAYS = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_BACKFILL_BATCH_SIZE = 50;
 const MAX_BACKFILL_BATCH_SIZE = 100;
+// Every room member downloads each avatar, so keep them small and raster-only
+// (SVG can carry script).
+const MAX_AVATAR_BYTES = 1024 * 1024;
+const AVATAR_CONTENT_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
 
 function startOfUtcDay(timestamp: number): number {
   const d = new Date(timestamp);
@@ -169,22 +178,51 @@ export const updateProfile = mutation({
       currentUserId,
     );
 
-    if (args.avatarStorageId !== undefined) {
-      const storedFile = await ctx.db.system.get(
-        "_storage",
-        args.avatarStorageId,
-      );
-      if (storedFile === null) {
+    const user = await ctx.db.get("users", currentUserId);
+    const previousAvatarId = user?.avatarStorageId;
+    const avatarStorageId =
+      args.avatarStorageId === previousAvatarId
+        ? undefined
+        : args.avatarStorageId;
+    if (avatarStorageId !== undefined) {
+      const storedFile = await ctx.db.system.get("_storage", avatarStorageId);
+      // Storage doesn't record who uploaded a file, so the best ownership
+      // check is that no other user already uses it as their avatar.
+      const claimedBy = await ctx.db
+        .query("users")
+        .withIndex("by_avatarStorageId", (q) =>
+          q.eq("avatarStorageId", avatarStorageId),
+        )
+        .first();
+      if (storedFile === null || claimedBy !== null) {
         throw new ConvexError("Uploaded profile image was not found.");
+      }
+      if (storedFile.size > MAX_AVATAR_BYTES) {
+        throw new ConvexError("Profile image must be 1 MB or smaller.");
+      }
+      if (!AVATAR_CONTENT_TYPES.has(storedFile.contentType ?? "")) {
+        throw new ConvexError(
+          "Profile image must be a PNG, JPEG, WebP or GIF.",
+        );
+      }
+      if (previousAvatarId !== undefined) {
+        // Users could share a file before the check above existed.
+        const previousUsers = await ctx.db
+          .query("users")
+          .withIndex("by_avatarStorageId", (q) =>
+            q.eq("avatarStorageId", previousAvatarId),
+          )
+          .take(2);
+        if (previousUsers.every(({ _id }) => _id === currentUserId)) {
+          await ctx.storage.delete(previousAvatarId);
+        }
       }
     }
 
     await ctx.db.patch("users", currentUserId, {
       name,
       ...normalizedUsername,
-      ...(args.avatarStorageId === undefined
-        ? {}
-        : { avatarStorageId: args.avatarStorageId }),
+      ...(avatarStorageId === undefined ? {} : { avatarStorageId }),
     });
     return null;
   },

@@ -137,3 +137,23 @@ export function fakeWordOracle(mock: WordOracleMock) {
       }),
   };
 }
+
+// convex-test drops the blob's type on store, but real uploads record the
+// Content-Type header on the `_storage` row, which avatar checks read.
+export async function storeUpload(
+  t: ReturnType<typeof setupTest>,
+  blob: Blob,
+): Promise<Id<"_storage">> {
+  return await t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(blob);
+    if (blob.type !== "") {
+      const patchSystem = ctx.db.patch as unknown as (
+        table: "_storage",
+        id: Id<"_storage">,
+        value: { contentType: string },
+      ) => Promise<void>;
+      await patchSystem("_storage", storageId, { contentType: blob.type });
+    }
+    return storageId;
+  });
+}
