@@ -43,3 +43,14 @@ test("shows a missing profile", async ({ page }) => {
 
   await expect(page.getByText("Profile not found.")).toBeVisible();
 });
+
+test("forbids framing and sends security headers", async ({ request }) => {
+  for (const path of ["/", "/r/ABCD", "/privacy", "/api/version"]) {
+    const headers = (await request.get(path)).headers();
+
+    expect(headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  }
+});
