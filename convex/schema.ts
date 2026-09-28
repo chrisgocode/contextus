@@ -186,6 +186,14 @@ export default defineSchema({
     .index("by_game_lemma", ["contextoGameId", "lemma"])
     .index("by_game_distance", ["contextoGameId", "distance"]),
 
+  // Words Contexto doesn't know for a puzzle, so repeats never reach it again.
+  unknownWords: defineTable({
+    contextoGameId: v.number(),
+    word: v.string(),
+    // Contexto's message for the word, shown to the player as-is.
+    error: v.string(),
+  }).index("by_game_word", ["contextoGameId", "word"]),
+
   pendingRequests: defineTable({
     roomId: v.id("rooms"),
     gameId: v.id("games"),

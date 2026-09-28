@@ -39,6 +39,7 @@ import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
+import { enforceRateLimit, RATE_LIMITED_MESSAGE } from "./lib/rateLimits";
 import { upsertRoomActivity } from "./lib/roomActivity";
 import {
   type ContextoRequest,
@@ -50,6 +51,9 @@ const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
 const REQUEST_HANDLED_MESSAGE = "Request not found or already handled";
 const NOT_IN_PROGRESS_MESSAGE = "Game is no longer in progress";
 const EMPTY_WORD_MESSAGE = "Empty word";
+const WORD_TOO_LONG_MESSAGE = "Word is too long";
+// Well past any word Contexto knows, so longer input never reaches it.
+export const MAX_WORD_LENGTH = 32;
 const HINT_DUPLICATE_MESSAGE = "Hint lemma already guessed";
 const HINT_EXHAUSTED_MESSAGE = "Could not find an unguessed hint";
 
@@ -437,6 +441,7 @@ export async function performTurn(
       requestId,
     });
     userId = pre.userId;
+    if (turn.kind !== "giveup") await enforceRateLimit(ctx, turn.kind, userId);
     const oracle = puzzleWordOracle(ctx, pre.contextoGameId, (request) =>
       contextoRequests.push(request),
     );
@@ -522,6 +527,10 @@ function turnErrorCategory(
       return "contexto_unexpected_payload";
     case EMPTY_WORD_MESSAGE:
       return "empty_word";
+    case WORD_TOO_LONG_MESSAGE:
+      return "word_too_long";
+    case RATE_LIMITED_MESSAGE:
+      return "rate_limited";
     case REQUEST_HANDLED_MESSAGE:
       return "request_handled";
     case NOT_IN_PROGRESS_MESSAGE:
@@ -555,6 +564,9 @@ async function performGuess(
 ): Promise<GuessResult> {
   const input = word.trim().toLowerCase();
   if (input.length === 0) throw new ConvexError(EMPTY_WORD_MESSAGE);
+  if (input.length > MAX_WORD_LENGTH) {
+    throw new ConvexError(WORD_TOO_LONG_MESSAGE);
+  }
   const scored = await oracle.distance(input);
   if (!scored.ok) {
     return { message: scored.error, won: false, unlockedAchievementIds: [] };

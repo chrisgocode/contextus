@@ -24,6 +24,7 @@
   "dependencies": {
     "@convex-dev/auth": "^0.0.95",
     "@convex-dev/presence": "^0.4.0",
+    "@convex-dev/rate-limiter": "^0.4.0",
     "@hugeicons/core-free-icons": "^4.3.3",
     "@hugeicons/react": "^1.1.10",
     "@posthog/convex": "^2.1.5",

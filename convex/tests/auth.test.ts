@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import { asUser, seedUser, sessionOf, setupTest } from "../testHelpers.test";
 
 // Convex Auth runs these callbacks inside its `auth:store` mutation, which
@@ -155,4 +156,26 @@ test("a Guest signing in to an existing account merges into it", async () => {
   expect(await merges(t)).toEqual([
     expect.objectContaining({ guestUserId: guest, targetUserId: target }),
   ]);
+});
+
+test("Guest sign-ups are rate limited across everyone", async () => {
+  const t = setupTest();
+  const createGuest = (id: string) =>
+    t.mutation(internal.auth.store, {
+      args: {
+        type: "createAccountFromCredentials",
+        provider: "anonymous",
+        account: { id },
+        profile: { isAnonymous: true },
+      },
+    });
+  for (let i = 0; i < rateLimits.createGuest.capacity; i++) {
+    await createGuest(`guest-${i}`);
+  }
+  await expect(createGuest("one-too-many")).rejects.toThrow(
+    RATE_LIMITED_MESSAGE,
+  );
+
+  const users = await t.run((ctx) => ctx.db.query("users").collect());
+  expect(users).toHaveLength(rateLimits.createGuest.capacity);
 });

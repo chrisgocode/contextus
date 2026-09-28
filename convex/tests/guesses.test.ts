@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { MAX_WORD_LENGTH } from "../turns";
 import {
   asUser,
   fakeWordOracle,
@@ -25,22 +27,56 @@ async function startedGame(t: ReturnType<typeof setupTest>) {
   return { host, other, roomId, gameId };
 }
 
-test("submit: returns unknown word message without caching it", async () => {
+test("submit: unknown words reach Contexto once per puzzle", async () => {
   const t = setupTest();
   const oracle = fakeWordOracle({ guesses: { 1336: {} } });
-  const { host, gameId } = await startedGame(t);
-  await expect(
-    asUser(t, host).action(api.guesses.submit, { gameId, word: "zzz" }),
-  ).resolves.toEqual({
-    message: "I'm sorry, I don't know this word",
-    won: false,
-    unlockedAchievementIds: [],
-  });
+  const { host, other, gameId } = await startedGame(t);
+  for (const userId of [host, other]) {
+    await expect(
+      asUser(t, userId).action(api.guesses.submit, { gameId, word: "zzz" }),
+    ).resolves.toEqual({
+      message: "I'm sorry, I don't know this word",
+      won: false,
+      unlockedAchievementIds: [],
+    });
+  }
   const cached = await t.run(async (ctx) =>
     ctx.db.query("wordDistances").collect(),
   );
   expect(cached).toEqual([]);
   expect(oracle.distance).toHaveBeenCalledTimes(1);
+});
+
+test("submit: rejects overlong words without asking Contexto", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ guesses: { 1336: {} } });
+  const { host, gameId } = await startedGame(t);
+  await expect(
+    asUser(t, host).action(api.guesses.submit, {
+      gameId,
+      word: "a".repeat(MAX_WORD_LENGTH + 1),
+    }),
+  ).rejects.toThrow("Word is too long");
+  expect(oracle.distance).not.toHaveBeenCalled();
+});
+
+test("submit: rate limits each player's guesses", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({ guesses: { 1336: {} } });
+  const { host, other, gameId } = await startedGame(t);
+  for (let i = 0; i < rateLimits.guess.capacity; i++) {
+    await asUser(t, host).action(api.guesses.submit, {
+      gameId,
+      word: `word${i}`,
+    });
+  }
+  await expect(
+    asUser(t, host).action(api.guesses.submit, { gameId, word: "another" }),
+  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  expect(oracle.distance).toHaveBeenCalledTimes(rateLimits.guess.capacity);
+  await expect(
+    asUser(t, other).action(api.guesses.submit, { gameId, word: "another" }),
+  ).resolves.toMatchObject({ won: false });
 });
 
 test("submit: updates roomActivity", async () => {

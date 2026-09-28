@@ -10,6 +10,7 @@ import {
   GUEST_LIFETIME_MS,
 } from "./lib/guestEngagement";
 import { startGuestMerge } from "./lib/guestMerge";
+import { enforceRateLimit } from "./lib/rateLimits";
 import { ensureUserHasUsername } from "./lib/usernames";
 
 const {
@@ -59,6 +60,7 @@ type StoreArgs =
       providerAccountId: string;
       signature: string;
     }
+  | { type: "createAccountFromCredentials"; provider: string }
   | { type: "other" }; // Any other call, passed through untouched.
 
 // Convex Auth's own handler. `_handler` is private Convex API, so keep
@@ -87,6 +89,13 @@ export const store = internalMutation({
         await startGuestMerge(ctx, sessionId, args.userId);
       }
       return await convexAuthHandler(ctx, fnArgs);
+    }
+    // The Anonymous provider creates a Guest on every call, so cap how fast.
+    if (
+      args.type === "createAccountFromCredentials" &&
+      args.provider === "anonymous"
+    ) {
+      await enforceRateLimit(ctx, "createGuest");
     }
     if (args.type !== "userOAuth") return await convexAuthHandler(ctx, fnArgs);
 

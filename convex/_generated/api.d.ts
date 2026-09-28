@@ -36,6 +36,7 @@ import type * as lib_guestMergeRows from "../lib/guestMergeRows.js";
 import type * as lib_hint from "../lib/hint.js";
 import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_player from "../lib/player.js";
+import type * as lib_rateLimits from "../lib/rateLimits.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
 import type * as lib_usernames from "../lib/usernames.js";
 import type * as lib_words from "../lib/words.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/hint": typeof lib_hint;
   "lib/localTime": typeof lib_localTime;
   "lib/player": typeof lib_player;
+  "lib/rateLimits": typeof lib_rateLimits;
   "lib/roomActivity": typeof lib_roomActivity;
   "lib/usernames": typeof lib_usernames;
   "lib/words": typeof lib_words;
@@ -123,4 +125,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
   posthog: import("@posthog/convex/_generated/component.js").ComponentApi<"posthog">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };

@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import {
   asUser,
   fakeWordOracle,
@@ -137,4 +138,20 @@ test("a walking hint gives up once every nearby tip is already guessed", async (
     asUser(t, host).action(api.hints.hostHint, { gameId }),
   ).rejects.toThrow("Could not find an unguessed hint");
   expect(oracle.tip).toHaveBeenCalledTimes(50);
+});
+
+test("hostHint: rate limits each host", async () => {
+  const t = setupTest();
+  // Each hint halves the best distance, so every hint asks for a new tip.
+  const tips: Record<number, string> = {};
+  for (let d = 299; d >= 1; d = Math.floor(d / 2)) tips[d] = `tip${d}`;
+  const oracle = fakeWordOracle({ tips: { 1336: tips } });
+  const { host, gameId } = await startedGame(t);
+  for (let i = 0; i < rateLimits.hint.capacity; i++) {
+    await asUser(t, host).action(api.hints.hostHint, { gameId });
+  }
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  expect(oracle.tip).toHaveBeenCalledTimes(rateLimits.hint.capacity);
 });

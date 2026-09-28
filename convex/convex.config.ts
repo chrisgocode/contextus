@@ -1,4 +1,5 @@
 import presence from "@convex-dev/presence/convex.config.js";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config.js";
 import posthog from "@posthog/convex/convex.config.js";
 import { defineApp } from "convex/server";
 import { v } from "convex/values";
@@ -15,4 +16,6 @@ app.use(presence);
 app.use(posthog, {
   env: { POSTHOG_PROJECT_TOKEN: app.env.POSTHOG_PROJECT_TOKEN },
 });
+app.use(rateLimiter);
+
 export default app;
