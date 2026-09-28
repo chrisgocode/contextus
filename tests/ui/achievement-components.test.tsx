@@ -90,7 +90,7 @@ describe("AchievementUnlockQueue", () => {
     const onItemDone = vi.fn();
     const bronze = achievementGroups[0];
 
-    render(
+    const { container } = render(
       <AchievementUnlockQueue
         items={[
           {
@@ -109,8 +109,42 @@ describe("AchievementUnlockQueue", () => {
     expect(
       screen.getByText("Bronze achievement unlocked: Bullseye"),
     ).toBeVisible();
+    expect(container.querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(
+      screen.queryByRole("heading", { name: "Bullseye" }),
+    ).not.toBeInTheDocument();
     vi.runAllTimers();
     expect(onItemDone).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the same live region mounted while the queue fills", () => {
+    const bronze = achievementGroups[0];
+    const { container, rerender } = render(
+      <AchievementUnlockQueue items={[]} onItemDone={vi.fn()} />,
+    );
+    const liveRegion = container.querySelector("[aria-live]");
+    expect(liveRegion).not.toBeNull();
+
+    rerender(
+      <AchievementUnlockQueue
+        items={[
+          {
+            achievementName: "Bullseye",
+            category: "bronze",
+            categoryLabel: bronze.label,
+            key: "bullseye",
+            trophy: bronze.image,
+            trophyAlt: "Bronze trophy",
+          },
+        ]}
+        onItemDone={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[aria-live]")).toBe(liveRegion);
+    expect(liveRegion).toHaveTextContent(
+      "Bronze achievement unlocked: Bullseye",
+    );
   });
 });
 

@@ -19,17 +19,13 @@ export function AchievementUnlockWidget({
   trophyAlt,
 }: AchievementUnlockWidgetProps) {
   return (
-    <div
-      className="achievement-unlock-widget"
-      data-category={category}
-      aria-live="polite"
-    >
+    <div className="achievement-unlock-widget" data-category={category}>
       <div className="achievement-unlock-panel" aria-hidden="true" />
-      <div className="achievement-unlock-text">
+      <div className="achievement-unlock-text" aria-hidden="true">
         <p>Achievement Unlocked</p>
         <h2>{achievementName}</h2>
       </div>
-      <div className="achievement-unlock-badge">
+      <div className="achievement-unlock-badge" aria-hidden="true">
         <Image src={trophy} alt={trophyAlt} width={46} height={46} priority />
       </div>
       <span className="sr-only">

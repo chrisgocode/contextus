@@ -34,18 +34,20 @@ export function AchievementUnlockQueue({
     return () => window.clearTimeout(timeout);
   }, [current, onItemDone]);
 
-  if (current === null) return null;
-
+  // The live region stays mounted so screen readers pick up each unlock
+  // inserted into it.
   return (
     <div className="achievement-unlock-queue" aria-live="polite">
-      <AchievementUnlockWidget
-        key={current.key}
-        achievementName={current.achievementName}
-        category={current.category}
-        categoryLabel={current.categoryLabel}
-        trophy={current.trophy}
-        trophyAlt={current.trophyAlt}
-      />
+      {current !== null && (
+        <AchievementUnlockWidget
+          key={current.key}
+          achievementName={current.achievementName}
+          category={current.category}
+          categoryLabel={current.categoryLabel}
+          trophy={current.trophy}
+          trophyAlt={current.trophyAlt}
+        />
+      )}
       <style>{`
 				.achievement-unlock-queue {
 					position: fixed;
