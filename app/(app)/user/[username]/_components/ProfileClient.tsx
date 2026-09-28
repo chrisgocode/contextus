@@ -249,7 +249,7 @@ export function ProfileClient({ username }: { username: string }) {
             <button
               type="button"
               aria-label="Change profile picture"
-              className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               onClick={handleAvatarClick}
             >
               {avatar}
