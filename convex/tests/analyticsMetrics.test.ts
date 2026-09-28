@@ -134,8 +134,9 @@ test.each([
 );
 
 test("a walked hint reports tips tried", async () => {
+  // Rank 2's tip was guessed at another rank, as if guessed mid-walk.
   fakeWordOracle({
-    guesses: { 1336: { close: 1, second: 2 } },
+    guesses: { 1336: { close: 1, second: 1002 } },
     tips: { 1336: { 2: "second", 3: "third" } },
   });
   const { t, host, gameId, capture } = await game();

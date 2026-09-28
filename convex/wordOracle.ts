@@ -155,7 +155,7 @@ export const _cachedDistance = internalQuery({
     }
     const unknown = await ctx.db
       .query("unknownWords")
-      .withIndex("by_game_word", (q) =>
+      .withIndex("by_contextoGameId_and_word", (q) =>
         q.eq("contextoGameId", contextoGameId).eq("word", word),
       )
       .unique();
@@ -195,7 +195,7 @@ export const _cacheUnknownWord = internalMutation({
   handler: async (ctx, { contextoGameId, word, error }) => {
     const existing = await ctx.db
       .query("unknownWords")
-      .withIndex("by_game_word", (q) =>
+      .withIndex("by_contextoGameId_and_word", (q) =>
         q.eq("contextoGameId", contextoGameId).eq("word", word),
       )
       .unique();

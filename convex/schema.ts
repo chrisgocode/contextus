@@ -192,7 +192,7 @@ export default defineSchema({
     word: v.string(),
     // Contexto's message for the word, shown to the player as-is.
     error: v.string(),
-  }).index("by_game_word", ["contextoGameId", "word"]),
+  }).index("by_contextoGameId_and_word", ["contextoGameId", "word"]),
 
   pendingRequests: defineTable({
     roomId: v.id("rooms"),
