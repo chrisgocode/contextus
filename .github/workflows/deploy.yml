@@ -27,6 +27,8 @@ permissions: {}
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Waits for a required reviewer's approval, and only runs from main.
+    environment: Production
     permissions:
       contents: read
     concurrency:

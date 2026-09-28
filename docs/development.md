@@ -92,7 +92,7 @@ Linting uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (`.oxlintrc.json`)
 
 ## Deployment
 
-Merging to `main` does not deploy. [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) keeps a `chore(main): release X.Y.Z` PR open that collects every merged commit into `CHANGELOG.md` and bumps the version in `package.json`. To ship, merge the release PR: it tags `vX.Y.Z`, publishes a GitHub Release, and runs `.github/workflows/deploy.yml` on the tag. Deploy runs `convex deploy`, then `vercel deploy --prod`, so the new frontend never goes live against old functions. To redeploy or roll back, run the Deploy workflow by hand with an earlier tag. See [ADR 0003](adr/0003-batched-releases.md).
+Merging to `main` does not deploy. [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) keeps a `chore(main): release X.Y.Z` PR open that collects every merged commit into `CHANGELOG.md` and bumps the version in `package.json`. To ship, merge the release PR: it tags `vX.Y.Z`, publishes a GitHub Release, and runs `.github/workflows/deploy.yml` on the tag. The deploy job uses the `Production` environment, so it waits until a required reviewer approves it in the Actions tab. Deploy runs `convex deploy`, then `vercel deploy --prod`, so the new frontend never goes live against old functions. To redeploy or roll back, run the Deploy workflow from `main` with an earlier tag. It only accepts `vX.Y.Z` tags on `main`. See [ADR 0003](adr/0003-batched-releases.md).
 
 Commit types decide the version bump: `fix` bumps the patch and `feat` the minor, and before 1.0 a breaking change bumps the minor too. Only `feat`, `fix`, `perf`, and `revert` commits appear in the changelog.
 
