@@ -92,14 +92,8 @@ function GuestAccountPrompt() {
   const dismissPrompt = useMutation(api.users.dismissGuestAccountPrompt);
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }, []);
   const dismiss = useCallback(async () => {
-    clearTimer();
     try {
       await dismissPrompt({});
       dialogRef.current?.close();
@@ -109,18 +103,14 @@ function GuestAccountPrompt() {
         context: "guestPrompt.dismiss",
       });
     }
-  }, [clearTimer, dismissPrompt]);
-  const scheduleDismiss = useCallback(() => {
-    clearTimer();
-    timerRef.current = setTimeout(() => void dismiss(), 10_000);
-  }, [clearTimer, dismiss]);
+  }, [dismissPrompt]);
 
+  // No auto-dismiss: showModal() moves focus inside, and closing a modal on a
+  // timer takes it away from keyboard and screen-reader users mid-read.
   useEffect(() => {
     if (prompt === null || prompt === undefined) return;
     if (dialogRef.current?.open !== true) dialogRef.current?.showModal();
-    scheduleDismiss();
-    return clearTimer;
-  }, [clearTimer, prompt, scheduleDismiss]);
+  }, [prompt]);
 
   if (prompt === null || prompt === undefined) return null;
   return (
@@ -131,13 +121,6 @@ function GuestAccountPrompt() {
       onCancel={(event) => {
         event.preventDefault();
         void dismiss();
-      }}
-      onMouseEnter={clearTimer}
-      onMouseLeave={scheduleDismiss}
-      onFocusCapture={clearTimer}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget))
-          scheduleDismiss();
       }}
     >
       <div className="flex flex-col gap-4">

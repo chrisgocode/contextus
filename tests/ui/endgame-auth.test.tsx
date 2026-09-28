@@ -102,6 +102,30 @@ describe("EndGameBanner", () => {
     expect(mocks.dismissPrompt).toHaveBeenCalledWith({});
     expect(mocks.push).toHaveBeenCalledWith("/signin?redirectTo=%2F");
   });
+
+  it("keeps the guest prompt open until the player answers it", () => {
+    vi.useFakeTimers();
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "guesses:listForGame") return { sorted: [] };
+      if (name === "users:getGuestAccountPrompt") return { messageIndex: 0 };
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    render(
+      <EndGameBanner
+        answerLemma="apple"
+        gameId={"game" as never}
+        status="won"
+      />,
+    );
+
+    vi.advanceTimersByTime(60_000);
+    vi.useRealTimers();
+    expect(mocks.dismissPrompt).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("dialog", { name: "Save your progress" }),
+    ).toHaveProperty("open", true);
+  });
 });
 
 describe("SignIn", () => {

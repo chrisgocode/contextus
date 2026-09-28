@@ -90,7 +90,7 @@ describe("AchievementUnlockQueue", () => {
     const onItemDone = vi.fn();
     const bronze = achievementGroups[0];
 
-    render(
+    const { container } = render(
       <AchievementUnlockQueue
         items={[
           {
@@ -109,6 +109,10 @@ describe("AchievementUnlockQueue", () => {
     expect(
       screen.getByText("Bronze achievement unlocked: Bullseye"),
     ).toBeVisible();
+    expect(container.querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(
+      screen.queryByRole("heading", { name: "Bullseye" }),
+    ).not.toBeInTheDocument();
     vi.runAllTimers();
     expect(onItemDone).toHaveBeenCalledOnce();
   });

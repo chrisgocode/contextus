@@ -123,6 +123,14 @@ export function ProfileClient({ username }: { username: string }) {
   const profileUsername =
     loadedProfile.displayUsername ?? loadedProfile.username ?? "";
   const isBusy = isSaving;
+  const avatar = (
+    <Avatar className="h-20 w-20">
+      {avatarSrc && <AvatarImage src={avatarSrc} alt={displayName} />}
+      <AvatarFallback className="text-2xl">
+        {displayName.slice(0, 1).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  );
 
   function beginEditing() {
     if (!canEdit) return;
@@ -237,15 +245,18 @@ export function ProfileClient({ username }: { username: string }) {
             className="hidden"
             onChange={handleAvatarChange}
           />
-          <Avatar
-            className={`h-20 w-20 ${canEdit ? "cursor-pointer" : ""}`}
-            onClick={handleAvatarClick}
-          >
-            {avatarSrc && <AvatarImage src={avatarSrc} alt={displayName} />}
-            <AvatarFallback className="text-2xl">
-              {displayName.slice(0, 1).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          {canEdit ? (
+            <button
+              type="button"
+              aria-label="Change profile picture"
+              className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={handleAvatarClick}
+            >
+              {avatar}
+            </button>
+          ) : (
+            avatar
+          )}
           {!isEditing && (
             <div className="min-w-0">
               <h2 className="truncate text-2xl font-semibold">{displayName}</h2>

@@ -73,6 +73,36 @@ describe("ProfileClient", () => {
     expect(screen.getByText("Profile not found.")).toBeVisible();
   });
 
+  it("opens the avatar picker from the keyboard", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ProfileClient username="alex" />);
+    const fileInput =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    const pickFile = vi.fn();
+    fileInput?.addEventListener("click", pickFile);
+
+    screen.getByRole("button", { name: "Change profile picture" }).focus();
+    await user.keyboard("{Enter}");
+
+    expect(pickFile).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Name")).toBeVisible();
+  });
+
+  it("does not offer avatar changes on someone else's profile", () => {
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "users:getByUsername")
+        return { ...profile, isCurrentUser: false };
+      if (name === "users:getActivityGraph") return { days: [] };
+      if (name === "achievements:listForProfile") return { achievements: [] };
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    render(<ProfileClient username="alex" />);
+    expect(
+      screen.queryByRole("button", { name: "Change profile picture" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("validates required profile fields before saving", async () => {
     const user = userEvent.setup();
     render(<ProfileClient username="alex" />);
