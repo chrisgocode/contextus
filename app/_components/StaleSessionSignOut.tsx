@@ -1,7 +1,7 @@
 "use client";
 
 import { useConvexAuth, useQuery } from "convex/react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { reportClientError } from "@/lib/report-error";
 
@@ -23,14 +23,14 @@ export function StaleSessionSignOut() {
     api.users.staleSession,
     isAuthenticated ? {} : "skip",
   );
-  const leaving = useLeaving();
-
   useEffect(() => {
     if (!sessionId) return;
-    const timeout = setTimeout(() => {
+    let leaving = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const attempt = () => {
       // The page that started sign-in stays loaded until the redirect lands,
       // and reloading it would cancel the sign-in.
-      if (leaving.current) return;
+      if (leaving) return;
       fetch("/api/auth/stale", {
         method: "POST",
         body: JSON.stringify({ sessionId }),
@@ -39,7 +39,7 @@ export function StaleSessionSignOut() {
           if (!response.ok) {
             throw new Error(`Sign-out failed: ${response.status}`);
           }
-          if (!leaving.current) window.location.reload();
+          if (!leaving) window.location.reload();
         })
         .catch((err: unknown) => {
           reportClientError(err, {
@@ -48,29 +48,28 @@ export function StaleSessionSignOut() {
             showToast: false,
           });
         });
-    }, STALE_SIGN_OUT_DELAY_MS);
-    return () => clearTimeout(timeout);
-  }, [sessionId, leaving]);
-
-  return null;
-}
-
-function useLeaving() {
-  const leaving = useRef(false);
-  useEffect(() => {
+    };
+    const schedule = () => {
+      timeout = setTimeout(attempt, STALE_SIGN_OUT_DELAY_MS);
+    };
     const leave = () => {
-      leaving.current = true;
+      leaving = true;
     };
-    // A page restored from the back/forward cache is staying after all.
     const stay = () => {
-      leaving.current = false;
+      if (!leaving) return;
+      leaving = false;
+      clearTimeout(timeout);
+      schedule();
     };
+    schedule();
     window.addEventListener("beforeunload", leave);
     window.addEventListener("pageshow", stay);
     return () => {
+      clearTimeout(timeout);
       window.removeEventListener("beforeunload", leave);
       window.removeEventListener("pageshow", stay);
     };
-  }, []);
-  return leaving;
+  }, [sessionId]);
+
+  return null;
 }

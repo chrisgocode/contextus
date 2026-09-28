@@ -68,6 +68,11 @@ describe("StaleSessionSignOut", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     window.dispatchEvent(new Event("pageshow"));
+    await wait(STALE_SIGN_OUT_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/auth/stale", {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "guest-session" }),
+    });
   });
 
   it("reports a failed sign-out", async () => {
