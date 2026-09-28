@@ -1,11 +1,15 @@
 import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileClient } from "@/app/(app)/user/[username]/_components/ProfileClient";
+import UserProfilePage from "@/app/(app)/user/[username]/page";
 import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   generateUploadUrl: vi.fn(),
+  notFound: vi.fn(() => {
+    throw new Error("NEXT_NOT_FOUND");
+  }),
   replace: vi.fn(),
   updateProfile: vi.fn(),
   useMutation: vi.fn(),
@@ -17,6 +21,7 @@ vi.mock("convex/react", () => ({
   useQuery: mocks.useQuery,
 }));
 vi.mock("next/navigation", () => ({
+  notFound: mocks.notFound,
   useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
@@ -135,5 +140,22 @@ describe("ProfileClient", () => {
     await user.click(screen.getByRole("button", { name: "Edit Profile" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Username is already taken.")).toBeVisible();
+  });
+});
+
+describe("UserProfilePage", () => {
+  it("decodes the username route parameter", async () => {
+    const page = await UserProfilePage({
+      params: Promise.resolve({ username: "%C3%A9lodie" }),
+    });
+
+    expect(page.props).toEqual({ username: "élodie" });
+  });
+
+  it("renders not found for a malformed username escape", async () => {
+    await expect(
+      UserProfilePage({ params: Promise.resolve({ username: "%E0%A4%A" }) }),
+    ).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mocks.notFound).toHaveBeenCalledOnce();
   });
 });
