@@ -264,6 +264,45 @@ describe("RoomPage", () => {
     expect(screen.getByRole("heading", { name: "ABCDEF" })).toBeVisible();
   });
 
+  it("ignores a previous viewer's join failure while the new join is pending", async () => {
+    let viewerUserId = "old-guest";
+    let rejectOld!: (error: Error) => void;
+    let resolveNew!: (value: null) => void;
+    mocks.join
+      .mockImplementationOnce(
+        () => new Promise((_, reject) => (rejectOld = reject)),
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveNew = resolve)),
+      );
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode")
+        return { ...room, viewerUserId, members: [] };
+      if (name === "games:getActive" || name === "games:listFinished")
+        return undefined;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    const view = await renderRoom();
+    expect(mocks.join).toHaveBeenCalledTimes(1);
+
+    viewerUserId = "new-guest";
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    await waitFor(() => expect(mocks.join).toHaveBeenCalledTimes(2));
+    await act(async () => rejectOld(new Error("Old session expired")));
+
+    expect(
+      screen.queryByText("Could not join room. Try again."),
+    ).not.toBeInTheDocument();
+    expect(reportClientError).not.toHaveBeenCalled();
+    expect(mocks.join).toHaveBeenCalledTimes(2);
+    await act(async () => resolveNew(null));
+  });
+
   it("waits for a stale session to sign out before joining", async () => {
     mocks.join.mockRejectedValue(new Error("Session expired"));
     mocks.useQuery.mockImplementation((reference) => {
@@ -278,6 +317,8 @@ describe("RoomPage", () => {
 
     expect(mocks.join).not.toHaveBeenCalled();
     expect(reportClientError).not.toHaveBeenCalled();
+    expect(screen.getByText("Session expired. Signing you out…")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 
   it("offers account creation when automatic guest joining hits the limit", async () => {
