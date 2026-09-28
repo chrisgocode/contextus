@@ -13,7 +13,7 @@ export const start = mutation({
     if (room.status !== "active") {
       throw new ConvexError("Room not found");
     }
-    if (contextoGameId < 1) {
+    if (!Number.isInteger(contextoGameId) || contextoGameId < 1) {
       throw new ConvexError("Invalid game id");
     }
     const existing = await ctx.db
