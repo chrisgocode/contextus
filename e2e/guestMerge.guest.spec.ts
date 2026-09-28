@@ -94,16 +94,41 @@ for (const { authorize, returning } of [
           { name: "account", value: name, url: issuer },
         ]);
       }
-      // The page refreshes its token on load, and that response clears the
-      // OAuth verifier cookie. Signing in before it lands fails (#144).
-      const refreshed = page.waitForResponse(
-        (res) =>
-          res.url().endsWith("/api/auth") &&
-          (res.request().postData()?.includes('"refreshToken"') ?? false),
-      );
+      let releaseRefresh!: () => void;
+      let refreshReady!: () => void;
+      const held = new Promise<void>((resolve) => (releaseRefresh = resolve));
+      const ready = new Promise<void>((resolve) => (refreshReady = resolve));
+      await page.route("**/api/auth", async (route) => {
+        if (route.request().postDataJSON()?.args?.refreshToken === undefined) {
+          return route.continue();
+        }
+        const response = await route.fetch();
+        refreshReady();
+        await held;
+        await route.fulfill({ response });
+      });
       await page.goto("/signin");
-      await refreshed;
-      await page.getByRole("button", { name: "Continue with Google" }).click();
+      await ready;
+      const refreshResponse = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/auth") &&
+          response.request().postDataJSON()?.args?.refreshToken !== undefined,
+      );
+      const signInResponse = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/auth") &&
+          response.request().postDataJSON()?.args?.provider === "google",
+      );
+      const click = page
+        .getByRole("button", { name: "Continue with Google" })
+        .click();
+      try {
+        await signInResponse;
+      } finally {
+        releaseRefresh();
+      }
+      await refreshResponse;
+      await click;
       if (!returning) {
         await page.getByLabel("Account").fill(name);
         await page.getByRole("button", { name: "Sign in" }).click();
