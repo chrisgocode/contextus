@@ -21,6 +21,7 @@ import { getErrorData } from "@/lib/client-errors";
 import { roomPath } from "@/lib/room-code";
 import { reportClientError } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
+import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
 
 export default function Home() {
@@ -184,6 +185,7 @@ function CreateRoom({
               await settledAuth(true);
             }
             const { code } = await create({});
+            markRoomCreated(code);
             router.push(`/r/${code}`);
           } catch (err) {
             onOpeningChange(false);

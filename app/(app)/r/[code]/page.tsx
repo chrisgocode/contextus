@@ -19,6 +19,7 @@ import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
+import { clearCreatedRoom, isCreatedRoom } from "./_components/created-room";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
@@ -58,18 +59,27 @@ export default function RoomPage({
     ? data.members.some((m) => m.userId === data.viewerUserId)
     : false;
 
-  const activeGame = useQuery(
+  const created = isCreatedRoom(upper);
+  const activeGameResult = useQuery(
     api.games.getActive,
     data !== undefined && data !== null && isMember
       ? { roomId: data.room._id }
       : "skip",
   );
+  // A room this client just created has no game yet, so skip straight to the
+  // setup calendar rather than flashing the guess list skeleton.
+  const activeGame =
+    activeGameResult === undefined && created ? null : activeGameResult;
   const lastFinished = useQuery(
     api.games.listFinished,
     data !== undefined && data !== null && isMember && activeGame === null
       ? { roomId: data.room._id }
       : "skip",
   );
+
+  useEffect(() => {
+    if (activeGameResult !== undefined) clearCreatedRoom(upper);
+  }, [activeGameResult, upper]);
 
   useEffect(() => {
     if (data && data.room.status === "ended") {
@@ -121,8 +131,8 @@ export default function RoomPage({
     }
   }, [data, isAuthenticated, isMember, join, joinError, upper]);
 
-  if (isLoading) return <RoomSkeleton />;
-  if (data === undefined) return <RoomSkeleton />;
+  if (isLoading) return <RoomSkeleton waiting={created} />;
+  if (data === undefined) return <RoomSkeleton waiting={created} />;
   if (data === null)
     return (
       <Centered>
@@ -192,7 +202,7 @@ export default function RoomPage({
       </Centered>
     );
   }
-  if (!isMember) return <RoomSkeleton />;
+  if (!isMember) return <RoomSkeleton waiting={created} />;
 
   return (
     <RoomLoaded

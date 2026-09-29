@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
+import { markRoomCreated } from "@/app/(app)/r/[code]/_components/created-room";
 import RoomPage from "@/app/(app)/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
 import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
@@ -163,6 +164,21 @@ describe("RoomPage", () => {
     expect(
       screen.getByText("Bronze achievement unlocked: Bullseye"),
     ).toBeVisible();
+  });
+
+  it("opens a room this client just created on game setup", async () => {
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode") return room;
+      if (name === "games:getActive") return undefined;
+      if (name === "games:listFinished") return [];
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    markRoomCreated("ABCDEF");
+    await renderRoom();
+
+    expect(screen.getByText("Game setup")).toBeVisible();
   });
 
   it("copies the room code", async () => {
