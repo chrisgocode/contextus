@@ -15,13 +15,13 @@ export const RATE_LIMITED_MESSAGE =
 // so one script could get it throttled for everyone. These keep any one user
 // well under that, and cap how many users a script can mint to multiply it.
 export const rateLimits = {
-  guess: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 20 },
+  guess: { kind: "token bucket", rate: 40, period: MINUTE, capacity: 30 },
   // Spent per tip requested, so a hint that walks past guessed words costs more.
-  hint: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 10 },
-  giveup: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 5 },
-  createRoom: { kind: "token bucket", rate: 20, period: HOUR, capacity: 10 },
+  hint: { kind: "token bucket", rate: 15, period: MINUTE, capacity: 15 },
+  giveup: { kind: "token bucket", rate: 15, period: MINUTE, capacity: 8 },
+  createRoom: { kind: "token bucket", rate: 30, period: HOUR, capacity: 20 },
   // Guest sign-ups carry no identity to key on, so this one is shared.
-  createGuest: { kind: "token bucket", rate: 60, period: MINUTE, capacity: 60 },
+  createGuest: { kind: "token bucket", rate: 80, period: MINUTE, capacity: 80 },
 } as const;
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimits);

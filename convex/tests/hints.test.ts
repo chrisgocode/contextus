@@ -174,30 +174,37 @@ test("a walking hint starts at the first unguessed rank", async () => {
 
 test("hostHint: spends a rate limit token per tip it asks for", async () => {
   const t = setupTest();
-  // Tips for ranks 2 to 6 were guessed at other ranks, as if guessed mid-walk.
-  const guessed = ["two", "three", "four", "five", "six"];
+  // Tips for ranks 2 to 10 were guessed at other ranks, as if guessed
+  // mid-walk, so each hint walks the full MAX_WALK_ITERATIONS tips.
+  const taken = Array.from(
+    { length: MAX_WALK_ITERATIONS - 1 },
+    (_, i) => i + 2,
+  );
   const oracle = fakeWordOracle({
     guesses: {
       1336: {
         close: 1,
-        ...Object.fromEntries(guessed.map((w, i) => [w, i + 1002])),
+        ...Object.fromEntries(
+          taken.map((rank) => [`taken${rank}`, rank + 1000]),
+        ),
       },
     },
     tips: {
       1336: {
-        ...Object.fromEntries(guessed.map((w, i) => [i + 2, w])),
-        7: "seven",
-        8: "eight",
+        ...Object.fromEntries(taken.map((rank) => [rank, `taken${rank}`])),
+        [MAX_WALK_ITERATIONS + 1]: "open",
       },
     },
   });
   const { host, gameId } = await startedGame(t);
-  for (const word of ["close", ...guessed]) {
-    await asUser(t, host).action(api.guesses.submit, { gameId, word });
+  for (const rank of [1, ...taken]) {
+    await asUser(t, host).action(api.guesses.submit, {
+      gameId,
+      word: rank === 1 ? "close" : `taken${rank}`,
+    });
   }
-  // Walks past ranks 2 to 6 to record "seven": six tips.
+  // One full walk fits in the bucket, but two don't.
   await asUser(t, host).action(api.hints.hostHint, { gameId });
-  // Rank 2 is still open, so this walks 2 to 8: seven tips, but four remain.
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
   ).rejects.toThrow(RATE_LIMITED_MESSAGE);
