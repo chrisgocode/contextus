@@ -14,6 +14,7 @@ import os from "os";
 import path from "path";
 import { config } from "dotenv";
 import { localConvexEnv } from "./local-convex-env.mjs";
+import { retryOnOcc } from "./retry-on-occ.mjs";
 
 // Same source as playwright.config.ts, so local runs pick up E2E_BASE_URL and
 // E2E_GOOGLE_ISSUER. Variables already set, as in CI, win.
@@ -54,10 +55,20 @@ fs.writeFileSync(
   ].join("\n"),
 );
 
-const result = spawnSync(
-  "npx",
-  ["convex", "env", "set", "--force", "--from-file", envFile],
-  { stdio: "inherit", env: childEnv },
-);
+// In CI this runs while `convex dev` makes its first push. Output is captured
+// to spot OCC failures, then passed through.
+const status = retryOnOcc(() => {
+  const result = spawnSync(
+    "npx",
+    ["convex", "env", "set", "--force", "--from-file", envFile],
+    { stdio: ["inherit", "pipe", "pipe"], env: childEnv, encoding: "utf8" },
+  );
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  return {
+    status: result.status,
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  };
+});
 fs.rmSync(path.dirname(envFile), { recursive: true });
-process.exit(result.status ?? 1);
+process.exit(status);
