@@ -1,7 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { evaluateCounterRules } from "./achievementRules";
-import { getAchievementDefinition } from "./achievements";
+import { applyCounterAchievements } from "../achievements";
 
 // Per-row merge handlers registered in `accountLifecycle.ts` and run by the
 // batched merge in `guestMerge.ts`. Each one moves a guest row onto the
@@ -248,7 +247,7 @@ export async function mergeGamePlayerStats(
     .unique();
   if (existing === null) {
     await ctx.db.patch("gamePlayerStats", row._id, { userId: targetUserId });
-    await applyCounterValue(
+    await applyCounterAchievements(
       ctx,
       targetUserId,
       "gameRealGuesses",
@@ -270,7 +269,7 @@ export async function mergeGamePlayerStats(
     updatedAt: Math.max(existing.updatedAt, row.updatedAt),
   });
   await ctx.db.delete("gamePlayerStats", row._id);
-  await applyCounterValue(
+  await applyCounterAchievements(
     ctx,
     targetUserId,
     "gameRealGuesses",
@@ -296,62 +295,13 @@ export async function reconcileCounterAchievements(
   };
   const now = Date.now();
   for (const [counterId, value] of Object.entries(counters)) {
-    await applyCounterValue(
+    await applyCounterAchievements(
       ctx,
       userId,
       counterId as keyof typeof counters,
       value,
       now,
     );
-  }
-}
-
-export async function applyCounterValue(
-  ctx: MergeCtx,
-  userId: Id<"users">,
-  counterId: Parameters<typeof evaluateCounterRules>[0],
-  value: number,
-  now: number,
-) {
-  for (const rule of evaluateCounterRules(counterId, value)) {
-    const definition = getAchievementDefinition(rule.achievementId);
-    if (definition?.active !== true) continue;
-    const progress = await ctx.db
-      .query("userAchievementProgress")
-      .withIndex("by_user_achievement", (q) =>
-        q.eq("userId", userId).eq("achievementId", rule.achievementId),
-      )
-      .unique();
-    const current = Math.min(value, rule.threshold);
-    if (progress === null) {
-      await ctx.db.insert("userAchievementProgress", {
-        userId,
-        achievementId: rule.achievementId,
-        current,
-        target: rule.threshold,
-        hidden: definition.hidden,
-        updatedAt: now,
-      });
-    } else if (current > progress.current) {
-      await ctx.db.patch("userAchievementProgress", progress._id, {
-        current,
-        updatedAt: now,
-      });
-    }
-    if (!rule.shouldUnlock) continue;
-    const unlocked = await ctx.db
-      .query("userAchievements")
-      .withIndex("by_user_achievement", (q) =>
-        q.eq("userId", userId).eq("achievementId", rule.achievementId),
-      )
-      .unique();
-    if (unlocked === null) {
-      await ctx.db.insert("userAchievements", {
-        userId,
-        achievementId: rule.achievementId,
-        unlockedAt: now,
-      });
-    }
   }
 }
 

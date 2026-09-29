@@ -276,6 +276,83 @@ test("guest merge unlocks achievements crossed by combined progress", async () =
   expect(achievement?.unlocked).toBe(true);
 });
 
+test("guest merge refreshes counter progress metadata from the achievement definition", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 0,
+      yellowGuesses: 10,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId: target,
+      achievementId: "the_mellow_yellow",
+      current: 5,
+      target: 200,
+      hidden: true,
+      updatedAt: 1,
+    });
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const progress = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievementProgress")
+      .withIndex("by_user_achievement", (q) =>
+        q.eq("userId", target).eq("achievementId", "the_mellow_yellow"),
+      )
+      .unique(),
+  );
+  expect(progress).toMatchObject({ current: 10, target: 100, hidden: false });
+});
+
+test("repeated guest merges keep one unlock at its earliest time", async () => {
+  const t = setupTest();
+  const firstGuest = await seedUser(t, { isAnonymous: true });
+  const secondGuest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    for (const userId of [firstGuest, secondGuest]) {
+      await ctx.db.insert("userAchievementStats", {
+        userId,
+        redGuesses: 0,
+        yellowGuesses: 120,
+        greenGuesses: 0,
+        uniqueSolves: 0,
+      });
+    }
+  });
+
+  await mergeGuest(t, firstGuest, target);
+  const firstUnlock = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievements")
+      .withIndex("by_user_achievement", (q) =>
+        q.eq("userId", target).eq("achievementId", "the_mellow_yellow"),
+      )
+      .unique(),
+  );
+  await mergeGuest(t, secondGuest, target);
+
+  const unlocks = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievements")
+      .withIndex("by_user_achievement", (q) =>
+        q.eq("userId", target).eq("achievementId", "the_mellow_yellow"),
+      )
+      .collect(),
+  );
+  expect(firstUnlock).not.toBeNull();
+  expect(unlocks).toEqual([
+    expect.objectContaining({ unlockedAt: firstUnlock?.unlockedAt }),
+  ]);
+});
+
 test("guest merge removes the guest identity once transfer finishes", async () => {
   const t = setupTest();
   const guest = await seedUser(t, { isAnonymous: true });
