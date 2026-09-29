@@ -311,6 +311,76 @@ test("guest merge refreshes counter progress metadata from the achievement defin
   expect(progress).toMatchObject({ current: 10, target: 100, hidden: false });
 });
 
+test("guest merge keeps refreshed counter progress within the refreshed target", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 0,
+      yellowGuesses: 10,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId: target,
+      achievementId: "the_mellow_yellow",
+      current: 150,
+      target: 200,
+      hidden: false,
+      updatedAt: 1,
+    });
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const progress = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievementProgress")
+      .withIndex("by_user_achievement", (q) =>
+        q.eq("userId", target).eq("achievementId", "the_mellow_yellow"),
+      )
+      .unique(),
+  );
+  expect(progress).toMatchObject({ current: 100, target: 100 });
+});
+
+test("guest merge leaves counter progress untouched when nothing changes", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userAchievementStats", {
+      userId: guest,
+      redGuesses: 0,
+      yellowGuesses: 10,
+      greenGuesses: 0,
+      uniqueSolves: 0,
+    });
+    await ctx.db.insert("userAchievementProgress", {
+      userId: target,
+      achievementId: "the_mellow_yellow",
+      current: 20,
+      target: 100,
+      hidden: false,
+      updatedAt: 1,
+    });
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const progress = await t.run(async (ctx) =>
+    ctx.db
+      .query("userAchievementProgress")
+      .withIndex("by_user_achievement", (q) =>
+        q.eq("userId", target).eq("achievementId", "the_mellow_yellow"),
+      )
+      .unique(),
+  );
+  expect(progress).toMatchObject({ current: 20, target: 100, updatedAt: 1 });
+});
+
 test("repeated guest merges keep one unlock at its earliest time", async () => {
   const t = setupTest();
   const firstGuest = await seedUser(t, { isAnonymous: true });

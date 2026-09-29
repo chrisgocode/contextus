@@ -136,8 +136,20 @@ function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
           updatedAt: now,
         });
       } else {
+        // A stale row can hold more than a lowered target allows.
+        const nextCurrent = Math.min(
+          target,
+          Math.max(row.current, clampedCurrent),
+        );
+        if (
+          nextCurrent === row.current &&
+          target === row.target &&
+          hidden === row.hidden
+        ) {
+          return;
+        }
         await ctx.db.patch("userAchievementProgress", row._id, {
-          current: Math.max(row.current, clampedCurrent),
+          current: nextCurrent,
           target,
           hidden,
           updatedAt: now,
