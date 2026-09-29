@@ -10,6 +10,7 @@ import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(),
   join: vi.fn(),
+  leave: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
   signIn: vi.fn(),
@@ -90,6 +91,7 @@ beforeEach(() => {
     value: { writeText: mocks.clipboardWrite },
   });
   mocks.clipboardWrite.mockResolvedValue(undefined);
+  mocks.leave.mockResolvedValue(null);
   mocks.useConvexAuth.mockReturnValue({
     isAuthenticated: true,
     isLoading: false,
@@ -97,7 +99,8 @@ beforeEach(() => {
   mocks.useAction.mockReturnValue(mocks.submit);
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
-    if (name === "rooms:leave" || name === "rooms:endRoom") return vi.fn();
+    if (name === "rooms:leave") return mocks.leave;
+    if (name === "rooms:endRoom") return vi.fn();
     if (name === "rooms:join") return mocks.join;
     throw new Error(`Unexpected mutation: ${name}`);
   });
@@ -179,6 +182,18 @@ describe("RoomPage", () => {
     await renderRoom();
 
     expect(screen.getByText("Game setup")).toBeVisible();
+  });
+
+  it("leaves the room only after navigating away from it", async () => {
+    const user = userEvent.setup();
+    const view = await renderRoom();
+
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+    expect(mocks.push).toHaveBeenCalledWith("/");
+    expect(mocks.leave).not.toHaveBeenCalled();
+
+    view.unmount();
+    expect(mocks.leave).toHaveBeenCalledWith({ roomId: "room" });
   });
 
   it("copies the room code", async () => {

@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
@@ -48,7 +49,10 @@ export default function RoomPage({
   const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
   const joinGenerationRef = useRef(0);
-  const leavingRef = useRef(false);
+  // Set when the viewer leaves. The leave mutation runs once the page has
+  // unmounted: running it first would re-render this page as a non-member
+  // (the neutral skeleton) until the home route arrived.
+  const leavingRoomRef = useRef<Id<"rooms"> | null>(null);
 
   // Start fetching the calendar chunk now rather than once the room and game
   // queries say it's needed, so it isn't a second round trip for hosts.
@@ -77,6 +81,20 @@ export default function RoomPage({
       : "skip",
   );
 
+  useEffect(
+    () => () => {
+      const roomId = leavingRoomRef.current;
+      if (roomId === null) return;
+      leave({ roomId }).catch((err) => {
+        reportClientError(err, {
+          userMessage: "Could not leave room.",
+          context: "room.leave",
+        });
+      });
+    },
+    [leave],
+  );
+
   useEffect(() => {
     if (activeGameResult !== undefined) clearCreatedRoom(upper);
   }, [activeGameResult, upper]);
@@ -103,7 +121,7 @@ export default function RoomPage({
       data.room.status === "active" &&
       !isMember &&
       joinError === null &&
-      !leavingRef.current &&
+      leavingRoomRef.current === null &&
       !joiningRef.current
     ) {
       joiningRef.current = true;
@@ -209,18 +227,9 @@ export default function RoomPage({
       data={data}
       activeGame={activeGame}
       lastFinished={lastFinished}
-      onLeave={async () => {
-        leavingRef.current = true;
-        try {
-          await leave({ roomId: data.room._id });
-          router.push("/");
-        } catch (err) {
-          leavingRef.current = false;
-          reportClientError(err, {
-            userMessage: "Could not leave room.",
-            context: "room.leave",
-          });
-        }
+      onLeave={() => {
+        leavingRoomRef.current = data.room._id;
+        router.push("/");
       }}
       onEnd={async () => {
         try {
