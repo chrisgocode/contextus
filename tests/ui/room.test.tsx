@@ -2,7 +2,12 @@ import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
-import { markRoomCreated } from "@/app/(app)/r/[code]/_components/created-room";
+import {
+  clearCreatedRoom,
+  markRoomCreated,
+} from "@/app/(app)/r/[code]/_components/created-room";
+import { RoomSkeleton } from "@/app/(app)/r/[code]/_components/RoomSkeleton";
+import RoomLoading from "@/app/(app)/r/[code]/loading";
 import RoomPage from "@/app/(app)/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
 import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
@@ -35,6 +40,7 @@ vi.mock("@convex-dev/auth/react", () => ({
   useAuthActions: () => ({ signIn: mocks.signIn }),
 }));
 vi.mock("next/navigation", () => ({
+  useParams: () => ({ code: "abcdef" }),
   useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
 }));
 vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
@@ -114,7 +120,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  clearCreatedRoom("ABCDEF");
+});
 
 describe("RoomPage", () => {
   it("shows winning guess unlocks after the active game disappears", async () => {
@@ -179,9 +188,23 @@ describe("RoomPage", () => {
       throw new Error(`Unexpected query: ${name}`);
     });
     markRoomCreated("ABCDEF");
-    await renderRoom();
+    const view = await renderRoom();
 
     expect(screen.getByText("Game setup")).toBeVisible();
+
+    // A later visit, before the game query resolves, is an ordinary one.
+    view.unmount();
+    await renderRoom();
+    expect(screen.queryByText("Game setup")).not.toBeInTheDocument();
+  });
+
+  it("keeps the calendar skeleton while a created room's route loads", () => {
+    const expected = render(<RoomSkeleton waiting />).container.innerHTML;
+    const neutral = render(<RoomSkeleton />).container.innerHTML;
+
+    expect(render(<RoomLoading />).container.innerHTML).toBe(neutral);
+    markRoomCreated("ABCDEF");
+    expect(render(<RoomLoading />).container.innerHTML).toBe(expected);
   });
 
   it("leaves the room only after navigating away from it", async () => {

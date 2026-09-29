@@ -63,7 +63,12 @@ export default function RoomPage({
     ? data.members.some((m) => m.userId === data.viewerUserId)
     : false;
 
-  const created = isCreatedRoom(upper);
+  // Consumed on mount, so a visit abandoned before the game query resolves
+  // can't leave the marker set for a later visit to the same room.
+  const [createdCode, setCreatedCode] = useState(() =>
+    isCreatedRoom(upper) ? upper : null,
+  );
+  const created = createdCode === upper;
   const activeGameResult = useQuery(
     api.games.getActive,
     data !== undefined && data !== null && isMember
@@ -72,6 +77,7 @@ export default function RoomPage({
   );
   // A room this client just created has no game yet, so skip straight to the
   // setup calendar rather than flashing the guess list skeleton.
+  if (created && activeGameResult !== undefined) setCreatedCode(null);
   const activeGame =
     activeGameResult === undefined && created ? null : activeGameResult;
   const lastFinished = useQuery(
@@ -95,9 +101,7 @@ export default function RoomPage({
     [leave],
   );
 
-  useEffect(() => {
-    if (activeGameResult !== undefined) clearCreatedRoom(upper);
-  }, [activeGameResult, upper]);
+  useEffect(() => clearCreatedRoom(upper), [upper]);
 
   useEffect(() => {
     if (data && data.room.status === "ended") {
