@@ -8,12 +8,12 @@
  */
 
 import { generateKeyPairSync } from "crypto";
-import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { config } from "dotenv";
 import { localConvexEnv } from "./local-convex-env.mjs";
+import { retryOnOcc, spawnCaptured } from "./retry-on-occ.mjs";
 
 // Same source as playwright.config.ts, so local runs pick up E2E_BASE_URL and
 // E2E_GOOGLE_ISSUER. Variables already set, as in CI, win.
@@ -54,10 +54,13 @@ fs.writeFileSync(
   ].join("\n"),
 );
 
-const result = spawnSync(
-  "npx",
-  ["convex", "env", "set", "--force", "--from-file", envFile],
-  { stdio: "inherit", env: childEnv },
+// In CI this runs while `convex dev` makes its first push.
+const status = retryOnOcc(() =>
+  spawnCaptured(
+    "npx",
+    ["convex", "env", "set", "--force", "--from-file", envFile],
+    childEnv,
+  ),
 );
 fs.rmSync(path.dirname(envFile), { recursive: true });
-process.exit(result.status ?? 1);
+process.exit(status);

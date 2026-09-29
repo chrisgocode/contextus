@@ -70,6 +70,11 @@ jobs:
             bunx convex dev --typecheck disable --tail-logs always > "$RUNNER_TEMP/convex.log" 2>&1 &
             configured=0
             for i in $(seq 1 180); do
+              # Runs before "Convex functions ready", since the push needs
+              # POSTHOG_PROJECT_TOKEN from this script. So the env set races
+              # the first push, and the script retries the OCC failures the
+              # backend returns when they overlap. No apostrophes in these
+              # comments: they would end the single-quoted script.
               if [ "$configured" -eq 0 ] && [ -f .env.local ] && grep -q "^CONVEX_DEPLOYMENT=" .env.local; then
                 node scripts/setup-e2e-convex-env.mjs > "$RUNNER_TEMP/convex-env.log" 2>&1 || finish 1
                 configured=1
