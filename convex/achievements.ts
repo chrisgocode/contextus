@@ -11,6 +11,9 @@ import {
   achievementDefinitions,
   createAchievementService,
 } from "./lib/achievements";
+import type { CounterRuleId } from "./lib/achievementRules";
+
+type DbCtx = Pick<MutationCtx, "db">;
 
 const INITIAL_STATS: AchievementStats = {
   redGuesses: 0,
@@ -86,9 +89,20 @@ export async function recordAcceptedGuessForAchievements(
   return await service.recordAcceptedGuess(event);
 }
 
-function createConvexAchievementRepository(
-  ctx: MutationCtx,
-): AchievementRepository {
+export async function applyCounterAchievements(
+  ctx: DbCtx,
+  userId: Id<"users">,
+  counterId: CounterRuleId,
+  value: number,
+  now: number,
+) {
+  const service = createAchievementService({
+    repo: createConvexAchievementRepository(ctx),
+  });
+  await service.applyCounter(userId, counterId, value, now);
+}
+
+function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
   return {
     async getOrCreateStats(userId) {
       const row = await getStatsRow(ctx, userId);
@@ -122,8 +136,20 @@ function createConvexAchievementRepository(
           updatedAt: now,
         });
       } else {
+        // A stale row can hold more than a lowered target allows.
+        const nextCurrent = Math.min(
+          target,
+          Math.max(row.current, clampedCurrent),
+        );
+        if (
+          nextCurrent === row.current &&
+          target === row.target &&
+          hidden === row.hidden
+        ) {
+          return;
+        }
         await ctx.db.patch("userAchievementProgress", row._id, {
-          current: Math.max(row.current, clampedCurrent),
+          current: nextCurrent,
           target,
           hidden,
           updatedAt: now,
@@ -277,7 +303,7 @@ function createConvexAchievementRepository(
   };
 }
 
-async function sumPlayerRealGuesses(ctx: MutationCtx, gameId: Id<"games">) {
+async function sumPlayerRealGuesses(ctx: DbCtx, gameId: Id<"games">) {
   let count = 0;
   for await (const row of ctx.db
     .query("gamePlayerStats")
@@ -287,7 +313,7 @@ async function sumPlayerRealGuesses(ctx: MutationCtx, gameId: Id<"games">) {
   return count;
 }
 
-async function getStatsRow(ctx: MutationCtx, userId: Id<"users">) {
+async function getStatsRow(ctx: DbCtx, userId: Id<"users">) {
   return await ctx.db
     .query("userAchievementStats")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -304,7 +330,7 @@ function statsFromRow(row: Doc<"userAchievementStats">): AchievementStats {
 }
 
 async function getProgressRow(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   userId: Id<"users">,
   achievementId: AchievementId,
 ) {
@@ -317,7 +343,7 @@ async function getProgressRow(
 }
 
 async function getOrCreateHistory(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   userId: Id<"users">,
   contextoGameId: number,
   now: number,

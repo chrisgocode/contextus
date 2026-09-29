@@ -9,10 +9,10 @@ import {
 import { GUEST_LIFETIME_MS } from "./guestEngagement";
 import {
   type MergeState,
-  applyCounterValue,
   reconcileCounterAchievements,
 } from "./guestMergeRows";
 import { addDays } from "./localTime";
+import { applyCounterAchievements } from "../achievements";
 import { mergeGuestIdentity, track } from "../analytics";
 
 type MergeCtx = Pick<MutationCtx, "db">;
@@ -150,7 +150,7 @@ async function finalizeMerge(ctx: MutationCtx, job: MergeJob) {
   }
   await reconcileCounterAchievements(ctx, job.targetUserId);
   if (job.streakBest > 0) {
-    await applyCounterValue(
+    await applyCounterAchievements(
       ctx,
       job.targetUserId,
       "streakDays",

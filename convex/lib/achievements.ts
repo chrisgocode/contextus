@@ -99,8 +99,6 @@ const STREAK_LOOKBACK_DAYS = Math.max(
   ...counterRulesFor("streakDays").map((rule) => rule.threshold),
 );
 
-const definitionById = new Map(achievementDefinitions.map((d) => [d.id, d]));
-
 type ColorBucket = "green" | "yellow" | "red";
 
 export function classifyDistance(distance: number): ColorBucket {
@@ -471,9 +469,18 @@ export function createAchievementService(deps: {
     }
   }
 
-  return { recordAcceptedGuess };
-}
+  // Applies a counter total computed outside a Game turn, like a Guest
+  // merge's combined totals, under the same policy as Game turns.
+  async function applyCounter(
+    userId: Id<"users">,
+    counterId: CounterRuleId,
+    value: number,
+    now: number,
+  ) {
+    await applyCounterRules(userId, counterId, value, now, async (...args) => {
+      await unlock(...args);
+    });
+  }
 
-export function getAchievementDefinition(achievementId: AchievementId) {
-  return definitionById.get(achievementId) ?? null;
+  return { recordAcceptedGuess, applyCounter };
 }
