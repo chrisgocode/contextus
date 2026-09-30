@@ -15,7 +15,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
@@ -49,10 +48,13 @@ export default function RoomPage({
   const [joinError, setJoinError] = useState<string | null>(null);
   const joiningRef = useRef(false);
   const joinGenerationRef = useRef(0);
-  // Set when the viewer leaves. The leave mutation runs once the page has
-  // unmounted: running it first would re-render this page as a non-member
-  // (the neutral skeleton) until the home route arrived.
-  const leavingRoomRef = useRef<Id<"rooms"> | null>(null);
+  // The room as it looked when the viewer clicked Leave. Once the leave
+  // mutation lands, the queries describe a non-member, so the page keeps
+  // showing this until the home route replaces it.
+  const [leavingView, setLeavingView] = useState<Omit<
+    RoomLoadedProps,
+    "onLeave" | "onEnd" | "copied" | "onCopy"
+  > | null>(null);
 
   // Start fetching the calendar chunk now rather than once the room and game
   // queries say it's needed, so it isn't a second round trip for hosts.
@@ -87,20 +89,6 @@ export default function RoomPage({
       : "skip",
   );
 
-  useEffect(
-    () => () => {
-      const roomId = leavingRoomRef.current;
-      if (roomId === null) return;
-      leave({ roomId }).catch((err) => {
-        reportClientError(err, {
-          userMessage: "Could not leave room.",
-          context: "room.leave",
-        });
-      });
-    },
-    [leave],
-  );
-
   useEffect(() => clearCreatedRoom(upper), [upper]);
 
   useEffect(() => {
@@ -125,7 +113,7 @@ export default function RoomPage({
       data.room.status === "active" &&
       !isMember &&
       joinError === null &&
-      leavingRoomRef.current === null &&
+      leavingView === null &&
       !joiningRef.current
     ) {
       joiningRef.current = true;
@@ -151,8 +139,53 @@ export default function RoomPage({
             joiningRef.current = false;
         });
     }
-  }, [data, isAuthenticated, isMember, join, joinError, upper]);
+  }, [data, isAuthenticated, isMember, join, joinError, leavingView, upper]);
 
+  const roomLoadedHandlers = {
+    onLeave: () => {
+      if (data == null || leavingView !== null) return;
+      setLeavingView({ data, activeGame, lastFinished });
+      router.push("/");
+      leave({ roomId: data.room._id }).catch((err) => {
+        setLeavingView(null);
+        reportClientError(err, {
+          userMessage: "Could not leave room.",
+          context: "room.leave",
+        });
+      });
+    },
+    onEnd: async () => {
+      if (data == null) return;
+      try {
+        await endRoom({ roomId: data.room._id });
+        router.push("/");
+      } catch (err) {
+        reportClientError(err, {
+          userMessage: "Could not end room.",
+          context: "room.end",
+        });
+      }
+    },
+    copied,
+    onCopy: () => {
+      if (data == null) return;
+      navigator.clipboard
+        .writeText(data.room.code)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+        .catch((err) => {
+          reportClientError(err, {
+            userMessage: "Copy failed.",
+            context: "room.clipboard",
+          });
+        });
+    },
+  };
+
+  if (leavingView !== null)
+    return <RoomLoaded {...leavingView} {...roomLoadedHandlers} />;
   if (isLoading) return <RoomSkeleton waiting={created} />;
   if (data === undefined) return <RoomSkeleton waiting={created} />;
   if (data === null)
@@ -231,36 +264,7 @@ export default function RoomPage({
       data={data}
       activeGame={activeGame}
       lastFinished={lastFinished}
-      onLeave={() => {
-        leavingRoomRef.current = data.room._id;
-        router.push("/");
-      }}
-      onEnd={async () => {
-        try {
-          await endRoom({ roomId: data.room._id });
-          router.push("/");
-        } catch (err) {
-          reportClientError(err, {
-            userMessage: "Could not end room.",
-            context: "room.end",
-          });
-        }
-      }}
-      copied={copied}
-      onCopy={() => {
-        navigator.clipboard
-          .writeText(data.room.code)
-          .then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          })
-          .catch((err) => {
-            reportClientError(err, {
-              userMessage: "Copy failed.",
-              context: "room.clipboard",
-            });
-          });
-      }}
+      {...roomLoadedHandlers}
     />
   );
 }

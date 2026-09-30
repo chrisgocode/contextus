@@ -207,16 +207,37 @@ describe("RoomPage", () => {
     expect(render(<RoomLoading />).container.innerHTML).toBe(expected);
   });
 
-  it("leaves the room only after navigating away from it", async () => {
+  it("keeps showing the room while leaving it", async () => {
+    let current = room;
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode") return current;
+      if (name === "games:getActive")
+        return { _id: "game", contextoGameId: 123 };
+      if (name === "games:listFinished") return [];
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
     const user = userEvent.setup();
     const view = await renderRoom();
 
     await user.click(screen.getByRole("button", { name: "Leave" }));
-    expect(mocks.push).toHaveBeenCalledWith("/");
-    expect(mocks.leave).not.toHaveBeenCalled();
-
-    view.unmount();
     expect(mocks.leave).toHaveBeenCalledWith({ roomId: "room" });
+    expect(mocks.push).toHaveBeenCalledWith("/");
+
+    // The mutation lands before the home route does.
+    current = {
+      ...room,
+      members: room.members.filter((m) => m.userId !== "user"),
+    };
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    expect(screen.getByText("ABCDEF")).toBeVisible();
+    expect(screen.getByText("Alex")).toBeVisible();
+    expect(mocks.join).not.toHaveBeenCalled();
   });
 
   it("copies the room code", async () => {
