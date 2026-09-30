@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -116,7 +116,7 @@ export function ProfileClient({ username }: { username: string }) {
   }
 
   if (profile === null || activityGraph === null || achievementState === null) {
-    return <p className="text-muted-foreground">Profile not found.</p>;
+    notFound();
   }
 
   const loadedProfile = profile;
