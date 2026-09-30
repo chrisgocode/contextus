@@ -23,7 +23,9 @@ async function proxy(request: NextRequest) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  const upstream = await fetch(new URL(path + request.nextUrl.search, host), {
+  // Prefix the host rather than resolving against it: `new URL("//evil.test",
+  // host)` would swap the host out.
+  const upstream = await fetch(new URL(host + path + request.nextUrl.search), {
     method: request.method,
     headers,
     body:

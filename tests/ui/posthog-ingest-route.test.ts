@@ -49,3 +49,11 @@ it("serves SDK assets from PostHog's asset host", async () => {
   expect(String(url)).toBe("https://us-assets.i.posthog.com/static/array.js");
   expect(new Headers(init.headers).get("cookie")).toBeNull();
 });
+
+it("keeps protocol-relative paths on PostHog's host", async () => {
+  const fetch = upstream();
+  await GET(new NextRequest("https://contextus.test/ingest//evil.test/x"));
+
+  const [url] = fetch.mock.calls[0] as unknown as [URL];
+  expect(new URL(url).host).toBe("us.i.posthog.com");
+});
