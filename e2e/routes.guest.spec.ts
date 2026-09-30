@@ -38,10 +38,39 @@ test("renders the static content pages", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("shows a missing profile", async ({ page }) => {
+test("shows the not-found page for an unknown route", async ({ page }) => {
+  const response = await page.goto("/this-page-does-not-exist");
+
+  expect(response?.status()).toBe(404);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Page not found" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Contextus" }),
+  ).toHaveAttribute("href", "/");
+});
+
+test("shows the profile not-found page for a missing profile", async ({
+  page,
+}) => {
   await page.goto("/user/doesnotexist");
 
-  await expect(page.getByText("Profile not found.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Profile not found" }),
+  ).toBeVisible();
+});
+
+test("shows the profile not-found page for unknown profile routes", async ({
+  page,
+}) => {
+  for (const path of ["/user", "/user/someone/extra"]) {
+    const response = await page.goto(path);
+
+    expect(response?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "Profile not found" }),
+    ).toBeVisible();
+  }
 });
 
 test("forbids framing and sends security headers", async ({ request }) => {

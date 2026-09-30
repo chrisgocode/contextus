@@ -69,8 +69,10 @@ describe("ProfileClient", () => {
     ).not.toBeInTheDocument();
 
     mocks.useQuery.mockReturnValue(null);
-    rerender(<ProfileClient username="missing" />);
-    expect(screen.getByText("Profile not found.")).toBeVisible();
+    expect(() => rerender(<ProfileClient username="missing" />)).toThrow(
+      "NEXT_NOT_FOUND",
+    );
+    expect(mocks.notFound).toHaveBeenCalled();
   });
 
   it("opens the avatar picker from the keyboard", async () => {
