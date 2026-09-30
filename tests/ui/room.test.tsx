@@ -2,6 +2,12 @@ import { Suspense } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACHIEVEMENT_UNLOCK_DISPLAY_MS } from "@/app/_components/AchievementUnlockQueue";
+import {
+  clearCreatedRoom,
+  markRoomCreated,
+} from "@/app/(app)/r/[code]/_components/created-room";
+import { RoomSkeleton } from "@/app/(app)/r/[code]/_components/RoomSkeleton";
+import RoomLoading from "@/app/(app)/r/[code]/loading";
 import RoomPage from "@/app/(app)/r/[code]/page";
 import { reportClientError } from "@/lib/report-error";
 import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
@@ -9,6 +15,7 @@ import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(),
   join: vi.fn(),
+  leave: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
   signIn: vi.fn(),
@@ -33,6 +40,7 @@ vi.mock("@convex-dev/auth/react", () => ({
   useAuthActions: () => ({ signIn: mocks.signIn }),
 }));
 vi.mock("next/navigation", () => ({
+  useParams: () => ({ code: "abcdef" }),
   useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
 }));
 vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
@@ -89,6 +97,7 @@ beforeEach(() => {
     value: { writeText: mocks.clipboardWrite },
   });
   mocks.clipboardWrite.mockResolvedValue(undefined);
+  mocks.leave.mockResolvedValue(null);
   mocks.useConvexAuth.mockReturnValue({
     isAuthenticated: true,
     isLoading: false,
@@ -96,7 +105,8 @@ beforeEach(() => {
   mocks.useAction.mockReturnValue(mocks.submit);
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
-    if (name === "rooms:leave" || name === "rooms:endRoom") return vi.fn();
+    if (name === "rooms:leave") return mocks.leave;
+    if (name === "rooms:endRoom") return vi.fn();
     if (name === "rooms:join") return mocks.join;
     throw new Error(`Unexpected mutation: ${name}`);
   });
@@ -110,7 +120,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  clearCreatedRoom("ABCDEF");
+});
 
 describe("RoomPage", () => {
   it("shows winning guess unlocks after the active game disappears", async () => {
@@ -163,6 +176,68 @@ describe("RoomPage", () => {
     expect(
       screen.getByText("Bronze achievement unlocked: Bullseye"),
     ).toBeVisible();
+  });
+
+  it("opens a room this client just created on game setup", async () => {
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode") return room;
+      if (name === "games:getActive") return undefined;
+      if (name === "games:listFinished") return [];
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    markRoomCreated("ABCDEF");
+    const view = await renderRoom();
+
+    expect(screen.getByText("Game setup")).toBeVisible();
+
+    // A later visit, before the game query resolves, is an ordinary one.
+    view.unmount();
+    await renderRoom();
+    expect(screen.queryByText("Game setup")).not.toBeInTheDocument();
+  });
+
+  it("keeps the calendar skeleton while a created room's route loads", () => {
+    const expected = render(<RoomSkeleton waiting />).container.innerHTML;
+    const neutral = render(<RoomSkeleton />).container.innerHTML;
+
+    expect(render(<RoomLoading />).container.innerHTML).toBe(neutral);
+    markRoomCreated("ABCDEF");
+    expect(render(<RoomLoading />).container.innerHTML).toBe(expected);
+  });
+
+  it("keeps showing the room while leaving it", async () => {
+    let current = room;
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode") return current;
+      if (name === "games:getActive")
+        return { _id: "game", contextoGameId: 123 };
+      if (name === "games:listFinished") return [];
+      if (name === "requests:listPending") return [];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    const user = userEvent.setup();
+    const view = await renderRoom();
+
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+    expect(mocks.leave).toHaveBeenCalledWith({ roomId: "room" });
+    expect(mocks.push).toHaveBeenCalledWith("/");
+
+    // The mutation lands before the home route does.
+    current = {
+      ...room,
+      members: room.members.filter((m) => m.userId !== "user"),
+    };
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    expect(screen.getByText("ABCDEF")).toBeVisible();
+    expect(screen.getByText("Alex")).toBeVisible();
+    expect(mocks.join).not.toHaveBeenCalled();
   });
 
   it("copies the room code", async () => {
