@@ -1,10 +1,9 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Avatar,
@@ -23,6 +22,7 @@ import { reportClientError } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
+import { useCreateRoom } from "../r/[code]/_components/room-entry";
 
 export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -94,42 +94,6 @@ export default function Home() {
   );
 }
 
-/**
- * Returns a function that resolves with `isAuthenticated` once Convex auth
- * has finished loading, so actions clicked early take the right path.
- * With `untilAuthenticated`, it waits for a signed-in client instead:
- * `signIn` resolves before the Convex client sends the new token.
- */
-function useSettledAuth() {
-  const { isLoading, isAuthenticated } = useConvexAuth();
-  const settled = useRef<boolean | null>(null);
-  const waiters = useRef<
-    {
-      untilAuthenticated: boolean;
-      resolve: (isAuthenticated: boolean) => void;
-    }[]
-  >([]);
-  useEffect(() => {
-    settled.current = isLoading ? null : isAuthenticated;
-    if (isLoading) return;
-    waiters.current = waiters.current.filter((waiter) => {
-      if (waiter.untilAuthenticated && !isAuthenticated) return true;
-      waiter.resolve(isAuthenticated);
-      return false;
-    });
-  }, [isLoading, isAuthenticated]);
-  return useCallback(
-    (untilAuthenticated = false) =>
-      settled.current === true ||
-      (settled.current === false && !untilAuthenticated)
-        ? Promise.resolve(settled.current)
-        : new Promise<boolean>((resolve) =>
-            waiters.current.push({ untilAuthenticated, resolve }),
-          ),
-    [],
-  );
-}
-
 function HomeIntro() {
   return (
     <section className="flex flex-col gap-3">
@@ -160,9 +124,7 @@ function CreateRoom({
   onOpeningChange: (opening: false | "waiting" | "unknown") => void;
 }) {
   const router = useRouter();
-  const { signIn } = useAuthActions();
-  const settledAuth = useSettledAuth();
-  const create = useMutation(api.rooms.create);
+  const createRoom = useCreateRoom();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -180,11 +142,7 @@ function CreateRoom({
           // The new room opens on the game setup calendar.
           preloadCalendar();
           try {
-            if (!(await settledAuth())) {
-              await signIn("anonymous");
-              await settledAuth(true);
-            }
-            const { code } = await create({});
+            const code = await createRoom();
             markRoomCreated(code);
             router.push(`/r/${code}`);
           } catch (err) {
