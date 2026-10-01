@@ -57,3 +57,13 @@ it("keeps protocol-relative paths on PostHog's host", async () => {
   const [url] = fetch.mock.calls[0] as unknown as [URL];
   expect(new URL(url).host).toBe("us.i.posthog.com");
 });
+
+it("keeps encoded separators inside the forwarded path", async () => {
+  const fetch = upstream();
+  await GET(
+    new NextRequest("https://contextus.test/ingest/a%2F%3F%23%40b/?ip=0"),
+  );
+
+  const [url] = fetch.mock.calls[0] as unknown as [URL];
+  expect(String(url)).toBe("https://us.i.posthog.com/a%2F%3F%23%40b/?ip=0");
+});
