@@ -11,6 +11,7 @@ import { generateRoomCode } from "./lib/code";
 import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
 import { upsertRoomActivity } from "./lib/roomActivity";
+import { closeRoom, reopenRoom } from "./lib/roomLifecycle";
 
 const MAX_CODE_RETRIES = 10;
 const MAX_GUEST_ACTIVE_ROOMS = 3;
@@ -133,7 +134,7 @@ async function handOffHost(
     .collect();
   const next = remaining.sort((a, b) => a.joinedAt - b.joinedAt)[0];
   if (next === undefined) {
-    await ctx.db.patch("rooms", room._id, { status: "ended" });
+    await closeRoom(ctx, room._id);
     return false;
   }
   await ctx.db.patch("rooms", room._id, { hostUserId: next.userId });
@@ -184,14 +185,7 @@ export const endRoom = mutation({
   handler: async (ctx, { roomId }) => {
     const { userId, room } = await requireHostByRoom(ctx, { roomId });
     if (room.status !== "active") return null;
-    await ctx.db.patch("rooms", roomId, { status: "ended" });
-    const members = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
-      .collect();
-    for (const member of members) {
-      await ctx.db.patch("roomMembers", member._id, { active: false });
-    }
+    const members = await closeRoom(ctx, roomId);
     await track(ctx, userId, {
       name: "room_ended",
       properties: { room_id: roomId, member_count: members.length },
@@ -230,14 +224,7 @@ export const playAgain = mutation({
 
     const code = await generateUniqueRoomCode(ctx);
     const now = Date.now();
-    await ctx.db.patch("rooms", roomId, {
-      code,
-      hostUserId: userId,
-      status: "active",
-    });
-    for (const member of members) {
-      await ctx.db.patch("roomMembers", member._id, { active: true });
-    }
+    await reopenRoom(ctx, roomId, { code, hostUserId: userId }, members);
     await upsertRoomActivity(ctx, roomId, now);
     return { roomId, code };
   },
