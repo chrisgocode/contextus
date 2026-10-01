@@ -16,8 +16,20 @@ const REQUEST_HEADERS = [
 const RESPONSE_HEADERS = ["cache-control", "content-type"];
 
 async function proxy(request: NextRequest) {
-  const path = request.nextUrl.pathname.replace(/^\/ingest/, "");
-  const host = path.startsWith("/static/") ? ASSET_HOST : API_HOST;
+  const segments = request.nextUrl.pathname.split("/").slice(2);
+  const host = segments[0] === "static" ? ASSET_HOST : API_HOST;
+  // Re-encode each segment so the path can't reach the upstream URL's host,
+  // query, or fragment.
+  let path: string;
+  try {
+    path = segments
+      .map((segment) => encodeURIComponent(decodeURIComponent(segment)))
+      .join("/");
+  } catch {
+    // A malformed escape like `%ZZ` can't be decoded.
+    return new Response(null, { status: 400 });
+  }
+  const query = request.nextUrl.search.slice(1);
   const headers = new Headers();
   for (const name of REQUEST_HEADERS) {
     const value = request.headers.get(name);
@@ -25,14 +37,17 @@ async function proxy(request: NextRequest) {
   }
   // Prefix the host rather than resolving against it: `new URL("//evil.test",
   // host)` would swap the host out.
-  const upstream = await fetch(new URL(host + path + request.nextUrl.search), {
-    method: request.method,
-    headers,
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
-  });
+  const upstream = await fetch(
+    new URL(`${host}/${path}${query ? `?${query}` : ""}`),
+    {
+      method: request.method,
+      headers,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await request.arrayBuffer(),
+    },
+  );
   const responseHeaders = new Headers();
   for (const name of RESPONSE_HEADERS) {
     const value = upstream.headers.get(name);
