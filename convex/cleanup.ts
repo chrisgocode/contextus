@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import { expireGuest } from "./lib/accountLifecycle";
 import { decideRoomCleanup } from "./lib/cleanup";
+import { closeRoom } from "./lib/roomLifecycle";
 import { onlineUserIdsForRoom } from "./presence";
 
 export const GUEST_CLEANUP_ROW_BUDGET = 100;
@@ -63,10 +64,7 @@ export const _cleanupRoom = internalMutation({
         hostUserId: decision.newHostUserId,
       });
     } else if (decision.kind === "endRoom") {
-      await ctx.db.patch("rooms", roomId, { status: "ended" });
-      for (const member of members) {
-        await ctx.db.patch("roomMembers", member._id, { active: false });
-      }
+      await closeRoom(ctx, roomId);
     }
     return decision;
   },
