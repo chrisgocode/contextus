@@ -86,6 +86,13 @@ export function useRoomEntry(code: string) {
     data.members.some((m) => m.userId === viewerUserId);
   // Who is entering which Room. Errors and pending joins belong to one.
   const attempt = `${code}:${isAuthenticated}:${viewerUserId}`;
+  // A failure is dropped once the attempt changes, so the same viewer
+  // returning after an auth change tries again instead of seeing it.
+  const [lastAttempt, setLastAttempt] = useState(attempt);
+  if (lastAttempt !== attempt) {
+    setLastAttempt(attempt);
+    setFailure(null);
+  }
   const joinError = failure?.attempt === attempt ? failure.message : null;
   const shouldJoin =
     data != null &&

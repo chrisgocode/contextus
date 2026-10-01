@@ -339,6 +339,47 @@ describe("RoomPage", () => {
     expect(screen.getByRole("heading", { name: "ABCDEF" })).toBeVisible();
   });
 
+  it("retries joining when the same viewer signs out and back in", async () => {
+    let isAuthenticated = true;
+    let viewerUserId: string | null = "guest";
+    mocks.useConvexAuth.mockImplementation(() => ({
+      isAuthenticated,
+      isLoading: false,
+    }));
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "rooms:getByCode")
+        return { ...room, viewerUserId, members: [] };
+      if (name === "games:getActive" || name === "games:listFinished")
+        return undefined;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    mocks.join.mockRejectedValueOnce(new Error("Network down"));
+    mocks.join.mockImplementation(() => new Promise(() => {}));
+    const view = await renderRoom();
+    await screen.findByText("Could not join room. Try again.");
+
+    isAuthenticated = false;
+    viewerUserId = null;
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+    isAuthenticated = true;
+    viewerUserId = "guest";
+    view.rerender(
+      <Suspense fallback={<p>Loading room</p>}>
+        <RoomPage params={params} />
+      </Suspense>,
+    );
+
+    await waitFor(() => expect(mocks.join).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByText("Could not join room. Try again."),
+    ).not.toBeInTheDocument();
+  });
+
   it("ignores a previous viewer's join failure while the new join is pending", async () => {
     let viewerUserId = "old-guest";
     let rejectOld!: (error: Error) => void;
