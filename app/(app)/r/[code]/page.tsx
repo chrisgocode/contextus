@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -15,7 +14,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
@@ -29,6 +27,7 @@ import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { useElementInViewport } from "./_components/useElementInViewport";
 import { usePresenceSet } from "./_components/usePresenceSet";
+import { useRoomEntry } from "./_components/room-entry";
 
 export default function RoomPage({
   params,
@@ -39,15 +38,9 @@ export default function RoomPage({
   const upper = code.toUpperCase();
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const data = useQuery(api.rooms.getByCode, { code: upper });
-  const leave = useMutation(api.rooms.leave);
+  const { data, isMember, joinError, joinAsGuest, leave } = useRoomEntry(upper);
   const endRoom = useMutation(api.rooms.endRoom);
-  const join = useMutation(api.rooms.join);
-  const { signIn } = useAuthActions();
   const [copied, setCopied] = useState(false);
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const joiningRef = useRef(false);
-  const joinGenerationRef = useRef(0);
   // The room as it looked when the viewer clicked Leave. Once the leave
   // mutation lands, the queries describe a non-member, so the page keeps
   // showing this until the home route replaces it.
@@ -60,10 +53,6 @@ export default function RoomPage({
   // queries say it's needed, so it isn't a second round trip for hosts.
   // (Creating a room from home starts it even earlier.)
   useEffect(() => preloadCalendar(), []);
-
-  const isMember = data?.viewerUserId
-    ? data.members.some((m) => m.userId === data.viewerUserId)
-    : false;
 
   // Consumed on mount, so a visit abandoned before the game query resolves
   // can't leave the marker set for a later visit to the same room.
@@ -97,56 +86,12 @@ export default function RoomPage({
     }
   }, [data, router]);
 
-  useEffect(() => {
-    // Auth can change outside this page; its previous join failure is no longer relevant.
-    // oxlint-disable-next-line react/set-state-in-effect
-    setJoinError(null);
-    joiningRef.current = false;
-    joinGenerationRef.current += 1;
-  }, [isAuthenticated, data?.viewerUserId]);
-
-  useEffect(() => {
-    if (
-      data &&
-      isAuthenticated &&
-      data.viewerUserId !== null &&
-      data.room.status === "active" &&
-      !isMember &&
-      joinError === null &&
-      leavingView === null &&
-      !joiningRef.current
-    ) {
-      joiningRef.current = true;
-      const generation = joinGenerationRef.current;
-      join({ code: upper })
-        .catch((err) => {
-          if (generation !== joinGenerationRef.current) return;
-          const isRoomLimit = getErrorData(err) === "Guest room limit reached";
-          const message = isRoomLimit
-            ? "Guest room limit reached"
-            : (expectedClientErrorMessage(err, "room.autojoin") ??
-              "Could not join room. Try again.");
-          setJoinError(message);
-          if (!isRoomLimit) {
-            reportClientError(err, {
-              userMessage: message,
-              context: "room.autojoin",
-            });
-          }
-        })
-        .finally(() => {
-          if (generation === joinGenerationRef.current)
-            joiningRef.current = false;
-        });
-    }
-  }, [data, isAuthenticated, isMember, join, joinError, leavingView, upper]);
-
   const roomLoadedHandlers = {
     onLeave: () => {
       if (data == null || leavingView !== null) return;
       setLeavingView({ data, activeGame, lastFinished });
       router.push("/");
-      leave({ roomId: data.room._id }).catch((err) => {
+      leave().catch((err) => {
         setLeavingView(null);
         reportClientError(err, {
           userMessage: "Could not leave room.",
@@ -199,20 +144,7 @@ export default function RoomPage({
     return (
       <GuestJoinPrompt
         code={data.room.code}
-        onGuest={async () => {
-          try {
-            await signIn("anonymous");
-          } catch (err) {
-            if (getErrorData(err) === "Guest room limit reached") {
-              setJoinError("Guest room limit reached");
-            } else {
-              reportClientError(err, {
-                userMessage: "Could not join as guest. Try again.",
-                context: "room.guestJoin",
-              });
-            }
-          }
-        }}
+        onGuest={joinAsGuest}
         onSignIn={() =>
           router.push(`/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`)
         }
