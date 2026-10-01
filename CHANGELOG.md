@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/chrisgocode/contextus/compare/v0.1.1...v0.2.0) (2026-10-01)
+
+
+### Features
+
+* add generic and profile not-found pages ([#188](https://github.com/chrisgocode/contextus/issues/188)) ([a598422](https://github.com/chrisgocode/contextus/commit/a598422e7afb58ede0193381120b051944d7a7bb))
+
+
+### Bug Fixes
+
+* **analytics:** encode ingest proxy path so CodeQL sees it sanitized ([#192](https://github.com/chrisgocode/contextus/issues/192)) ([2e14d5e](https://github.com/chrisgocode/contextus/commit/2e14d5e5c623110c882cf79a92a99a3a63d3f946))
+* **analytics:** keep ingest proxy requests on PostHog's host ([#187](https://github.com/chrisgocode/contextus/issues/187)) ([73bf0a6](https://github.com/chrisgocode/contextus/commit/73bf0a65c04d5a7e7188e919628cb017fda5b142))
+* **e2e:** retry convex env set on OCC during first push ([#180](https://github.com/chrisgocode/contextus/issues/180)) ([13486d8](https://github.com/chrisgocode/contextus/commit/13486d8cec9159c325794d6dbf83a7fa9d1dbcae))
+* **ui:** stop neutral room skeleton flashing on create and leave ([#185](https://github.com/chrisgocode/contextus/issues/185)) ([2f16240](https://github.com/chrisgocode/contextus/commit/2f16240f20b6dd8e3f221447b197e7293263e784))
+
 ## [0.1.1](https://github.com/chrisgocode/contextus/compare/v0.1.0...v0.1.1) (2026-09-28)
 
 
