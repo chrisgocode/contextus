@@ -268,10 +268,14 @@ async function createRequest(
   const req = await t.run(async (ctx) =>
     ctx.db
       .query("pendingRequests")
-      .withIndex("by_game_status", (q) =>
-        q.eq("gameId", gameId).eq("status", "pending"),
+      .withIndex("by_requester_game_type_status", (q) =>
+        q
+          .eq("requesterUserId", requester)
+          .eq("gameId", gameId)
+          .eq("type", type)
+          .eq("status", "pending"),
       )
-      .first(),
+      .unique(),
   );
   return req!._id;
 }
@@ -428,4 +432,135 @@ test("closeRequestId from a different game is rejected and neither game changes"
     ]),
   );
   expect(rows.map((r) => r?.status)).toEqual(["pending", "pending"]);
+});
+
+test("cancel lets the requester take back a Pending request", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  capture.mockClear();
+
+  await asUser(t, other).mutation(api.requests.cancel, { requestId });
+
+  expect(
+    await asUser(t, host).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
+  expect(
+    await asUser(t, other).query(api.requests.latestMine, { gameId }),
+  ).toEqual({ hint: null, giveup: null });
+  expect(capture.mock.calls.map(([, event]) => event)).toEqual([
+    expect.objectContaining({
+      distinctId: other,
+      event: "request_cancelled",
+      properties: expect.objectContaining({
+        request_id: requestId,
+        game_id: gameId,
+        request_type: "hint",
+      }),
+    }),
+  ]);
+  // Asking again works once the old request is gone.
+  await asUser(t, other).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+});
+
+test("cancel rejects anyone but the requester", async () => {
+  const t = setupTest();
+  const { host, other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  const requestId = await createRequest(t, other, gameId, "giveup");
+
+  for (const userId of [host, third]) {
+    await expect(
+      asUser(t, userId).mutation(api.requests.cancel, { requestId }),
+    ).rejects.toThrow("Request not found or already handled");
+  }
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("pending");
+});
+
+test("cancel rejects a request the Host already handled", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  await asUser(t, host).mutation(api.requests.deny, { requestId });
+  await expect(
+    asUser(t, other).mutation(api.requests.cancel, { requestId }),
+  ).rejects.toThrow("Request not found or already handled");
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("denied");
+});
+
+test("approve rejects a request cancelled while Contexto is fetching and writes nothing", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({});
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  const before = await snapshot(t, gameId);
+  oracle.tip.mockImplementationOnce(async () => {
+    await asUser(t, other).mutation(api.requests.cancel, { requestId });
+    return { lemma: "pomelo", distance: 299 };
+  });
+  await expect(
+    asUser(t, host).action(api.requests.approve, { requestId }),
+  ).rejects.toThrow("Request not found or already handled");
+  expect(await snapshot(t, gameId)).toEqual(before);
+});
+
+test("latestMine returns the viewer's newest request of each type", async () => {
+  const t = setupTest();
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
+  const { host, other, gameId } = await startedGame(t);
+  const deniedHint = await createRequest(t, other, gameId, "hint");
+  await asUser(t, host).mutation(api.requests.deny, { requestId: deniedHint });
+  const hintId = await createRequest(t, other, gameId, "hint");
+  const giveupId = await createRequest(t, other, gameId, "giveup");
+
+  const pending = await asUser(t, other).query(api.requests.latestMine, {
+    gameId,
+  });
+  expect(pending).toEqual({
+    hint: { _id: hintId, status: "pending", createdAt: expect.any(Number) },
+    giveup: { _id: giveupId, status: "pending", createdAt: expect.any(Number) },
+  });
+
+  await asUser(t, host).action(api.requests.approve, { requestId: hintId });
+  await asUser(t, host).mutation(api.requests.deny, { requestId: giveupId });
+  const resolved = await asUser(t, other).query(api.requests.latestMine, {
+    gameId,
+  });
+  expect(resolved).toEqual({
+    hint: {
+      _id: hintId,
+      status: "approved",
+      createdAt: expect.any(Number),
+      hint: { lemma: "pomelo", distance: 299 },
+    },
+    giveup: { _id: giveupId, status: "denied", createdAt: expect.any(Number) },
+  });
+});
+
+test("latestMine hides other members' requests and answers non-members with nothing", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  await createRequest(t, other, gameId, "hint");
+  const stranger = await seedUser(t);
+  const empty = { hint: null, giveup: null };
+  expect(
+    await asUser(t, host).query(api.requests.latestMine, { gameId }),
+  ).toEqual(empty);
+  expect(
+    await asUser(t, stranger).query(api.requests.latestMine, { gameId }),
+  ).toEqual(empty);
 });

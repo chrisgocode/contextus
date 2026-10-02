@@ -205,9 +205,15 @@ export default defineSchema({
       v.literal("denied"),
     ),
     createdAt: v.number(),
+    // The Hint an approved hint request produced, so the requester sees it.
+    hint: v.optional(v.object({ lemma: v.string(), distance: v.number() })),
   })
     .index("by_game_status", ["gameId", "status"])
     .index("by_room_status", ["roomId", "status"])
+    // Sorts a requester's requests of one type by `_creationTime`, so
+    // latestMine can take the newest whatever its status.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
+    .index("by_requester_game_type", ["requesterUserId", "gameId", "type"])
     .index("by_requester_game_type_status", [
       "requesterUserId",
       "gameId",

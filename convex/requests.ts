@@ -40,6 +40,38 @@ export const listPending = query({
   },
 });
 
+// The viewer's newest request of each type in this Game, so the requester
+// can watch it go from pending to approved or denied.
+export const latestMine = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, { gameId }) => {
+    const access = await tryMemberByGame(ctx, { gameId });
+    if (access === null) return { hint: null, giveup: null };
+    const latest = async (type: Doc<"pendingRequests">["type"]) => {
+      const row = await ctx.db
+        .query("pendingRequests")
+        .withIndex("by_requester_game_type", (q) =>
+          q
+            .eq("requesterUserId", access.userId)
+            .eq("gameId", gameId)
+            .eq("type", type),
+        )
+        .order("desc")
+        .first();
+      if (row === null) return null;
+      const { _id, status, createdAt, hint } = row;
+      return hint === undefined
+        ? { _id, status, createdAt }
+        : { _id, status, createdAt, hint };
+    };
+    const [hint, giveup] = await Promise.all([
+      latest("hint"),
+      latest("giveup"),
+    ]);
+    return { hint, giveup };
+  },
+});
+
 export const create = mutation({
   args: { gameId: v.id("games"), type: REQUEST_TYPE },
   handler: async (ctx, { gameId, type }) => {
@@ -95,6 +127,31 @@ export const deny = mutation({
     await ctx.db.patch("pendingRequests", requestId, { status: "denied" });
     await track(ctx, userId, {
       name: "request_denied",
+      properties: {
+        request_id: requestId,
+        game_id: req.gameId,
+        request_type: req.type,
+      },
+    });
+    return null;
+  },
+});
+
+// The requester takes back a Pending request. The row goes away rather than
+// gaining a status, so asking again starts clean.
+export const cancel = mutation({
+  args: { requestId: v.id("pendingRequests") },
+  handler: async (ctx, { requestId }) => {
+    const req = await ctx.db.get("pendingRequests", requestId);
+    if (req === null)
+      throw new ConvexError("Request not found or already handled");
+    const { userId } = await requireMemberByGame(ctx, { gameId: req.gameId });
+    if (req.requesterUserId !== userId || req.status !== "pending") {
+      throw new ConvexError("Request not found or already handled");
+    }
+    await ctx.db.delete("pendingRequests", requestId);
+    await track(ctx, userId, {
+      name: "request_cancelled",
       properties: {
         request_id: requestId,
         game_id: req.gameId,

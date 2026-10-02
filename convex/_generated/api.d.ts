@@ -38,6 +38,7 @@ import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_player from "../lib/player.js";
 import type * as lib_rateLimits from "../lib/rateLimits.js";
 import type * as lib_roomActivity from "../lib/roomActivity.js";
+import type * as lib_roomLifecycle from "../lib/roomLifecycle.js";
 import type * as lib_usernames from "../lib/usernames.js";
 import type * as lib_words from "../lib/words.js";
 import type * as posthog from "../posthog.js";
@@ -85,6 +86,7 @@ declare const fullApi: ApiFromModules<{
   "lib/player": typeof lib_player;
   "lib/rateLimits": typeof lib_rateLimits;
   "lib/roomActivity": typeof lib_roomActivity;
+  "lib/roomLifecycle": typeof lib_roomLifecycle;
   "lib/usernames": typeof lib_usernames;
   "lib/words": typeof lib_words;
   posthog: typeof posthog;

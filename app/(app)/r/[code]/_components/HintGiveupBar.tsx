@@ -18,12 +18,13 @@ export function HintGiveupBar({
   const createRequest = useMutation(api.requests.create);
   const hostHint = useAction(api.hints.hostHint);
   const hostGiveup = useAction(api.giveup.hostGiveup);
-  const pending = useQuery(api.requests.listPending, { gameId });
+  // RequestRows shows a pending request's status; the buttons only disable.
+  const mine = useQuery(api.requests.latestMine, isHost ? "skip" : { gameId });
   const [busy, setBusy] = useState<"hint" | "giveup" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const myHintPending = pending?.some((p) => p.type === "hint") ?? false;
-  const myGiveupPending = pending?.some((p) => p.type === "giveup") ?? false;
+  const myHintPending = mine?.hint?.status === "pending";
+  const myGiveupPending = mine?.giveup?.status === "pending";
 
   async function run(kind: "hint" | "giveup") {
     setError(null);
@@ -75,16 +76,6 @@ export function HintGiveupBar({
           {busy === "giveup" ? "…" : isHost ? "Give up" : "Request give up"}
         </Button>
       </div>
-      {!isHost && myHintPending && (
-        <p className="text-xs text-muted-foreground">
-          Hint request pending host approval.
-        </p>
-      )}
-      {!isHost && myGiveupPending && (
-        <p className="text-xs text-muted-foreground">
-          Give-up request pending host approval.
-        </p>
-      )}
       {error && <p className="text-sm text-rose-400">{error}</p>}
     </div>
   );

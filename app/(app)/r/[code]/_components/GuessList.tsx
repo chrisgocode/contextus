@@ -89,12 +89,12 @@ export function GuessList({
   );
 }
 
-function barWidthPct(distance: number): number {
+export function barWidthPct(distance: number): number {
   // exponential decay: rank 0 = 100%, ~rank 500 = 37%, far ranks taper to ~3%
   return Math.max(3, 100 * Math.exp(-distance / 500));
 }
 
-function barColor(distance: number): string {
+export function barColor(distance: number): string {
   if (distance <= 300) return "rgb(76 175 121)"; // green
   if (distance <= 1500) return "rgb(232 144 84)"; // orange
   return "rgb(220 70 110)"; // pink/red

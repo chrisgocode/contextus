@@ -92,6 +92,11 @@ type EventCatalog = {
     game_id: Id<"games">;
     request_type: "hint" | "giveup";
   };
+  request_cancelled: {
+    request_id: Id<"pendingRequests">;
+    game_id: Id<"games">;
+    request_type: "hint" | "giveup";
+  };
   guest_merged: {
     guest_user_id: Id<"users">;
     account_user_id: Id<"users">;
