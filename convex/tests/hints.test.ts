@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { MAX_WALK_ITERATIONS } from "../lib/hint";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import {
   asUser,
   fakeWordOracle,
@@ -114,14 +116,19 @@ test("a hint is rejected when its tip is guessed while Contexto is fetching it",
 
 test("a walking hint gives up once every nearby tip is already guessed", async () => {
   const t = setupTest();
+  // Every tip the walk gets back was guessed at another rank, as if guessed
+  // mid-walk, so ranks 2 and up stay open but every tip is taken.
   const tips: Record<number, string> = {};
-  for (let distance = 2; distance <= 51; distance++) {
+  for (let distance = 2; distance <= MAX_WALK_ITERATIONS + 1; distance++) {
     tips[distance] = `near${distance}`;
   }
   const oracle = fakeWordOracle({ tips: { 1336: tips } });
   const { host, gameId } = await startedGame(t);
   await t.run(async (ctx) => {
-    for (const [distance, lemma] of [[1, "close"], ...Object.entries(tips)]) {
+    for (const [distance, lemma] of [
+      [1, "close"],
+      ...Object.entries(tips).map(([d, l]) => [Number(d) + 1000, l]),
+    ]) {
       await ctx.db.insert("gameGuesses", {
         gameId,
         userId: host,
@@ -136,5 +143,70 @@ test("a walking hint gives up once every nearby tip is already guessed", async (
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
   ).rejects.toThrow("Could not find an unguessed hint");
-  expect(oracle.tip).toHaveBeenCalledTimes(50);
+  expect(oracle.tip).toHaveBeenCalledTimes(MAX_WALK_ITERATIONS);
+});
+
+test("a walking hint starts at the first unguessed rank", async () => {
+  const t = setupTest();
+  // Ranks 1 to 11 are guessed, so the nearest hint is rank 12, past what a
+  // walk from rank 2 could reach.
+  const tips: Record<number, string> = { 12: "twelve" };
+  const oracle = fakeWordOracle({ tips: { 1336: tips } });
+  const { host, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let distance = 1; distance <= 11; distance++) {
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: host,
+        lemma: `near${distance}`,
+        distance,
+        source: "guess",
+        createdAt: 1,
+      });
+    }
+  });
+
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).resolves.toEqual({ lemma: "twelve", distance: 12 });
+  expect(oracle.tip).toHaveBeenCalledOnce();
+});
+
+test("hostHint: spends a rate limit token per tip it asks for", async () => {
+  const t = setupTest();
+  // Tips for ranks 2 to 10 were guessed at other ranks, as if guessed
+  // mid-walk, so each hint walks the full MAX_WALK_ITERATIONS tips.
+  const taken = Array.from(
+    { length: MAX_WALK_ITERATIONS - 1 },
+    (_, i) => i + 2,
+  );
+  const oracle = fakeWordOracle({
+    guesses: {
+      1336: {
+        close: 1,
+        ...Object.fromEntries(
+          taken.map((rank) => [`taken${rank}`, rank + 1000]),
+        ),
+      },
+    },
+    tips: {
+      1336: {
+        ...Object.fromEntries(taken.map((rank) => [rank, `taken${rank}`])),
+        [MAX_WALK_ITERATIONS + 1]: "open",
+      },
+    },
+  });
+  const { host, gameId } = await startedGame(t);
+  for (const rank of [1, ...taken]) {
+    await asUser(t, host).action(api.guesses.submit, {
+      gameId,
+      word: rank === 1 ? "close" : `taken${rank}`,
+    });
+  }
+  // One full walk fits in the bucket, but two don't.
+  await asUser(t, host).action(api.hints.hostHint, { gameId });
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  expect(oracle.tip).toHaveBeenCalledTimes(rateLimits.hint.capacity);
 });

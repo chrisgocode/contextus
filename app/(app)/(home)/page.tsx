@@ -16,7 +16,7 @@ import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
-import { getErrorData } from "@/lib/client-errors";
+import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { roomPath } from "@/lib/room-code";
 import { reportClientError } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
@@ -151,7 +151,8 @@ function CreateRoom({
               getErrorData(err) === "Guest room limit reached";
             const message = isRoomLimit
               ? "Guest room limit reached"
-              : "Could not create room. Try again.";
+              : (expectedClientErrorMessage(err, "room.create") ??
+                "Could not create room. Try again.");
             setError(message);
             if (!isRoomLimit) {
               reportClientError(err, {

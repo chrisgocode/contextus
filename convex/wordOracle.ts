@@ -29,7 +29,7 @@ export type WordOracle = {
 };
 
 // The word oracle for one Contexto puzzle, with distances served from the
-// wordDistances cache when possible. Callers never see cache vs. fetch.
+// wordDistances and unknownWords caches when possible. Callers never see cache vs. fetch.
 export type ContextoRequest = EventProperties<"contexto_request">;
 
 export function puzzleWordOracle(
@@ -80,7 +80,7 @@ export function puzzleWordOracle(
   return {
     async distance(word: string): Promise<DistanceResult> {
       const startedAt = Date.now();
-      const cached: ScoredLemma | null = await ctx.runQuery(
+      const cached: DistanceResult | null = await ctx.runQuery(
         internal.wordOracle._cachedDistance,
         { contextoGameId, word },
       );
@@ -88,10 +88,10 @@ export function puzzleWordOracle(
         onRequest({
           endpoint: "distance",
           duration_ms: Math.max(0, Date.now() - startedAt),
-          outcome: "ok",
+          outcome: cached.ok ? "ok" : "unknown_word",
           cache: "hit",
         });
-        return { ok: true, ...cached };
+        return cached;
       }
       const result = await timed(
         "distance",
@@ -104,6 +104,12 @@ export function puzzleWordOracle(
           input: word,
           lemma: result.lemma,
           distance: result.distance,
+        });
+      } else {
+        await ctx.runMutation(internal.wordOracle._cacheUnknownWord, {
+          contextoGameId,
+          word,
+          error: result.error,
         });
       }
       return result;
@@ -130,15 +136,73 @@ export function puzzleWordOracle(
 
 export const _cachedDistance = internalQuery({
   args: { contextoGameId: v.number(), word: v.string() },
-  handler: async (ctx, { contextoGameId, word }) => {
+  handler: async (
+    ctx,
+    { contextoGameId, word },
+  ): Promise<DistanceResult | null> => {
     const row = await ctx.db
       .query("wordDistances")
       .withIndex("by_game_lemma", (q) =>
         q.eq("contextoGameId", contextoGameId).eq("lemma", word),
       )
       .unique();
-    if (row === null) return null;
-    return { lemma: row.canonicalLemma ?? row.lemma, distance: row.distance };
+    if (row !== null) {
+      return {
+        ok: true,
+        lemma: row.canonicalLemma ?? row.lemma,
+        distance: row.distance,
+      };
+    }
+    const unknown = await ctx.db
+      .query("unknownWords")
+      .withIndex("by_contextoGameId_and_word", (q) =>
+        q.eq("contextoGameId", contextoGameId).eq("word", word),
+      )
+      .unique();
+    if (unknown === null) return null;
+    return { ok: false, error: unknown.error };
+  },
+});
+
+// Unknown words cost one Contexto request to learn again, so a week is plenty.
+const UNKNOWN_WORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const UNKNOWN_WORD_PRUNE_BATCH = 500;
+
+// Deletes a batch of unknown words older than the TTL, then schedules itself
+// until none are left.
+export const pruneUnknownWords = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - UNKNOWN_WORD_TTL_MS;
+    const expired = await ctx.db
+      .query("unknownWords")
+      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
+      .take(UNKNOWN_WORD_PRUNE_BATCH);
+    for (const row of expired) await ctx.db.delete("unknownWords", row._id);
+    if (expired.length === UNKNOWN_WORD_PRUNE_BATCH) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.wordOracle.pruneUnknownWords,
+        {},
+      );
+    }
+    return null;
+  },
+});
+
+export const _cacheUnknownWord = internalMutation({
+  args: { contextoGameId: v.number(), word: v.string(), error: v.string() },
+  handler: async (ctx, { contextoGameId, word, error }) => {
+    const existing = await ctx.db
+      .query("unknownWords")
+      .withIndex("by_contextoGameId_and_word", (q) =>
+        q.eq("contextoGameId", contextoGameId).eq("word", word),
+      )
+      .unique();
+    if (existing === null) {
+      await ctx.db.insert("unknownWords", { contextoGameId, word, error });
+    }
+    return null;
   },
 });
 

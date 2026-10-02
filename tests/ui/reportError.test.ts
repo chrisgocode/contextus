@@ -45,6 +45,12 @@ describe("reportClientError", () => {
       "Username is already taken.",
       "Username is already taken.",
     ],
+    ["guess.submit", "Word is too long", "That word is too long."],
+    [
+      "room.create",
+      "Too many requests. Wait a moment and try again.",
+      "Too many requests. Wait a moment and try again.",
+    ],
   ])("handles %s: %s", (context, data, message) => {
     const error = { data, message: "Server Error stack trace" };
     reportClientError(error, { context, userMessage: "Fallback" });

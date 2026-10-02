@@ -39,6 +39,7 @@ import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
+import { enforceRateLimit, RATE_LIMITED_MESSAGE } from "./lib/rateLimits";
 import { upsertRoomActivity } from "./lib/roomActivity";
 import {
   type ContextoRequest,
@@ -50,8 +51,14 @@ const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
 const REQUEST_HANDLED_MESSAGE = "Request not found or already handled";
 const NOT_IN_PROGRESS_MESSAGE = "Game is no longer in progress";
 const EMPTY_WORD_MESSAGE = "Empty word";
+const WORD_TOO_LONG_MESSAGE = "Word is too long";
+// Well past any word Contexto knows, so longer input never reaches it.
+export const MAX_WORD_LENGTH = 32;
 const HINT_DUPLICATE_MESSAGE = "Hint lemma already guessed";
 const HINT_EXHAUSTED_MESSAGE = "Could not find an unguessed hint";
+// Ranks 2 and up read to find where a walking hint starts. Past this, the walk
+// starts after the last one read.
+const MAX_TAKEN_RANKS = 500;
 
 type TurnKind = "guess" | "hint" | "giveup";
 
@@ -121,6 +128,7 @@ export const _prepare = internalQuery({
       throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
     }
     let best: number | null = null;
+    let walkFrom = 2;
     if (kind === "hint") {
       const closest = await ctx.db
         .query("gameGuesses")
@@ -128,10 +136,29 @@ export const _prepare = internalQuery({
         .order("asc")
         .first();
       best = closest?.distance ?? null;
+      if (best === 1) walkFrom = await firstUnguessedRank(ctx, gameId);
     }
-    return { contextoGameId: game.contextoGameId, best, userId };
+    return { contextoGameId: game.contextoGameId, best, walkFrom, userId };
   },
 });
+
+// The closest rank from 2 up that no Guess or hint holds yet, so a walking
+// hint starts there instead of re-asking Contexto for ranks already taken.
+async function firstUnguessedRank(ctx: QueryCtx, gameId: Id<"games">) {
+  let rank = 2;
+  const taken = await ctx.db
+    .query("gameGuesses")
+    .withIndex("by_game_distance", (q) =>
+      q.eq("gameId", gameId).gte("distance", rank),
+    )
+    .order("asc")
+    .take(MAX_TAKEN_RANKS);
+  for (const guess of taken) {
+    if (guess.distance > rank) break;
+    rank = guess.distance + 1;
+  }
+  return rank;
+}
 
 export const _apply = internalMutation({
   args: {
@@ -430,6 +457,7 @@ export async function performTurn(
     const pre: {
       contextoGameId: number;
       best: number | null;
+      walkFrom: number;
       userId: Id<"users">;
     } = await ctx.runQuery(internal.turns._prepare, {
       gameId,
@@ -437,6 +465,8 @@ export async function performTurn(
       requestId,
     });
     userId = pre.userId;
+    // Hints spend their tokens per tip, in performHint.
+    if (turn.kind !== "hint") await enforceRateLimit(ctx, turn.kind, userId);
     const oracle = puzzleWordOracle(ctx, pre.contextoGameId, (request) =>
       contextoRequests.push(request),
     );
@@ -456,13 +486,18 @@ export async function performTurn(
         break;
       }
       case "hint": {
+        const hintUserId = userId;
         result = await performHint(
           ctx,
           gameId,
           oracle,
           pre.best,
+          pre.walkFrom,
           requestId,
-          () => tipsTried++,
+          async () => {
+            await enforceRateLimit(ctx, "hint", hintUserId);
+            tipsTried++;
+          },
         );
         break;
       }
@@ -522,6 +557,10 @@ function turnErrorCategory(
       return "contexto_unexpected_payload";
     case EMPTY_WORD_MESSAGE:
       return "empty_word";
+    case WORD_TOO_LONG_MESSAGE:
+      return "word_too_long";
+    case RATE_LIMITED_MESSAGE:
+      return "rate_limited";
     case REQUEST_HANDLED_MESSAGE:
       return "request_handled";
     case NOT_IN_PROGRESS_MESSAGE:
@@ -555,6 +594,9 @@ async function performGuess(
 ): Promise<GuessResult> {
   const input = word.trim().toLowerCase();
   if (input.length === 0) throw new ConvexError(EMPTY_WORD_MESSAGE);
+  if (input.length > MAX_WORD_LENGTH) {
+    throw new ConvexError(WORD_TOO_LONG_MESSAGE);
+  }
   const scored = await oracle.distance(input);
   if (!scored.ok) {
     return { message: scored.error, won: false, unlockedAchievementIds: [] };
@@ -583,19 +625,21 @@ async function performGuess(
 }
 
 // Asks for a tip halfway to the best distance. When the best guess is already
-// at distance 1, walks outward from 2 until it finds an unguessed lemma.
+// at distance 1, walks outward from the first unguessed rank until Contexto's
+// tip is a lemma nobody has guessed.
 async function performHint(
   ctx: ActionCtx,
   gameId: Id<"games">,
   oracle: PuzzleWordOracle,
   best: number | null,
+  walkFrom: number,
   requestId: Id<"pendingRequests"> | undefined,
-  onTip: () => void,
+  onTip: () => Promise<void>,
 ): Promise<ScoredLemma> {
-  let target = initialHintTarget(best);
   const walking = best === 1;
+  let target = walking ? walkFrom : initialHintTarget(best);
   for (let i = 0; i < MAX_WALK_ITERATIONS; i++) {
-    onTip();
+    await onTip();
     const tip = await oracle.tip(target);
     const result: ApplyResult = await ctx.runMutation(internal.turns._apply, {
       gameId,

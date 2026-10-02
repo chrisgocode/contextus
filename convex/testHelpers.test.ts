@@ -1,9 +1,11 @@
 /// <reference types="vite/client" />
 import { register as registerPresence } from "@convex-dev/presence/test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
 import type { Id } from "./_generated/dataModel";
 import { contextoOracle } from "./contexto";
+import { rateLimiter, type rateLimits } from "./lib/rateLimits";
 import schema from "./schema";
 
 // The backend `e2eCleanup.purgeAccount` tests pretend to run on.
@@ -15,6 +17,7 @@ export function setupTest(
   const modules = import.meta.glob("./**/!(*.test).*s");
   const t = convexTest({ schema, modules, ...options });
   registerPresence(t);
+  registerRateLimiter(t);
   return t;
 }
 
@@ -73,6 +76,16 @@ export function sessionOf(
     throw new Error(`${userId} was not created with seedUser`);
   }
   return sessionId;
+}
+
+// Refills `userId`'s `name` bucket, for tests that play faster than a person
+// can or move the clock backwards.
+export async function resetRateLimit(
+  t: ReturnType<typeof setupTest>,
+  name: keyof typeof rateLimits,
+  userId: Id<"users">,
+) {
+  await t.run((ctx) => rateLimiter.reset(ctx, name, { key: userId }));
 }
 
 export function asUser(t: ReturnType<typeof setupTest>, userId: Id<"users">) {

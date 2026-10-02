@@ -5,6 +5,7 @@ import { expireGuest } from "../lib/accountLifecycle";
 import {
   asUser,
   fakeWordOracle,
+  resetRateLimit,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -333,6 +334,7 @@ test("personal puzzle achievements use the user's own real guess sequence", asyn
   const second = await startedGame(t, 1337, { host });
 
   for (let i = 1; i <= 50; i += 1) {
+    await resetRateLimit(t, "guess", host);
     await asUser(t, host).action(api.guesses.submit, {
       gameId,
       word: `word${i}`,
@@ -367,6 +369,7 @@ test("comeback kid unlocks when the winner solves after more than 100 own guesse
   const { host, gameId } = await startedGame(t, 1336);
 
   for (let i = 1; i <= 100; i += 1) {
+    await resetRateLimit(t, "guess", host);
     await asUser(t, host).action(api.guesses.submit, {
       gameId,
       word: `miss${i}`,

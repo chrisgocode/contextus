@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 import { posthog } from "../posthog";
 
@@ -646,4 +647,19 @@ test("the last member leaving as host ends the room", async () => {
 
   const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.status).toBe("ended");
+});
+
+test("create rate limits each user", async () => {
+  const t = setupTest();
+  const userId = await seedUser(t);
+  const other = await seedUser(t);
+  for (let i = 0; i < rateLimits.createRoom.capacity; i++) {
+    await asUser(t, userId).mutation(api.rooms.create, {});
+  }
+  await expect(
+    asUser(t, userId).mutation(api.rooms.create, {}),
+  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  await expect(
+    asUser(t, other).mutation(api.rooms.create, {}),
+  ).resolves.toMatchObject({ code: expect.any(String) });
 });

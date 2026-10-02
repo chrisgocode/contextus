@@ -9,6 +9,10 @@ export function expectedClientErrorMessage(
   context: string | undefined,
 ): string | null {
   const data = getErrorData(error);
+  // Guesses, hints, room creation and Guest sign-ups are all rate limited.
+  if (data === "Too many requests. Wait a moment and try again.") return data;
+  if (context === "guess.submit" && data === "Word is too long")
+    return "That word is too long.";
   switch (context) {
     case "guess.submit":
     case "host.hint":

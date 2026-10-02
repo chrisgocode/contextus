@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import {
   asUser,
   fakeWordOracle,
+  resetRateLimit,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -189,6 +190,8 @@ test("Early Bird unlocks for today's puzzle within 10 minutes of local midnight"
     { host },
     todaysPuzzle,
   );
+  // Refills the bucket the clock drained by moving backwards.
+  await resetRateLimit(t, "guess", host);
   const fiveMinutesIn = await solveAt(
     t,
     "2026-05-16T15:05:00Z",

@@ -10,6 +10,7 @@ import {
 import { generateRoomCode } from "./lib/code";
 import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
+import { enforceRateLimit } from "./lib/rateLimits";
 import { upsertRoomActivity } from "./lib/roomActivity";
 import { closeRoom, reopenRoom } from "./lib/roomLifecycle";
 
@@ -55,6 +56,7 @@ export const create = mutation({
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
     await requireGuestRoomSlot(ctx, userId);
+    await enforceRateLimit(ctx, "createRoom", userId);
     const now = Date.now();
     const code = await generateUniqueRoomCode(ctx);
 

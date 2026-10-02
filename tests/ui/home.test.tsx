@@ -159,6 +159,25 @@ describe("Home", () => {
     expect(mocks.push).toHaveBeenCalledWith("/signin");
   });
 
+  it("tells a user who creates rooms too fast to wait", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    mocks.create.mockRejectedValue({
+      data: "Too many requests. Wait a moment and try again.",
+    });
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "Create room" }));
+    expect(
+      await screen.findByText(
+        "Too many requests. Wait a moment and try again.",
+      ),
+    ).toBeVisible();
+  });
+
   it("links a signed-out visitor to sign in", () => {
     render(<Home />);
 

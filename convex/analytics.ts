@@ -67,6 +67,8 @@ type EventCatalog = {
       | "contexto_unavailable"
       | "contexto_unexpected_payload"
       | "empty_word"
+      | "word_too_long"
+      | "rate_limited"
       | "request_handled"
       | "game_ended"
       | "not_authenticated"
