@@ -47,17 +47,14 @@ vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
 vi.mock("@/app/(app)/r/[code]/_components/usePresenceSet", () => ({
   usePresenceSet: () => new Set(["friend"]),
 }));
-vi.mock("@/app/(app)/r/[code]/_components/useElementInViewport", () => ({
-  useElementInViewport: () => true,
-}));
 vi.mock("@/app/(app)/r/[code]/_components/GuessList", () => ({
   GuessList: () => <div>Guess list</div>,
 }));
 vi.mock("@/app/(app)/r/[code]/_components/HintGiveupBar", () => ({
   HintGiveupBar: () => <div>Hint controls</div>,
 }));
-vi.mock("@/app/(app)/r/[code]/_components/PendingRequestsSidebar", () => ({
-  PendingRequestsSidebar: () => <div>Requests</div>,
+vi.mock("@/app/(app)/r/[code]/_components/HostRequestRows", () => ({
+  HostRequestRows: () => <div>Requests</div>,
 }));
 vi.mock("@/app/(app)/r/[code]/_components/GameSetupCalendar", () => ({
   GameSetupCalendar: () => <div>Game setup</div>,

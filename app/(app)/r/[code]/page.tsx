@@ -4,7 +4,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import {
   AchievementUnlockQueue,
   type AchievementUnlockQueueItem,
@@ -22,11 +22,9 @@ import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
-import { HostRequestScrollHint } from "./_components/HostRequestScrollHint";
-import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
+import { HostRequestRows } from "./_components/HostRequestRows";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
-import { useElementInViewport } from "./_components/useElementInViewport";
 import { usePresenceSet } from "./_components/usePresenceSet";
 import { useRoomEntry } from "./_components/room-entry";
 
@@ -272,12 +270,6 @@ function RoomLoaded({
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
   );
-  const [requestsElement, setRequestsElement] = useState<HTMLDivElement | null>(
-    null,
-  );
-  const returnScrollYRef = useRef<number | null>(null);
-  const requestsVisible = useElementInViewport(requestsElement, 0.1);
-  const pendingRequestCount = pendingRequests?.length ?? 0;
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
@@ -306,23 +298,6 @@ function RoomLoaded({
       ];
     });
     setAchievementUnlocks((current) => [...current, ...items]);
-  }
-
-  function scrollToRequests() {
-    returnScrollYRef.current = window.scrollY;
-    requestsElement?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
-
-  function scrollBackAfterApproval() {
-    const top = returnScrollYRef.current;
-    if (top === null) return;
-    returnScrollYRef.current = null;
-    requestAnimationFrame(() => {
-      window.scrollTo({ top, behavior: "smooth" });
-    });
   }
 
   return (
@@ -406,6 +381,7 @@ function RoomLoaded({
                   )
                 }
               />
+              {isViewerHost && <HostRequestRows pending={pendingRequests} />}
               {!isViewerHost && hostMember && viewerMember && (
                 <RequestRows
                   gameId={activeGame._id}
@@ -471,27 +447,9 @@ function RoomLoaded({
               })}
             </ul>
           </section>
-
-          {activeGame && isViewerHost && (
-            <div ref={setRequestsElement}>
-              <PendingRequestsSidebar
-                pending={pendingRequests}
-                onApproveSuccess={scrollBackAfterApproval}
-              />
-            </div>
-          )}
         </aside>
       </div>
 
-      {activeGame &&
-        isViewerHost &&
-        pendingRequestCount > 0 &&
-        !requestsVisible && (
-          <HostRequestScrollHint
-            count={pendingRequestCount}
-            onClick={scrollToRequests}
-          />
-        )}
       <AchievementUnlockQueue
         items={achievementUnlocks}
         onItemDone={dismissAchievementUnlock}

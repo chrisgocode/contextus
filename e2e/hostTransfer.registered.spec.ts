@@ -14,7 +14,7 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
     partner.page.getByRole("button", { name: "Request hint" }),
   ).toBeVisible();
   await expect(
-    partner.page.getByRole("heading", { name: "Requests" }),
+    partner.page.getByRole("status", { name: "Requests" }),
   ).toHaveCount(0);
   // Survives only if the partner's page never reloads.
   await partner.page.evaluate(() => {
@@ -38,8 +38,8 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
     partner.page.getByRole("button", { name: "Give up", exact: true }),
   ).toBeVisible();
   await expect(
-    partner.page.getByRole("heading", { name: "Requests" }),
-  ).toBeVisible();
+    partner.page.getByRole("status", { name: "Requests" }),
+  ).toBeAttached();
   await expect(partner.page.locator("html")).toHaveAttribute(
     "data-e2e-no-reload",
     "1",
