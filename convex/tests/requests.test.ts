@@ -735,3 +735,104 @@ test("pendingFromOthers names who holds each request type", async () => {
     }),
   ).toEqual({ hint: null, giveup: null });
 });
+
+test("approve finishes a request that expires while Contexto is fetching", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({});
+  const { host, other, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+  // The expiry fires after the Host pressed Give hint, mid-fetch.
+  oracle.tip.mockImplementationOnce(async () => {
+    await t.mutation(internal.requests._expire, { requestId });
+    return { lemma: "pomelo", distance: 299 };
+  });
+
+  const result = await asUser(t, host).action(api.requests.approve, {
+    requestId,
+  });
+
+  expect(result).toEqual({ lemma: "pomelo", distance: 299 });
+  const row = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  expect(row?.status).toBe("approved");
+});
+
+test("a request still expires if its approval never finishes", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const oracle = fakeWordOracle({});
+    const { host, other, gameId } = await startedGame(t);
+    const requestId = await createRequest(t, other, gameId, "hint");
+    oracle.tip.mockRejectedValueOnce(new Error("Contexto is down"));
+    await expect(
+      asUser(t, host).action(api.requests.approve, { requestId }),
+    ).rejects.toThrow();
+
+    vi.advanceTimersByTime(60_000);
+    await t.finishInProgressScheduledFunctions();
+    vi.advanceTimersByTime(60_000);
+    await t.finishInProgressScheduledFunctions();
+    const row = await t.run(async (ctx) =>
+      ctx.db.get("pendingRequests", requestId),
+    );
+    expect(row?.status).toBe("expired");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("leaving the Room withdraws the member's pending requests", async () => {
+  const t = setupTest();
+  const { host, other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  await createRequest(t, other, gameId, "hint");
+  await createRequest(t, other, gameId, "giveup");
+
+  await asUser(t, other).mutation(api.rooms.leave, { roomId });
+
+  expect(
+    await asUser(t, host).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
+  expect(
+    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
+  ).toEqual({ hint: null, giveup: null });
+  await asUser(t, third).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+});
+
+test("an overdue request doesn't block a new one", async () => {
+  const t = setupTest();
+  const { other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  // Made before requests expired: no expiresAt and no scheduled expiry.
+  const staleId = await t.run(async (ctx) =>
+    ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "pending",
+      createdAt: Date.now() - 2 * 60_000,
+    }),
+  );
+
+  expect(
+    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
+  ).toEqual({ hint: null, giveup: null });
+  await asUser(t, third).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  const stale = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", staleId),
+  );
+  expect(stale?.status).toBe("expired");
+});

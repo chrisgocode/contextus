@@ -209,10 +209,13 @@ export default defineSchema({
     createdAt: v.number(),
     // Optional only for requests made before requests expired.
     expiresAt: v.optional(v.number()),
+    // When the Host last started approving it. Expiry waits for that.
+    approvalStartedAt: v.optional(v.number()),
     // The Hint an approved hint request produced, so the requester sees it.
     hint: v.optional(v.object({ lemma: v.string(), distance: v.number() })),
   })
     .index("by_game_status", ["gameId", "status"])
+    .index("by_game_type_status", ["gameId", "type", "status"])
     .index("by_room_status", ["roomId", "status"])
     // Sorts a requester's requests of one type by `_creationTime`, so
     // latestMine can take the newest whatever its status.
