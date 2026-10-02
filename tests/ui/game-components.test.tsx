@@ -499,6 +499,25 @@ describe("HostRequestRows", () => {
   const hint = request("hint1", "hint", "Vic", 1);
   const giveup = request("giveup1", "giveup", "Noor", 2);
 
+  // jsdom has no IntersectionObserver; this one reports `inView` on observe.
+  let inView = true;
+  beforeEach(() => {
+    inView = true;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe() {
+          this.callback(
+            [{ isIntersecting: inView } as IntersectionObserverEntry],
+            this as never,
+          );
+        }
+        disconnect() {}
+      },
+    );
+  });
+
   function mockActions(approve: unknown, deny: unknown = vi.fn()) {
     convex.useAction.mockReturnValue(approve);
     convex.useMutation.mockReturnValue(deny);
@@ -523,6 +542,37 @@ describe("HostRequestRows", () => {
     expect(screen.getByText("wants to give up")).toBeVisible();
     expect(screen.getByRole("button", { name: "Give hint" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Give up" })).toBeEnabled();
+  });
+
+  it("labels the requests with a heading", () => {
+    mockActions(vi.fn());
+    render(<HostRequestRows pending={[hint] as never} />);
+    expect(screen.getByRole("heading", { name: "Requests · 1" })).toBeVisible();
+  });
+
+  it("offers a way back to requests above the screen", async () => {
+    inView = false;
+    mockActions(vi.fn());
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const user = userEvent.setup();
+    render(<HostRequestRows pending={[hint, giveup] as never} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Scroll up to 2 requests" }),
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+
+  it("hides the way back while the requests are on screen", () => {
+    mockActions(vi.fn());
+    render(<HostRequestRows pending={[hint] as never} />);
+    expect(
+      screen.queryByRole("button", { name: /^Scroll up to/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps an empty live region until a request arrives", () => {

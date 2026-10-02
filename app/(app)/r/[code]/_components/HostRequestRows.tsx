@@ -16,6 +16,7 @@ import {
   Scramble,
   useNow,
 } from "./RequestReveal";
+import { useElementInViewport } from "./useElementInViewport";
 
 type PendingRequest = FunctionReturnType<
   typeof api.requests.listPending
@@ -48,6 +49,8 @@ export function HostRequestRows({
     ReadonlyMap<Id<"pendingRequests">, Giving>
   >(new Map());
   const now = useNow((pending?.length ?? 0) > 0);
+  const [region, setRegion] = useState<HTMLElement | null>(null);
+  const regionVisible = useElementInViewport(region, 0.1);
 
   const setBusyFor = (id: Id<"pendingRequests">, on: boolean) =>
     setBusy((current) => {
@@ -127,45 +130,63 @@ export function HostRequestRows({
   // screen readers announce requests as they arrive. `sr-only` rather than
   // `hidden`: display:none would drop it from the tree.
   return (
-    <section
-      role="status"
-      aria-label="Requests"
-      className="flex flex-col gap-1 empty:sr-only"
-    >
-      {rows.length > 0 && (
-        <>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            Requests · {waiting.length}
-          </p>
-          <ul className="flex flex-col gap-2">
-            {rows.map(({ request, giving: entry }) => (
-              <li key={request._id}>
-                {entry === undefined ? (
-                  <RequestRow
-                    request={request}
-                    now={now}
-                    busy={busy.has(request._id)}
-                    onApprove={() => onApprove(request)}
-                    onDeny={() => onDeny(request)}
-                  />
-                ) : entry.hint === undefined ? (
-                  <FindingHintRow request={request} />
-                ) : (
-                  <RevealRow
-                    lemma={entry.hint.lemma}
-                    distance={entry.hint.distance}
-                    player={request.requester}
-                    onSettled={() => {
-                      setTimeout(() => forget(request._id), GIVEN_HINT_MS);
-                    }}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
+    <>
+      <section
+        ref={setRegion}
+        role="status"
+        aria-label="Requests"
+        className="flex flex-col gap-1 empty:sr-only"
+      >
+        {rows.length > 0 && (
+          <>
+            <h2 className="text-xs font-normal uppercase tracking-wide text-muted-foreground">
+              Requests · {waiting.length}
+            </h2>
+            <ul className="flex flex-col gap-2">
+              {rows.map(({ request, giving: entry }) => (
+                <li key={request._id}>
+                  {entry === undefined ? (
+                    <RequestRow
+                      request={request}
+                      now={now}
+                      busy={busy.has(request._id)}
+                      onApprove={() => onApprove(request)}
+                      onDeny={() => onDeny(request)}
+                    />
+                  ) : entry.hint === undefined ? (
+                    <FindingHintRow request={request} />
+                  ) : (
+                    <RevealRow
+                      lemma={entry.hint.lemma}
+                      distance={entry.hint.distance}
+                      player={request.requester}
+                      onSettled={() => {
+                        setTimeout(() => forget(request._id), GIVEN_HINT_MS);
+                      }}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+      {/* The rows sit above the guess list, so a Host scrolled down the list
+        gets a way back to them. */}
+      {waiting.length > 0 && !regionVisible && (
+        <button
+          type="button"
+          aria-label={`Scroll up to ${waiting.length} request${waiting.length === 1 ? "" : "s"}`}
+          onClick={() =>
+            region?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-10 items-center gap-1.5 rounded-full border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-lg"
+        >
+          <span aria-hidden="true">↑</span>
+          {waiting.length} request{waiting.length === 1 ? "" : "s"}
+        </button>
       )}
-    </section>
+    </>
   );
 }
 
