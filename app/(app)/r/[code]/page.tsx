@@ -267,6 +267,7 @@ function RoomLoaded({
     lastFinished && lastFinished.length > 0 ? lastFinished[0] : null;
   const onlineSet = usePresenceSet(room._id, viewerUserId ?? "anon");
   const hostMember = members.find((m) => m.isHost);
+  const viewerMember = members.find((m) => m.userId === viewerUserId);
   const pendingRequests = useQuery(
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
@@ -405,8 +406,12 @@ function RoomLoaded({
                   )
                 }
               />
-              {!isViewerHost && hostMember && (
-                <RequestRows gameId={activeGame._id} host={hostMember.player} />
+              {!isViewerHost && hostMember && viewerMember && (
+                <RequestRows
+                  gameId={activeGame._id}
+                  host={hostMember.player}
+                  viewer={viewerMember.player}
+                />
               )}
               <GuessList
                 gameId={activeGame._id}

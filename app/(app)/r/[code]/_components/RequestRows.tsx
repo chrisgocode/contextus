@@ -13,7 +13,7 @@ import { barColor, barWidthPct } from "./GuessList";
 
 type Latest = FunctionReturnType<typeof api.requests.latestMine>;
 type Request = NonNullable<Latest["hint"]>;
-type Host = { name: string; image?: string | null };
+type Player = { name: string; image?: string | null };
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 // Letters a pending hint shows while it waits; the real word's length isn't
@@ -26,40 +26,55 @@ const REVEAL_LETTER_MS = 200;
 // A non-Host's hint and give-up requests, shown above the guess list where
 // their result will land: a pending hint as a placeholder row of shuffling
 // letters, a pending give-up as a hidden answer row. When the Host approves a
-// hint the letters settle into the word. Outcomes show only for requests this
-// page watched while pending, so a reload doesn't replay old decisions.
+// hint the letters settle into the word. An outcome shows only for the last
+// request of its type this page watched while pending, so a reload doesn't
+// replay old decisions and a newer request retires the one before it.
 export function RequestRows({
   gameId,
   host,
+  viewer,
 }: {
   gameId: Id<"games">;
-  host: Host;
+  host: Player;
+  viewer: Player;
 }) {
   const latest = useQuery(api.requests.latestMine, { gameId });
-  const [watched, setWatched] = useState<ReadonlySet<string>>(new Set());
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
-  const pendingIds = [latest?.hint, latest?.giveup].flatMap((r) =>
-    r?.status === "pending" ? [r._id] : [],
+  const [watching, setWatching] = useState<{ hint?: string; giveup?: string }>(
+    {},
   );
-  if (pendingIds.some((id) => !watched.has(id))) {
-    setWatched(new Set([...watched, ...pendingIds]));
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const pendingHint =
+    latest?.hint?.status === "pending" ? latest.hint._id : null;
+  const pendingGiveup =
+    latest?.giveup?.status === "pending" ? latest.giveup._id : null;
+  if (
+    (pendingHint !== null && pendingHint !== watching.hint) ||
+    (pendingGiveup !== null && pendingGiveup !== watching.giveup)
+  ) {
+    setWatching({
+      hint: pendingHint ?? watching.hint,
+      giveup: pendingGiveup ?? watching.giveup,
+    });
   }
-  const now = useNow(pendingIds.length > 0);
+  const now = useNow(pendingHint !== null || pendingGiveup !== null);
 
-  if (latest === undefined) return null;
-  const shown = (r: Request | null): r is Request =>
-    r !== null &&
-    (r.status === "pending" || (watched.has(r._id) && !dismissed.has(r._id)));
+  const shown = (r: Request | null | undefined, type: "hint" | "giveup") =>
+    r != null &&
+    (r.status === "pending" ||
+      (r._id === watching[type] && !dismissed.has(r._id)));
   const dismiss = (id: string) => setDismissed(new Set([...dismissed, id]));
-  const { hint, giveup } = latest;
+  const hint = latest?.hint;
+  const giveup = latest?.giveup;
   // An approved give-up ends the Game, and the end screen takes over.
-  const showGiveup = shown(giveup) && giveup.status !== "approved";
-  const showHint = shown(hint);
-  if (!showGiveup && !showHint) return null;
+  const showGiveup = shown(giveup, "giveup") && giveup?.status !== "approved";
+  const showHint = shown(hint, "hint");
 
+  // The live region stays mounted, even empty, so screen readers announce
+  // rows as they appear.
   return (
-    <div className="flex flex-col gap-3" aria-live="polite">
+    <div className="flex flex-col gap-3 empty:hidden" role="status">
       {showGiveup &&
+        giveup &&
         (giveup.status === "pending" ? (
           <section>
             <RowLabel
@@ -79,7 +94,7 @@ export function RequestRows({
                   ))}
                 </span>
                 <Elapsed since={giveup.createdAt} now={now} />
-                <HostAvatar host={host} />
+                <PlayerAvatar player={host} />
                 <span className="min-w-[3ch] text-right font-mono text-sm">
                   1
                 </span>
@@ -93,6 +108,7 @@ export function RequestRows({
           />
         ))}
       {showHint &&
+        hint &&
         (hint.status === "pending" ? (
           <section>
             <RowLabel
@@ -108,7 +124,7 @@ export function RequestRows({
                 </span>
                 <Elapsed since={hint.createdAt} now={now} />
                 <HintTag />
-                <HostAvatar host={host} />
+                <PlayerAvatar player={host} />
                 <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
                   ?
                 </span>
@@ -118,13 +134,13 @@ export function RequestRows({
         ) : hint.status === "approved" && hint.hint !== undefined ? (
           <section>
             <RowLabel
-              label={`Hint from ${host.name}`}
+              label="Hint approved"
               action={<DismissButton onClick={() => dismiss(hint._id)} />}
             />
             <RevealRow
               lemma={hint.hint.lemma}
               distance={hint.hint.distance}
-              host={host}
+              player={viewer}
             />
           </section>
         ) : (
@@ -212,14 +228,15 @@ function Declined({
   );
 }
 
+// Matches the Guess row the hint becomes, which is credited to the requester.
 function RevealRow({
   lemma,
   distance,
-  host,
+  player,
 }: {
   lemma: string;
   distance: number;
-  host: Host;
+  player: Player;
 }) {
   const reduced = usePrefersReducedMotion();
   const [settled, setSettled] = useState(0);
@@ -263,7 +280,7 @@ function RevealRow({
           )}
         </span>
         <HintTag />
-        <HostAvatar host={host} />
+        <PlayerAvatar player={player} />
         <span className="min-w-[3ch] text-right font-mono text-sm tabular-nums">
           {done ? distance + 1 : "?"}
         </span>
@@ -295,12 +312,12 @@ function HintTag() {
   );
 }
 
-function HostAvatar({ host }: { host: Host }) {
+function PlayerAvatar({ player }: { player: Player }) {
   return (
     <Avatar className="h-5 w-5 ring-1 ring-black/30">
-      {host.image && <AvatarImage src={host.image} alt={host.name} />}
+      {player.image && <AvatarImage src={player.image} alt={player.name} />}
       <AvatarFallback className="text-[10px]">
-        {host.name.slice(0, 1).toUpperCase()}
+        {player.name.slice(0, 1).toUpperCase()}
       </AvatarFallback>
     </Avatar>
   );

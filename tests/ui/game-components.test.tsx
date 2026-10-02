@@ -232,6 +232,7 @@ describe("HintGiveupBar", () => {
 
 describe("RequestRows", () => {
   const host = { name: "Hana", image: null };
+  const viewer = { name: "Vic", image: null };
   const pendingHint = { _id: "hint1", status: "pending", createdAt: 0 };
   const approvedHint = {
     ...pendingHint,
@@ -257,7 +258,9 @@ describe("RequestRows", () => {
     mockLatest({ hint: pendingHint, giveup: null });
     const user = userEvent.setup();
 
-    render(<RequestRows gameId={"game" as never} host={host} />);
+    render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
     expect(screen.getByText("Incoming hint")).toBeVisible();
     expect(screen.getByText("Hint requested")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Take back" }));
@@ -270,13 +273,17 @@ describe("RequestRows", () => {
     convex.useMutation.mockReturnValue(vi.fn());
     mockLatest({ hint: pendingHint, giveup: null });
     const { rerender } = render(
-      <RequestRows gameId={"game" as never} host={host} />,
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
     );
 
     mockLatest({ hint: approvedHint, giveup: null });
-    rerender(<RequestRows gameId={"game" as never} host={host} />);
+    rerender(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
 
-    expect(screen.getByText("Hint from Hana")).toBeVisible();
+    expect(screen.getByText("Hint approved")).toBeVisible();
+    // Credited like the Guess row it becomes: to the requester, not the Host.
+    expect(screen.getByText("V")).toBeVisible();
     expect(screen.getByText("pomelo")).toBeInTheDocument();
     expect(screen.getByText("300")).toBeVisible();
   });
@@ -287,10 +294,12 @@ describe("RequestRows", () => {
       convex.useMutation.mockReturnValue(vi.fn());
       mockLatest({ hint: pendingHint, giveup: null });
       const { rerender } = render(
-        <RequestRows gameId={"game" as never} host={host} />,
+        <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
       );
       mockLatest({ hint: approvedHint, giveup: null });
-      rerender(<RequestRows gameId={"game" as never} host={host} />);
+      rerender(
+        <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+      );
       expect(screen.getByText("?")).toBeVisible();
 
       for (let i = 0; i < "pomelo".length; i++) {
@@ -308,24 +317,65 @@ describe("RequestRows", () => {
       hint: approvedHint,
       giveup: { _id: "giveup1", status: "denied", createdAt: 0 },
     });
-    const { container } = render(
-      <RequestRows gameId={"game" as never} host={host} />,
+    render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("tells the requester the Host declined until they dismiss it", async () => {
     convex.useMutation.mockReturnValue(vi.fn());
     mockLatest({ hint: pendingHint, giveup: null });
     const { rerender } = render(
-      <RequestRows gameId={"game" as never} host={host} />,
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
     );
     mockLatest({ hint: { ...pendingHint, status: "denied" }, giveup: null });
-    rerender(<RequestRows gameId={"game" as never} host={host} />);
+    rerender(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
     const user = userEvent.setup();
 
     expect(screen.getByText("Hint declined")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("Hint declined")).not.toBeInTheDocument();
+  });
+
+  it("keeps the live region mounted before a request appears", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({ hint: null, giveup: null });
+    const { rerender } = render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
+    const region = screen.getByRole("status");
+    expect(region).toBeEmptyDOMElement();
+
+    mockLatest({ hint: pendingHint, giveup: null });
+    rerender(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
+    expect(screen.getByRole("status")).toBe(region);
+    expect(region).toHaveTextContent("Hint requested");
+  });
+
+  it("doesn't bring back an old decision after a newer request is taken back", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    const denied = { _id: "hint0", status: "denied", createdAt: 0 };
+    mockLatest({ hint: { ...denied, status: "pending" }, giveup: null });
+    const { rerender } = render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
+    const update = (hint: unknown) => {
+      mockLatest({ hint, giveup: null });
+      rerender(
+        <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+      );
+    };
+    update(denied);
+    expect(screen.getByText("Hint declined")).toBeVisible();
+
+    // Asking again, then taking it back, leaves the old denial newest.
+    update({ _id: "hint1", status: "pending", createdAt: 1 });
+    update(denied);
     expect(screen.queryByText("Hint declined")).not.toBeInTheDocument();
   });
 
@@ -335,7 +385,9 @@ describe("RequestRows", () => {
       hint: null,
       giveup: { _id: "giveup1", status: "pending", createdAt: 0 },
     });
-    render(<RequestRows gameId={"game" as never} host={host} />);
+    render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
     expect(screen.getByText("Answer · if host agrees")).toBeVisible();
     expect(screen.getByText("Give-up requested")).toBeInTheDocument();
   });
@@ -348,7 +400,9 @@ describe("RequestRows", () => {
     );
     mockLatest({ hint: pendingHint, giveup: null });
     const user = userEvent.setup();
-    render(<RequestRows gameId={"game" as never} host={host} />);
+    render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
     await user.click(screen.getByRole("button", { name: "Take back" }));
     expect(reportClientError).toHaveBeenCalledWith(
       expect.anything(),
