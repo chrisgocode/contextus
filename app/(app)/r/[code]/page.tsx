@@ -3,7 +3,7 @@
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import {
   AchievementUnlockQueue,
@@ -12,6 +12,7 @@ import {
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
+import { PrototypeSwitcher } from "@/components/PrototypeSwitcher";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { reportClientError } from "@/lib/report-error";
@@ -24,6 +25,11 @@ import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
 import { HostRequestScrollHint } from "./_components/HostRequestScrollHint";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
+import {
+  REQUEST_PROTOTYPE_STATES,
+  REQUEST_PROTOTYPE_VARIANTS,
+  RequestPrototype,
+} from "./_components/RequestStatus.prototype";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { useElementInViewport } from "./_components/useElementInViewport";
 import { usePresenceSet } from "./_components/usePresenceSet";
@@ -282,6 +288,14 @@ function RoomLoaded({
     gameId: string;
     lemma: string;
   } | null>(null);
+  // PROTOTYPE: request-status variants, see RequestStatus.prototype.tsx.
+  const protoVariant = useSearchParams().get("variant");
+  const hostMember = members.find((m) => m.isHost);
+  const protoHost = {
+    name: hostMember?.player.name ?? "Host",
+    image: hostMember?.player.image,
+    online: hostMember ? onlineSet.has(hostMember.userId) : false,
+  };
   const dismissAchievementUnlock = useCallback(() => {
     setAchievementUnlocks((items) => items.slice(1));
   }, []);
@@ -392,7 +406,18 @@ function RoomLoaded({
                 <p className="text-sm text-muted-foreground">
                   Game #{activeGame.contextoGameId}
                 </p>
-                <HintGiveupBar gameId={activeGame._id} isHost={isViewerHost} />
+                {protoVariant ? (
+                  <RequestPrototype
+                    variant={protoVariant}
+                    slot="bar"
+                    host={protoHost}
+                  />
+                ) : (
+                  <HintGiveupBar
+                    gameId={activeGame._id}
+                    isHost={isViewerHost}
+                  />
+                )}
               </div>
               <GuessInput
                 gameId={activeGame._id}
@@ -403,6 +428,13 @@ function RoomLoaded({
                   )
                 }
               />
+              {protoVariant && (
+                <RequestPrototype
+                  variant={protoVariant}
+                  slot="list"
+                  host={protoHost}
+                />
+              )}
               <GuessList
                 gameId={activeGame._id}
                 duplicate={
@@ -482,6 +514,19 @@ function RoomLoaded({
             onClick={scrollToRequests}
           />
         )}
+      {protoVariant && activeGame && (
+        <>
+          <RequestPrototype
+            variant={protoVariant}
+            slot="dock"
+            host={protoHost}
+          />
+          <PrototypeSwitcher
+            variants={REQUEST_PROTOTYPE_VARIANTS}
+            states={REQUEST_PROTOTYPE_STATES}
+          />
+        </>
+      )}
       <AchievementUnlockQueue
         items={achievementUnlocks}
         onItemDone={dismissAchievementUnlock}
