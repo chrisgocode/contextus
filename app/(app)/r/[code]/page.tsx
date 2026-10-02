@@ -3,7 +3,7 @@
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import {
   AchievementUnlockQueue,
@@ -12,6 +12,7 @@ import {
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
+import { PrototypeSwitcher } from "@/components/PrototypeSwitcher";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { reportClientError } from "@/lib/report-error";
@@ -23,6 +24,11 @@ import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
 import { HostRequestScrollHint } from "./_components/HostRequestScrollHint";
+import {
+  HOST_PROTOTYPE_STATES,
+  HOST_PROTOTYPE_VARIANTS,
+  HostRequestPrototype,
+} from "./_components/HostRequests.prototype";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
@@ -268,6 +274,10 @@ function RoomLoaded({
   const onlineSet = usePresenceSet(room._id, viewerUserId ?? "anon");
   const hostMember = members.find((m) => m.isHost);
   const viewerMember = members.find((m) => m.userId === viewerUserId);
+  // PROTOTYPE: host request variants, see HostRequests.prototype.tsx.
+  const variantParam = useSearchParams().get("variant");
+  const protoVariant = isViewerHost ? variantParam : null;
+  const protoPlayers = members.filter((m) => !m.isHost).map((m) => m.player);
   const pendingRequests = useQuery(
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
@@ -395,7 +405,18 @@ function RoomLoaded({
                 <p className="text-sm text-muted-foreground">
                   Game #{activeGame.contextoGameId}
                 </p>
-                <HintGiveupBar gameId={activeGame._id} isHost={isViewerHost} />
+                {protoVariant === "C" ? (
+                  <HostRequestPrototype
+                    variant={protoVariant}
+                    slot="bar"
+                    players={protoPlayers}
+                  />
+                ) : (
+                  <HintGiveupBar
+                    gameId={activeGame._id}
+                    isHost={isViewerHost}
+                  />
+                )}
               </div>
               <GuessInput
                 gameId={activeGame._id}
@@ -406,6 +427,13 @@ function RoomLoaded({
                   )
                 }
               />
+              {protoVariant && (
+                <HostRequestPrototype
+                  variant={protoVariant}
+                  slot="list"
+                  players={protoPlayers}
+                />
+              )}
               {!isViewerHost && hostMember && viewerMember && (
                 <RequestRows
                   gameId={activeGame._id}
@@ -472,7 +500,7 @@ function RoomLoaded({
             </ul>
           </section>
 
-          {activeGame && isViewerHost && (
+          {activeGame && isViewerHost && !protoVariant && (
             <div ref={setRequestsElement}>
               <PendingRequestsSidebar
                 pending={pendingRequests}
@@ -483,8 +511,22 @@ function RoomLoaded({
         </aside>
       </div>
 
+      {protoVariant && activeGame && (
+        <>
+          <HostRequestPrototype
+            variant={protoVariant}
+            slot="dock"
+            players={protoPlayers}
+          />
+          <PrototypeSwitcher
+            variants={HOST_PROTOTYPE_VARIANTS}
+            states={HOST_PROTOTYPE_STATES}
+          />
+        </>
+      )}
       {activeGame &&
         isViewerHost &&
+        !protoVariant &&
         pendingRequestCount > 0 &&
         !requestsVisible && (
           <HostRequestScrollHint
