@@ -69,10 +69,11 @@ export function RequestRows({
   const showGiveup = shown(giveup, "giveup") && giveup?.status !== "approved";
   const showHint = shown(hint, "hint");
 
-  // The live region stays mounted, even empty, so screen readers announce
-  // rows as they appear.
+  // The live region stays mounted and in the accessibility tree while empty,
+  // so screen readers announce rows as they appear. `sr-only` rather than
+  // `hidden`: display:none would drop it from the tree.
   return (
-    <div className="flex flex-col gap-3 empty:hidden" role="status">
+    <div className="flex flex-col gap-3 empty:sr-only" role="status">
       {showGiveup &&
         giveup &&
         (giveup.status === "pending" ? (
