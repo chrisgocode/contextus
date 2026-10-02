@@ -6,8 +6,9 @@ import { loadCalendar } from "@/app/(app)/r/[code]/_components/calendar-loader";
 import { GameSetupCalendar } from "@/app/(app)/r/[code]/_components/GameSetupCalendar";
 import { HintGiveupBar } from "@/app/(app)/r/[code]/_components/HintGiveupBar";
 import { PendingRequestsSidebar } from "@/app/(app)/r/[code]/_components/PendingRequestsSidebar";
+import { RequestRows } from "@/app/(app)/r/[code]/_components/RequestRows";
 import { reportClientError } from "@/lib/report-error";
-import { cleanup, render, screen, userEvent, waitFor } from "./test-utils";
+import { act, cleanup, render, screen, userEvent, waitFor } from "./test-utils";
 
 const convex = vi.hoisted(() => ({
   useAction: vi.fn(),
@@ -197,14 +198,14 @@ describe("HintGiveupBar", () => {
     const createRequest = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(createRequest);
     convex.useAction.mockReturnValue(vi.fn());
-    convex.useQuery.mockReturnValue([{ type: "hint" }]);
+    convex.useQuery.mockReturnValue({
+      hint: { _id: "request", status: "pending", createdAt: 0 },
+      giveup: null,
+    });
     const user = userEvent.setup();
 
     render(<HintGiveupBar gameId={"game" as never} isHost={false} />);
     expect(screen.getByRole("button", { name: "Request hint" })).toBeDisabled();
-    expect(
-      screen.getByText("Hint request pending host approval."),
-    ).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Request give up" }));
     expect(
@@ -226,6 +227,136 @@ describe("HintGiveupBar", () => {
     render(<HintGiveupBar gameId={"game" as never} isHost />);
     await user.click(screen.getByRole("button", { name: "Get hint" }));
     expect(await screen.findByText("No unguessed hints remain.")).toBeVisible();
+  });
+});
+
+describe("RequestRows", () => {
+  const host = { name: "Hana", image: null };
+  const pendingHint = { _id: "hint1", status: "pending", createdAt: 0 };
+  const approvedHint = {
+    ...pendingHint,
+    status: "approved",
+    hint: { lemma: "pomelo", distance: 299 },
+  };
+
+  function mockLatest(latest: unknown) {
+    convex.useQuery.mockReturnValue(latest);
+  }
+
+  function reduceMotion() {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  }
+
+  it("shows a pending hint and lets the requester take it back", async () => {
+    const cancel = vi.fn().mockResolvedValue(null);
+    convex.useMutation.mockReturnValue(cancel);
+    mockLatest({ hint: pendingHint, giveup: null });
+    const user = userEvent.setup();
+
+    render(<RequestRows gameId={"game" as never} host={host} />);
+    expect(screen.getByText("Incoming hint")).toBeVisible();
+    expect(screen.getByText("Hint requested")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Take back" }));
+
+    expect(cancel).toHaveBeenCalledWith({ requestId: "hint1" });
+  });
+
+  it("reveals the hint the Host approved while the page watched", () => {
+    reduceMotion();
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({ hint: pendingHint, giveup: null });
+    const { rerender } = render(
+      <RequestRows gameId={"game" as never} host={host} />,
+    );
+
+    mockLatest({ hint: approvedHint, giveup: null });
+    rerender(<RequestRows gameId={"game" as never} host={host} />);
+
+    expect(screen.getByText("Hint from Hana")).toBeVisible();
+    expect(screen.getByText("pomelo")).toBeInTheDocument();
+    expect(screen.getByText("300")).toBeVisible();
+  });
+
+  it("settles the scrambled letters into the hint over time", async () => {
+    vi.useFakeTimers();
+    try {
+      convex.useMutation.mockReturnValue(vi.fn());
+      mockLatest({ hint: pendingHint, giveup: null });
+      const { rerender } = render(
+        <RequestRows gameId={"game" as never} host={host} />,
+      );
+      mockLatest({ hint: approvedHint, giveup: null });
+      rerender(<RequestRows gameId={"game" as never} host={host} />);
+      expect(screen.getByText("?")).toBeVisible();
+
+      for (let i = 0; i < "pomelo".length; i++) {
+        await act(() => vi.advanceTimersByTimeAsync(200));
+      }
+      expect(screen.getByText("300")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("doesn't replay decisions made before the page loaded", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({
+      hint: approvedHint,
+      giveup: { _id: "giveup1", status: "denied", createdAt: 0 },
+    });
+    const { container } = render(
+      <RequestRows gameId={"game" as never} host={host} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("tells the requester the Host declined until they dismiss it", async () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({ hint: pendingHint, giveup: null });
+    const { rerender } = render(
+      <RequestRows gameId={"game" as never} host={host} />,
+    );
+    mockLatest({ hint: { ...pendingHint, status: "denied" }, giveup: null });
+    rerender(<RequestRows gameId={"game" as never} host={host} />);
+    const user = userEvent.setup();
+
+    expect(screen.getByText("Hint declined")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("Hint declined")).not.toBeInTheDocument();
+  });
+
+  it("hides the answer behind a pending give-up", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({
+      hint: null,
+      giveup: { _id: "giveup1", status: "pending", createdAt: 0 },
+    });
+    render(<RequestRows gameId={"game" as never} host={host} />);
+    expect(screen.getByText("Answer · if host agrees")).toBeVisible();
+    expect(screen.getByText("Give-up requested")).toBeInTheDocument();
+  });
+
+  it("reports a take-back the Host already answered", async () => {
+    convex.useMutation.mockReturnValue(
+      vi
+        .fn()
+        .mockRejectedValue({ data: "Request not found or already handled" }),
+    );
+    mockLatest({ hint: pendingHint, giveup: null });
+    const user = userEvent.setup();
+    render(<RequestRows gameId={"game" as never} host={host} />);
+    await user.click(screen.getByRole("button", { name: "Take back" }));
+    expect(reportClientError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        context: "request.cancel.hint",
+        userMessage: "The host already answered this request.",
+      }),
+    );
   });
 });
 

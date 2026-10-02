@@ -178,6 +178,9 @@ export const _apply = internalMutation({
     if (request !== null && outcome.status === "recorded") {
       await ctx.db.patch("pendingRequests", request._id, {
         status: "approved",
+        ...(turn.kind === "hint"
+          ? { hint: { lemma: turn.lemma, distance: turn.distance } }
+          : {}),
       });
       await track(ctx, userId, {
         name: "request_approved",

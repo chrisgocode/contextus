@@ -31,6 +31,10 @@ export function expectedClientErrorMessage(
     if (data === "Request not found or already handled")
       return "This request was already handled.";
   }
+  if (context?.startsWith("request.cancel.")) {
+    if (data === "Request not found or already handled")
+      return "The host already answered this request.";
+  }
   if (context?.startsWith("request.deny.")) {
     if (data === "Request not found")
       return "This request is no longer available.";
