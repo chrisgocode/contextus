@@ -71,7 +71,7 @@ test("two registered players complete a cooperative game", async ({
     await partner.page.getByRole("button", { name: "Request hint" }).click();
     await expect(host.page.getByText(/wants a hint/)).toBeVisible();
     await host.page.getByRole("button", { name: "Approve" }).click();
-    await expect(partner.page.getByText(/^Hint from /)).toBeVisible();
+    await expect(partner.page.getByText("Hint approved")).toBeVisible();
     await expect(host.page.getByText("hint", { exact: true })).toHaveCount(2);
 
     await partner.page.getByRole("button", { name: "Request give up" }).click();
