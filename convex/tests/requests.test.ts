@@ -564,3 +564,36 @@ test("latestMine hides other members' requests and answers non-members with noth
     await asUser(t, stranger).query(api.requests.latestMine, { gameId }),
   ).toEqual(empty);
 });
+
+test("latestMine prefers a Pending request over a newer handled one", async () => {
+  const t = setupTest();
+  const { other, roomId, gameId } = await startedGame(t);
+  // Guest merge can leave an older pending row behind a newer denied one.
+  const pendingId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "pending",
+      createdAt: 1,
+    });
+    await ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "denied",
+      createdAt: 2,
+    });
+    return id;
+  });
+  const latest = await asUser(t, other).query(api.requests.latestMine, {
+    gameId,
+  });
+  expect(latest.hint).toEqual({
+    _id: pendingId,
+    status: "pending",
+    createdAt: 1,
+  });
+});
