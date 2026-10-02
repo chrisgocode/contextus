@@ -544,6 +544,21 @@ describe("HostRequestRows", () => {
     expect(screen.getByRole("button", { name: "Give up" })).toBeEnabled();
   });
 
+  it("counts down to when each request expires", () => {
+    vi.useFakeTimers({ now: 45_000, toFake: ["Date"] });
+    try {
+      mockActions(vi.fn());
+      render(
+        <HostRequestRows
+          pending={[{ ...hint, createdAt: 0, expiresAt: 60_000 }] as never}
+        />,
+      );
+      expect(screen.getByText("0:15")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("labels the requests with a heading", () => {
     mockActions(vi.fn());
     render(<HostRequestRows pending={[hint] as never} />);

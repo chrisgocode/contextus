@@ -9,11 +9,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { expectedClientErrorMessage } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 import {
-  Elapsed,
   HintTag,
   PlayerAvatar,
   RevealRow,
   Scramble,
+  TimeLeft,
   useNow,
 } from "./RequestReveal";
 import { useElementInViewport } from "./useElementInViewport";
@@ -225,7 +225,7 @@ function RequestRow({
           <span className="truncate text-sm font-semibold">
             {request.requester.name}
           </span>
-          <Elapsed since={request._creationTime} now={now} />
+          <TimeLeft request={request} now={now} />
         </span>
         <span className="truncate text-xs text-white/60">
           {giveup ? "wants to give up" : "wants a hint"}

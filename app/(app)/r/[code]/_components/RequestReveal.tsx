@@ -129,15 +129,6 @@ export function PlayerAvatar({
   );
 }
 
-export function Elapsed({ since, now }: { since: number; now: number }) {
-  const seconds = Math.max(0, Math.floor((now - since) / 1000));
-  return (
-    <span className="text-xs tabular-nums text-white/60" aria-hidden>
-      {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
-    </span>
-  );
-}
-
 // Time until the request expires; requests made before they expired show
 // time waited instead.
 export function TimeLeft({
