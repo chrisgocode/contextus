@@ -17,6 +17,7 @@ import {
   useNow,
 } from "./RequestReveal";
 import { useElementInViewport } from "./useElementInViewport";
+import { useKeyboardInset } from "./useKeyboardInset";
 
 type PendingRequest = FunctionReturnType<
   typeof api.requests.listPending
@@ -51,6 +52,7 @@ export function HostRequestRows({
   const now = useNow((pending?.length ?? 0) > 0);
   const [region, setRegion] = useState<HTMLElement | null>(null);
   const regionVisible = useElementInViewport(region, 0.1);
+  const keyboardInset = useKeyboardInset();
 
   const setBusyFor = (id: Id<"pendingRequests">, on: boolean) =>
     setBusy((current) => {
@@ -179,6 +181,13 @@ export function HostRequestRows({
           aria-label={`Scroll up to ${waiting.length} request${waiting.length === 1 ? "" : "s"}`}
           onClick={() =>
             region?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          // Above the keyboard while it's open (it covers the home
+          // indicator's safe area), else above the safe area.
+          style={
+            keyboardInset > 0
+              ? { bottom: `calc(${keyboardInset}px + 1rem)` }
+              : undefined
           }
           className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-10 items-center gap-1.5 rounded-full border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-lg"
         >

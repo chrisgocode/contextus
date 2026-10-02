@@ -567,6 +567,23 @@ describe("HostRequestRows", () => {
     });
   });
 
+  it("lifts the way back above an open on-screen keyboard", () => {
+    inView = false;
+    mockActions(vi.fn());
+    // iOS Safari keeps the layout viewport and shrinks the visual one.
+    vi.stubGlobal("visualViewport", {
+      offsetTop: 0,
+      height: window.innerHeight - 300,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    render(<HostRequestRows pending={[hint] as never} />);
+
+    expect(
+      screen.getByRole("button", { name: "Scroll up to 1 request" }),
+    ).toHaveStyle({ bottom: "316px" }); // 300px keyboard + 1rem
+  });
+
   it("hides the way back while the requests are on screen", () => {
     mockActions(vi.fn());
     render(<HostRequestRows pending={[hint] as never} />);
