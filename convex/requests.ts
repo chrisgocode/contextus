@@ -48,16 +48,30 @@ export const latestMine = query({
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return { hint: null, giveup: null };
     const latest = async (type: Doc<"pendingRequests">["type"]) => {
-      const row = await ctx.db
+      // A pending row wins even when it isn't the newest: guest merge can
+      // leave one behind a newer handled row, and create still sees it.
+      const pending = await ctx.db
         .query("pendingRequests")
-        .withIndex("by_requester_game_type", (q) =>
+        .withIndex("by_requester_game_type_status", (q) =>
           q
             .eq("requesterUserId", access.userId)
             .eq("gameId", gameId)
-            .eq("type", type),
+            .eq("type", type)
+            .eq("status", "pending"),
         )
-        .order("desc")
         .first();
+      const row =
+        pending ??
+        (await ctx.db
+          .query("pendingRequests")
+          .withIndex("by_requester_game_type", (q) =>
+            q
+              .eq("requesterUserId", access.userId)
+              .eq("gameId", gameId)
+              .eq("type", type),
+          )
+          .order("desc")
+          .first());
       if (row === null) return null;
       const { _id, status, createdAt, hint } = row;
       return hint === undefined
