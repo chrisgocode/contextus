@@ -20,11 +20,18 @@ export function HintGiveupBar({
   const hostGiveup = useAction(api.giveup.hostGiveup);
   // RequestRows shows a pending request's status; the buttons only disable.
   const mine = useQuery(api.requests.latestMine, isHost ? "skip" : { gameId });
+  // One request of each type at a time per Game.
+  const others = useQuery(
+    api.requests.pendingFromOthers,
+    isHost ? "skip" : { gameId },
+  );
   const [busy, setBusy] = useState<"hint" | "giveup" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const myHintPending = mine?.hint?.status === "pending";
   const myGiveupPending = mine?.giveup?.status === "pending";
+  const othersHint = others?.hint ?? null;
+  const othersGiveup = others?.giveup ?? null;
 
   async function run(kind: "hint" | "giveup") {
     setError(null);
@@ -63,19 +70,34 @@ export function HintGiveupBar({
       <div className="flex gap-2">
         <Button
           variant="outline"
-          disabled={busy !== null || (!isHost && myHintPending)}
+          disabled={
+            busy !== null || (!isHost && (myHintPending || othersHint !== null))
+          }
           onClick={() => run("hint")}
         >
           {busy === "hint" ? "…" : isHost ? "Get hint" : "Request hint"}
         </Button>
         <Button
           variant="destructive"
-          disabled={busy !== null || (!isHost && myGiveupPending)}
+          disabled={
+            busy !== null ||
+            (!isHost && (myGiveupPending || othersGiveup !== null))
+          }
           onClick={() => run("giveup")}
         >
           {busy === "giveup" ? "…" : isHost ? "Give up" : "Request give up"}
         </Button>
       </div>
+      {!isHost && othersHint !== null && (
+        <p className="text-xs text-muted-foreground">
+          {othersHint.name} already asked for a hint.
+        </p>
+      )}
+      {!isHost && othersGiveup !== null && (
+        <p className="text-xs text-muted-foreground">
+          {othersGiveup.name} already asked to give up.
+        </p>
+      )}
       {error && <p className="text-sm text-rose-400">{error}</p>}
     </div>
   );

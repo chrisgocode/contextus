@@ -203,8 +203,12 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("approved"),
       v.literal("denied"),
+      // Nobody answered before `expiresAt`.
+      v.literal("expired"),
     ),
     createdAt: v.number(),
+    // Optional only for requests made before requests expired.
+    expiresAt: v.optional(v.number()),
     // The Hint an approved hint request produced, so the requester sees it.
     hint: v.optional(v.object({ lemma: v.string(), distance: v.number() })),
   })

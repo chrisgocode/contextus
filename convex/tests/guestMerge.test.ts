@@ -202,13 +202,18 @@ test("guest merge deduplicates overlapping pending requests", async () => {
     roomId,
     contextoGameId: 1336,
   });
-  await asUser(t, guest).mutation(api.requests.create, {
-    gameId,
-    type: "hint",
-  });
-  await asUser(t, target).mutation(api.requests.create, {
-    gameId,
-    type: "hint",
+  // Seeded directly: create allows one pending hint request per Game.
+  await t.run(async (ctx) => {
+    for (const requesterUserId of [guest, target]) {
+      await ctx.db.insert("pendingRequests", {
+        roomId,
+        gameId,
+        requesterUserId,
+        type: "hint",
+        status: "pending",
+        createdAt: 1,
+      });
+    }
   });
 
   await mergeGuest(t, guest, target);
@@ -217,6 +222,46 @@ test("guest merge deduplicates overlapping pending requests", async () => {
     gameId,
   });
   expect(requests).toHaveLength(1);
+});
+
+test("guest merge keeps every handled request", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  const target = await seedUser(t);
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, guest).mutation(api.rooms.join, { code });
+  await asUser(t, target).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  // Asking again after a denial or an expiry leaves several handled rows.
+  await t.run(async (ctx) => {
+    for (const requesterUserId of [guest, guest, target, target]) {
+      for (const status of ["denied", "expired"] as const) {
+        await ctx.db.insert("pendingRequests", {
+          roomId,
+          gameId,
+          requesterUserId,
+          type: "hint",
+          status,
+          createdAt: 1,
+        });
+      }
+    }
+  });
+
+  await mergeGuest(t, guest, target);
+
+  const rows = await t.run(async (ctx) =>
+    ctx.db
+      .query("pendingRequests")
+      .withIndex("by_game_status", (q) => q.eq("gameId", gameId))
+      .collect(),
+  );
+  expect(rows).toHaveLength(8);
+  expect(rows.every((r) => r.requesterUserId === target)).toBe(true);
 });
 
 test("guest merge unlocks achievements crossed by combined progress", async () => {

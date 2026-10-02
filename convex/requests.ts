@@ -1,7 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { action, internalQuery, mutation, query } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import {
   requireHostByRoom,
   requireMemberByGame,
@@ -12,6 +18,9 @@ import { loadPlayers } from "./lib/player";
 import { track } from "./analytics";
 
 const REQUEST_TYPE = v.union(v.literal("hint"), v.literal("giveup"));
+
+// A request nobody answers expires after this long.
+const REQUEST_TTL_MS = 60_000;
 
 export const listPending = query({
   args: { gameId: v.id("games") },
@@ -73,16 +82,49 @@ export const latestMine = query({
           .order("desc")
           .first());
       if (row === null) return null;
-      const { _id, status, createdAt, hint } = row;
-      return hint === undefined
-        ? { _id, status, createdAt }
-        : { _id, status, createdAt, hint };
+      const { _id, status, createdAt, expiresAt, hint } = row;
+      return {
+        _id,
+        status,
+        createdAt,
+        ...(expiresAt === undefined ? {} : { expiresAt }),
+        ...(hint === undefined ? {} : { hint }),
+      };
     };
     const [hint, giveup] = await Promise.all([
       latest("hint"),
       latest("giveup"),
     ]);
     return { hint, giveup };
+  },
+});
+
+// Who else in this Game has a request of each type pending, so a member can
+// see why they can't ask for the same thing.
+export const pendingFromOthers = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, { gameId }) => {
+    const access = await tryMemberByGame(ctx, { gameId });
+    if (access === null) return { hint: null, giveup: null };
+    const others = (
+      await ctx.db
+        .query("pendingRequests")
+        .withIndex("by_game_status", (q) =>
+          q.eq("gameId", gameId).eq("status", "pending"),
+        )
+        .collect()
+    ).filter((r) => r.requesterUserId !== access.userId);
+    const players = await loadPlayers(
+      ctx,
+      others.map((r) => r.requesterUserId),
+    );
+    const holder = (type: Doc<"pendingRequests">["type"]) => {
+      const row = others.find((r) => r.type === type);
+      return row === undefined
+        ? null
+        : { name: players.get(row.requesterUserId)!.name };
+    };
+    return { hint: holder("hint"), giveup: holder("giveup") };
   },
 });
 
@@ -96,26 +138,34 @@ export const create = mutation({
     if (room.hostUserId === userId) {
       throw new ConvexError(`Host should use the direct ${type} action`);
     }
-    const existing = await ctx.db
-      .query("pendingRequests")
-      .withIndex("by_requester_game_type_status", (q) =>
-        q
-          .eq("requesterUserId", userId)
-          .eq("gameId", gameId)
-          .eq("type", type)
-          .eq("status", "pending"),
-      )
-      .first();
-    if (existing !== null) {
-      throw new ConvexError(`${type} request already pending`);
+    // One pending request of each type per Game, whoever asked.
+    const existing = (
+      await ctx.db
+        .query("pendingRequests")
+        .withIndex("by_game_status", (q) =>
+          q.eq("gameId", gameId).eq("status", "pending"),
+        )
+        .collect()
+    ).find((r) => r.type === type);
+    if (existing !== undefined) {
+      throw new ConvexError(
+        existing.requesterUserId === userId
+          ? `${type} request already pending`
+          : `Another ${type} request is already pending`,
+      );
     }
+    const createdAt = Date.now();
     const requestId = await ctx.db.insert("pendingRequests", {
       roomId: game.roomId,
       gameId,
       requesterUserId: userId,
       type,
       status: "pending",
-      createdAt: Date.now(),
+      createdAt,
+      expiresAt: createdAt + REQUEST_TTL_MS,
+    });
+    await ctx.scheduler.runAfter(REQUEST_TTL_MS, internal.requests._expire, {
+      requestId,
     });
     await track(ctx, userId, {
       name: "request_created",
@@ -166,6 +216,26 @@ export const cancel = mutation({
     await ctx.db.delete("pendingRequests", requestId);
     await track(ctx, userId, {
       name: "request_cancelled",
+      properties: {
+        request_id: requestId,
+        game_id: req.gameId,
+        request_type: req.type,
+      },
+    });
+    return null;
+  },
+});
+
+// Scheduled by create. A request the Host answered or the requester took
+// back in the meantime is left alone.
+export const _expire = internalMutation({
+  args: { requestId: v.id("pendingRequests") },
+  handler: async (ctx, { requestId }) => {
+    const req = await ctx.db.get("pendingRequests", requestId);
+    if (req === null || req.status !== "pending") return null;
+    await ctx.db.patch("pendingRequests", requestId, { status: "expired" });
+    await track(ctx, req.requesterUserId, {
+      name: "request_expired",
       properties: {
         request_id: requestId,
         game_id: req.gameId,

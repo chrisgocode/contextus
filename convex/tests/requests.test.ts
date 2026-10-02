@@ -530,9 +530,13 @@ test("latestMine returns the viewer's newest request of each type", async () => 
   const pending = await asUser(t, other).query(api.requests.latestMine, {
     gameId,
   });
+  const times = {
+    createdAt: expect.any(Number),
+    expiresAt: expect.any(Number),
+  };
   expect(pending).toEqual({
-    hint: { _id: hintId, status: "pending", createdAt: expect.any(Number) },
-    giveup: { _id: giveupId, status: "pending", createdAt: expect.any(Number) },
+    hint: { _id: hintId, status: "pending", ...times },
+    giveup: { _id: giveupId, status: "pending", ...times },
   });
 
   await asUser(t, host).action(api.requests.approve, { requestId: hintId });
@@ -544,10 +548,10 @@ test("latestMine returns the viewer's newest request of each type", async () => 
     hint: {
       _id: hintId,
       status: "approved",
-      createdAt: expect.any(Number),
+      ...times,
       hint: { lemma: "pomelo", distance: 299 },
     },
-    giveup: { _id: giveupId, status: "denied", createdAt: expect.any(Number) },
+    giveup: { _id: giveupId, status: "denied", ...times },
   });
 });
 
@@ -596,4 +600,138 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
     status: "pending",
     createdAt: 1,
   });
+});
+
+test("create allows one Pending request of each type per Game", async () => {
+  const t = setupTest();
+  const { other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  await createRequest(t, other, gameId, "hint");
+
+  await expect(
+    asUser(t, third).mutation(api.requests.create, { gameId, type: "hint" }),
+  ).rejects.toThrow("Another hint request is already pending");
+  await asUser(t, third).mutation(api.requests.create, {
+    gameId,
+    type: "giveup",
+  });
+  await expect(
+    asUser(t, other).mutation(api.requests.create, {
+      gameId,
+      type: "giveup",
+    }),
+  ).rejects.toThrow("Another giveup request is already pending");
+});
+
+test("a Pending request expires after a minute without an answer", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+    vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+    const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+    const t = setupTest();
+    const { host, other, gameId } = await startedGame(t);
+    // Seeded sessions last a minute too; keep both players signed in.
+    await t.run(async (ctx) => {
+      for (const session of await ctx.db.query("authSessions").collect()) {
+        await ctx.db.patch("authSessions", session._id, {
+          expirationTime: Date.now() + 10 * 60_000,
+        });
+      }
+    });
+    const requestId = await createRequest(t, other, gameId, "hint");
+    const created = await asUser(t, other).query(api.requests.latestMine, {
+      gameId,
+    });
+    expect(created.hint?.expiresAt).toBe(created.hint!.createdAt + 60_000);
+    capture.mockClear();
+
+    vi.advanceTimersByTime(59_000);
+    await t.finishInProgressScheduledFunctions();
+    expect(
+      await asUser(t, host).query(api.requests.listPending, { gameId }),
+    ).toHaveLength(1);
+
+    vi.advanceTimersByTime(1_000);
+    await t.finishInProgressScheduledFunctions();
+    expect(
+      await asUser(t, host).query(api.requests.listPending, { gameId }),
+    ).toEqual([]);
+    const latest = await asUser(t, other).query(api.requests.latestMine, {
+      gameId,
+    });
+    expect(latest.hint).toMatchObject({ _id: requestId, status: "expired" });
+    expect(capture.mock.calls.map(([, event]) => event)).toEqual([
+      expect.objectContaining({
+        distinctId: other,
+        event: "request_expired",
+        properties: expect.objectContaining({
+          request_id: requestId,
+          game_id: gameId,
+          request_type: "hint",
+        }),
+      }),
+    ]);
+    // Asking again works once it has expired.
+    await asUser(t, other).mutation(api.requests.create, {
+      gameId,
+      type: "hint",
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("expiry leaves a request the Host already answered alone", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { host, other, gameId } = await startedGame(t);
+    const requestId = await createRequest(t, other, gameId, "giveup");
+    await asUser(t, host).mutation(api.requests.deny, { requestId });
+
+    vi.advanceTimersByTime(60_000);
+    await t.finishInProgressScheduledFunctions();
+    const row = await t.run(async (ctx) =>
+      ctx.db.get("pendingRequests", requestId),
+    );
+    expect(row?.status).toBe("denied");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("listPending tells the Host when each request expires", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  await createRequest(t, other, gameId, "hint");
+  const [request] = await asUser(t, host).query(api.requests.listPending, {
+    gameId,
+  });
+  expect(request.expiresAt).toBe(request.createdAt + 60_000);
+});
+
+test("pendingFromOthers names who holds each request type", async () => {
+  const t = setupTest();
+  const { other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  await createRequest(t, other, gameId, "hint");
+
+  expect(
+    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
+  ).toEqual({ hint: { name: "Other" }, giveup: null });
+  // The requester's own request isn't someone else's.
+  expect(
+    await asUser(t, other).query(api.requests.pendingFromOthers, { gameId }),
+  ).toEqual({ hint: null, giveup: null });
+  const stranger = await seedUser(t);
+  expect(
+    await asUser(t, stranger).query(api.requests.pendingFromOthers, {
+      gameId,
+    }),
+  ).toEqual({ hint: null, giveup: null });
 });

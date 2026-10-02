@@ -172,6 +172,36 @@ describe("GuessInput", () => {
 });
 
 describe("HintGiveupBar", () => {
+  function mockRequestQueries({
+    latestMine = { hint: null, giveup: null },
+    pendingFromOthers = { hint: null, giveup: null },
+  }: {
+    latestMine?: unknown;
+    pendingFromOthers?: unknown;
+  }) {
+    convex.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "requests:latestMine") return latestMine;
+      if (name === "requests:pendingFromOthers") return pendingFromOthers;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+  }
+
+  it("holds a request type someone else already asked for", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    convex.useAction.mockReturnValue(vi.fn());
+    mockRequestQueries({
+      pendingFromOthers: { hint: { name: "Noor" }, giveup: null },
+    });
+    render(<HintGiveupBar gameId={"game" as never} isHost={false} />);
+
+    expect(screen.getByRole("button", { name: "Request hint" })).toBeDisabled();
+    expect(screen.getByText("Noor already asked for a hint.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Request give up" }),
+    ).toBeEnabled();
+  });
+
   function mockHostHint(hostHint: unknown) {
     convex.useAction.mockImplementation((reference) => {
       const name = getFunctionName(reference);
@@ -198,9 +228,11 @@ describe("HintGiveupBar", () => {
     const createRequest = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(createRequest);
     convex.useAction.mockReturnValue(vi.fn());
-    convex.useQuery.mockReturnValue({
-      hint: { _id: "request", status: "pending", createdAt: 0 },
-      giveup: null,
+    mockRequestQueries({
+      latestMine: {
+        hint: { _id: "request", status: "pending", createdAt: 0 },
+        giveup: null,
+      },
     });
     const user = userEvent.setup();
 
@@ -309,6 +341,40 @@ describe("RequestRows", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("counts down to when the request expires", () => {
+    vi.useFakeTimers({ now: 18_000, toFake: ["Date"] });
+    try {
+      convex.useMutation.mockReturnValue(vi.fn());
+      mockLatest({
+        hint: { ...pendingHint, createdAt: 0, expiresAt: 60_000 },
+        giveup: null,
+      });
+      render(
+        <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+      );
+      expect(screen.getByText("0:42")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tells the requester when nobody answered in time", () => {
+    convex.useMutation.mockReturnValue(vi.fn());
+    mockLatest({ hint: pendingHint, giveup: null });
+    const { rerender } = render(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
+    mockLatest({ hint: { ...pendingHint, status: "expired" }, giveup: null });
+    rerender(
+      <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
+    );
+
+    expect(screen.getByText("Hint request expired")).toBeVisible();
+    expect(
+      screen.getByText("The host didn't answer in time. Ask again any time."),
+    ).toBeVisible();
   });
 
   it("doesn't replay decisions made before the page loaded", () => {

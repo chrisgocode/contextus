@@ -45,6 +45,16 @@ export function expectedClientErrorMessage(
   }
   if (context === "request.hint" && data === "hint request already pending")
     return "Hint request already pending.";
+  if (
+    context === "request.hint" &&
+    data === "Another hint request is already pending"
+  )
+    return "Someone already asked for a hint.";
+  if (
+    context === "request.giveup" &&
+    data === "Another giveup request is already pending"
+  )
+    return "Someone already asked to give up.";
   if (context === "request.giveup" && data === "giveup request already pending")
     return "Give-up request already pending.";
   if (

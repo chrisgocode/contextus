@@ -94,7 +94,7 @@ export function RequestRows({
                     />
                   ))}
                 </span>
-                <Elapsed since={giveup.createdAt} now={now} />
+                <TimeLeft request={giveup} now={now} />
                 <PlayerAvatar player={host} />
                 <span className="min-w-[3ch] text-right font-mono text-sm">
                   1
@@ -103,8 +103,9 @@ export function RequestRows({
             </div>
           </section>
         ) : (
-          <Declined
-            label="Give-up declined"
+          <Outcome
+            status={giveup.status}
+            what="Give-up"
             onDismiss={() => dismiss(giveup._id)}
           />
         ))}
@@ -123,7 +124,7 @@ export function RequestRows({
                   <span className="sr-only">Hint requested</span>
                   <Scramble />
                 </span>
-                <Elapsed since={hint.createdAt} now={now} />
+                <TimeLeft request={hint} now={now} />
                 <HintTag />
                 <PlayerAvatar player={host} />
                 <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
@@ -145,7 +146,11 @@ export function RequestRows({
             />
           </section>
         ) : (
-          <Declined label="Hint declined" onDismiss={() => dismiss(hint._id)} />
+          <Outcome
+            status={hint.status}
+            what="Hint"
+            onDismiss={() => dismiss(hint._id)}
+          />
         ))}
     </div>
   );
@@ -212,18 +217,27 @@ function DismissButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function Declined({
-  label,
+// A request the Host declined, or that expired unanswered.
+function Outcome({
+  status,
+  what,
   onDismiss,
 }: {
-  label: string;
+  status: Request["status"];
+  what: "Hint" | "Give-up";
   onDismiss: () => void;
 }) {
+  const expired = status === "expired";
   return (
     <section>
-      <RowLabel label={label} action={<DismissButton onClick={onDismiss} />} />
+      <RowLabel
+        label={`${what} ${expired ? "request expired" : "declined"}`}
+        action={<DismissButton onClick={onDismiss} />}
+      />
       <div className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
-        Ask again any time.
+        {expired
+          ? "The host didn't answer in time. Ask again any time."
+          : "Ask again any time."}
       </div>
     </section>
   );
@@ -324,8 +338,14 @@ function PlayerAvatar({ player }: { player: Player }) {
   );
 }
 
-function Elapsed({ since, now }: { since: number; now: number }) {
-  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+// Time until the request expires; requests made before they expired show
+// time waited instead.
+function TimeLeft({ request, now }: { request: Request; now: number }) {
+  const ms =
+    request.expiresAt === undefined
+      ? now - request.createdAt
+      : request.expiresAt - now;
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
   return (
     <span className="text-xs tabular-nums text-white/60" aria-hidden>
       {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
