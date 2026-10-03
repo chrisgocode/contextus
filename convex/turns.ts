@@ -22,8 +22,8 @@ import {
   HOST_ONLY_MESSAGE,
   NOT_AUTHENTICATED_MESSAGE,
   NOT_MEMBER_MESSAGE,
-  requireHostByGame,
-  requireMemberByGame,
+  requireLiveHostByGame,
+  requireLiveMemberByGame,
   ROOM_NOT_FOUND_MESSAGE,
 } from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
@@ -90,8 +90,8 @@ async function authorize(
   kind: TurnKind,
 ) {
   return kind === "guess"
-    ? await requireMemberByGame(ctx, { gameId })
-    : await requireHostByGame(ctx, { gameId });
+    ? await requireLiveMemberByGame(ctx, { gameId })
+    : await requireLiveHostByGame(ctx, { gameId });
 }
 
 // A turn may resolve a Pending request only if it is still pending, belongs

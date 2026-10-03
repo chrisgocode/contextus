@@ -95,18 +95,25 @@ async function loadByRoom(
   return { userId, room };
 }
 
-async function isMember(
+async function findMembership(
   ctx: DbCtx,
   roomId: Id<"rooms">,
   userId: Id<"users">,
-): Promise<boolean> {
-  const m = await ctx.db
+): Promise<Doc<"roomMembers"> | null> {
+  return await ctx.db
     .query("roomMembers")
     .withIndex("by_room_user", (q) =>
       q.eq("roomId", roomId).eq("userId", userId),
     )
     .unique();
-  return m !== null;
+}
+
+async function isMember(
+  ctx: DbCtx,
+  roomId: Id<"rooms">,
+  userId: Id<"users">,
+): Promise<boolean> {
+  return (await findMembership(ctx, roomId, userId)) !== null;
 }
 
 // A Host who has left the room keeps no Host privileges.
@@ -175,4 +182,37 @@ export async function requireHostByRoom(
   if (!(await isHost(ctx, room, userId)))
     throw new ConvexError(HOST_ONLY_MESSAGE);
   return { userId, room };
+}
+
+// Turns and Pending requests need a live Room. An ended Room keeps its
+// in_progress Game so playAgain can resume it, and this freezes the Game
+// until then. A membership is live unless marked inactive, since legacy rows
+// have no `active` flag (#172).
+async function requireLive(
+  ctx: DbCtx,
+  { userId, room }: RoomAccess,
+): Promise<void> {
+  if (room.status !== "active") throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
+  const membership = await findMembership(ctx, room._id, userId);
+  if (membership?.active === false) {
+    throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
+  }
+}
+
+export async function requireLiveMemberByGame(
+  ctx: DbCtx,
+  args: ByGame,
+): Promise<GameAccess> {
+  const access = await requireMemberByGame(ctx, args);
+  await requireLive(ctx, access);
+  return access;
+}
+
+export async function requireLiveHostByGame(
+  ctx: DbCtx,
+  args: ByGame,
+): Promise<GameAccess> {
+  const access = await requireHostByGame(ctx, args);
+  await requireLive(ctx, access);
+  return access;
 }
