@@ -18,7 +18,7 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
   await expect(roomMemberItems(host.page)).toHaveCount(2);
   await host.page.getByRole("button", { name: "Start game" }).click();
   await expect(
-    partner.page.getByRole("button", { name: "Hints and give up" }),
+    partner.page.getByRole("button", { name: "Need help?" }),
   ).toBeVisible();
   await expect(
     partner.page.getByRole("status", { name: "Requests" }),

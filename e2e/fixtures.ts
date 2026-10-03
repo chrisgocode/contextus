@@ -130,7 +130,7 @@ export async function leaveRoom(page: Page) {
 
 // Opens the sheet with the hint and give-up controls and the Host's requests.
 export async function openAssist(page: Page) {
-  await page.getByRole("button", { name: /^Hints and give up/ }).click();
+  await page.getByRole("button", { name: /^Need help\?/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 }
 

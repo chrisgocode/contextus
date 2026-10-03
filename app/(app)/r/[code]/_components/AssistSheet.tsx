@@ -46,7 +46,7 @@ export function AssistSheet({
           variant="outline"
           className="relative h-full min-h-10 px-3"
           aria-label={
-            waiting > 0 ? `Hints and give up, ${waitingLabel}` : undefined
+            waiting > 0 ? `Need help? ${waitingLabel} waiting` : undefined
           }
         >
           <HugeiconsIcon
@@ -55,7 +55,7 @@ export function AssistSheet({
             aria-hidden="true"
             className="size-5"
           />
-          <span className="sr-only sm:not-sr-only">Hints and give up</span>
+          <span className="sr-only sm:not-sr-only">Need help?</span>
           {waiting > 0 && (
             <span
               aria-hidden="true"
@@ -89,7 +89,7 @@ export function AssistSheet({
         className="mx-auto max-h-[85dvh] w-full max-w-md gap-4 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-4 sm:border"
       >
         <SheetHeader className="p-0 pr-8">
-          <SheetTitle>Hints and give up</SheetTitle>
+          <SheetTitle>Need help?</SheetTitle>
           <SheetDescription>
             {isHost
               ? "You decide for the room."

@@ -70,7 +70,7 @@ test("two registered players complete a cooperative game", async ({
     await partner.page.getByRole("button", { name: "Request hint" }).click();
     await expect(partner.page.getByText("Incoming hint")).toBeVisible();
     await expect(
-      host.page.getByRole("button", { name: "Hints and give up, 1 request" }),
+      host.page.getByRole("button", { name: "Need help? 1 request waiting" }),
     ).toBeVisible();
     await openAssist(host.page);
     await expect(host.page.getByText("wants a hint")).toBeVisible();

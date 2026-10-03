@@ -642,7 +642,7 @@ describe("HostRequestRows", () => {
     mockActions(vi.fn());
     render(<SheetWithRequests pending={[hint] as never} />);
     expect(
-      screen.getByRole("button", { name: "Hints and give up, 1 request" }),
+      screen.getByRole("button", { name: "Need help? 1 request waiting" }),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: /^Show / }),
@@ -655,7 +655,7 @@ describe("HostRequestRows", () => {
     const user = userEvent.setup();
     render(<SheetWithRequests pending={[hint] as never} />);
     await user.click(
-      screen.getByRole("button", { name: "Hints and give up, 1 request" }),
+      screen.getByRole("button", { name: "Need help? 1 request waiting" }),
     );
     await user.click(screen.getByRole("button", { name: "Give hint" }));
     await waitFor(() =>
