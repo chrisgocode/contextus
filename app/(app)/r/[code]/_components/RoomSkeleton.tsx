@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function RoomSkeleton({ waiting = false }: { waiting?: boolean }) {
   return (
-    <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 py-6 sm:p-8">
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
         <div className="min-w-0 flex flex-col gap-1">
           <Skeleton className="h-4 w-12" />
@@ -92,7 +92,7 @@ export function GuessListSkeleton() {
 
 export function HomeSkeleton() {
   return (
-    <main className="mx-auto max-w-2xl p-8 flex flex-col gap-8">
+    <main className="mx-auto flex max-w-2xl flex-col gap-8 p-4 py-6 sm:p-8">
       <div className="flex justify-between items-center">
         <Skeleton className="h-8 w-36" />
         <Skeleton className="h-9 w-24" />

@@ -224,7 +224,7 @@ function GuestJoinPrompt({
 }) {
   const [busy, setBusy] = useState(false);
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-4 py-6 sm:p-8">
       <div className="flex flex-col gap-2">
         <p className="text-sm text-muted-foreground">Room</p>
         <h1 className="font-mono text-4xl font-bold tracking-widest">{code}</h1>
@@ -318,7 +318,7 @@ function RoomLoaded({
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 py-6 sm:p-8">
       <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">Room</p>
@@ -483,7 +483,7 @@ function RoomLoaded({
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
+    <main className="flex min-h-screen items-center justify-center p-4 py-6 sm:p-8">
       <div className="flex flex-col items-center gap-2 text-center">
         {children}
       </div>
