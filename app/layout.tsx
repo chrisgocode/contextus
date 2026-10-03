@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { colorStyleScript } from "@/lib/color-styles";
 import { LazyToaster } from "@/components/LazyToaster";
@@ -44,6 +45,7 @@ export default function RootLayout({
         {children}
         <LazyToaster richColors position="top-center" />
         <NewVersionNotifier />
+        <SpeedInsights />
       </body>
     </html>
   );
