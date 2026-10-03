@@ -11,7 +11,7 @@ export default function UserProfileLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-8 p-8">
+    <main className="mx-auto flex max-w-2xl flex-col gap-8 p-4 py-6 sm:p-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">Contextus</h1>
         <div className="flex flex-wrap justify-end gap-2">
