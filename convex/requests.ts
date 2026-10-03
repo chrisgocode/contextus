@@ -12,6 +12,7 @@ import {
 } from "./_generated/server";
 import {
   requireHostByRoom,
+  requireLiveMemberByGame,
   requireMemberByGame,
   tryMemberByGame,
 } from "./access";
@@ -188,7 +189,9 @@ export const pendingFromOthers = query({
 export const create = mutation({
   args: { gameId: v.id("games"), type: REQUEST_TYPE },
   handler: async (ctx, { gameId, type }) => {
-    const { userId, room, game } = await requireMemberByGame(ctx, { gameId });
+    const { userId, room, game } = await requireLiveMemberByGame(ctx, {
+      gameId,
+    });
     if (game.status !== "in_progress") {
       throw new ConvexError("Game is no longer in progress");
     }

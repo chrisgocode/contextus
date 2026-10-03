@@ -355,3 +355,93 @@ test("a give-up is rejected when the Game is won while Contexto is answering", a
   const { game } = await snapshot(t, gameId);
   expect(game).toMatchObject({ status: "won", winnerUserId: other });
 });
+
+// An ended Room keeps its in_progress Game so playAgain can resume it. Until
+// then the Game is frozen.
+async function endedRoomGame(t: ReturnType<typeof setupTest>) {
+  const host = await seedUser(t, { name: "Host", isAnonymous: false });
+  const other = await seedUser(t, { name: "Other", isAnonymous: false });
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, other).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
+  const activity = async () =>
+    await t.run(async (ctx) =>
+      ctx.db
+        .query("roomActivity")
+        .withIndex("by_room", (q) => q.eq("roomId", roomId))
+        .unique(),
+    );
+  return { host, other, roomId, gameId, activity };
+}
+
+test("turns and Pending requests are rejected after the Room ends", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({
+    guesses: { 1336: { apple: 5 } },
+    tips: { 1336: { 300: "tree" } },
+    answers: { 1336: "persimmon" },
+  });
+  const { host, other, gameId, activity } = await endedRoomGame(t);
+  const activityBefore = await activity();
+
+  await expect(
+    asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
+  ).rejects.toThrow("Room not found");
+  await expect(
+    asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
+  ).rejects.toThrow("Room not found");
+  await expect(
+    asUser(t, other).mutation(api.requests.create, { gameId, type: "giveup" }),
+  ).rejects.toThrow("Room not found");
+  await expect(
+    asUser(t, host).action(api.hints.hostHint, { gameId }),
+  ).rejects.toThrow("Room not found");
+  await expect(
+    asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
+  ).rejects.toThrow("Room not found");
+
+  expect(oracle.distance).not.toHaveBeenCalled();
+  expect(oracle.tip).not.toHaveBeenCalled();
+  expect(oracle.answer).not.toHaveBeenCalled();
+  const { game, guesses, requests } = await snapshot(t, gameId);
+  expect(game?.status).toBe("in_progress");
+  expect(guesses).toEqual([]);
+  expect(requests).toEqual([]);
+  expect(await activity()).toEqual(activityBefore);
+});
+
+test("a Guess is rejected when the Room ends while Contexto is scoring it", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({});
+  const { host, other, roomId, gameId } = await startedGame(t);
+  oracle.distance.mockImplementationOnce(async () => {
+    await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
+    return { ok: true, lemma: "apple", distance: 5 };
+  });
+
+  await expect(
+    asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
+  ).rejects.toThrow("Room not found");
+  const { guesses } = await snapshot(t, gameId);
+  expect(guesses).toEqual([]);
+});
+
+test("turns on the preserved Game are accepted again after playAgain", async () => {
+  const t = setupTest();
+  fakeWordOracle({ guesses: { 1336: { apple: 5 } } });
+  const { other, roomId, gameId } = await endedRoomGame(t);
+
+  await asUser(t, other).mutation(api.rooms.playAgain, { roomId });
+
+  await expect(
+    asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
+  ).resolves.toMatchObject({ lemma: "apple", distance: 5, won: false });
+  // playAgain made `other` the Host, so the old Host now asks.
+  await expect(
+    asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
+  ).rejects.toThrow("Host should use the direct hint action");
+});
