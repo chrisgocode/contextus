@@ -5,7 +5,7 @@ import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
 import { loadCalendar } from "@/app/(app)/r/[code]/_components/calendar-loader";
 import { GameSetupCalendar } from "@/app/(app)/r/[code]/_components/GameSetupCalendar";
 import { HintGiveupBar } from "@/app/(app)/r/[code]/_components/HintGiveupBar";
-import { PendingRequestsSidebar } from "@/app/(app)/r/[code]/_components/PendingRequestsSidebar";
+import { HostRequestRows } from "@/app/(app)/r/[code]/_components/HostRequestRows";
 import { RequestRows } from "@/app/(app)/r/[code]/_components/RequestRows";
 import { reportClientError } from "@/lib/report-error";
 import { act, cleanup, render, screen, userEvent, waitFor } from "./test-utils";
@@ -480,45 +480,225 @@ describe("RequestRows", () => {
   });
 });
 
-describe("PendingRequestsSidebar", () => {
-  it("notifies the parent after approving a request", async () => {
-    const onApproveSuccess = vi.fn();
-    convex.useAction.mockReturnValue(vi.fn().mockResolvedValue(null));
-    convex.useMutation.mockReturnValue(vi.fn());
-    const user = userEvent.setup();
+describe("HostRequestRows", () => {
+  const request = (
+    id: string,
+    type: "hint" | "giveup",
+    name: string,
+    created: number,
+  ) => ({
+    _id: id,
+    _creationTime: created,
+    gameId: "game",
+    requesterUserId: `user-${id}`,
+    requester: { name, image: null },
+    type,
+    status: "pending",
+    createdAt: created,
+  });
+  const hint = request("hint1", "hint", "Vic", 1);
+  const giveup = request("giveup1", "giveup", "Noor", 2);
 
-    render(
-      <PendingRequestsSidebar
-        pending={
-          [
-            {
-              _id: "request",
-              _creationTime: 1,
-              gameId: "game",
-              requesterUserId: "user",
-              requester: { name: "Alex", image: null },
-              type: "hint",
-            },
-          ] as never
+  // jsdom has no IntersectionObserver; this one reports `inView` on observe.
+  let inView = true;
+  beforeEach(() => {
+    inView = true;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe() {
+          this.callback(
+            [{ isIntersecting: inView } as IntersectionObserverEntry],
+            this as never,
+          );
         }
-        onApproveSuccess={onApproveSuccess}
-      />,
+        disconnect() {}
+      },
     );
-    await user.click(screen.getByRole("button", { name: "Approve" }));
-
-    expect(onApproveSuccess).toHaveBeenCalledOnce();
   });
 
-  it("renders empty and loading states without fake controls", () => {
-    convex.useAction.mockReturnValue(vi.fn());
-    convex.useMutation.mockReturnValue(vi.fn());
-    const { rerender } = render(<PendingRequestsSidebar pending={undefined} />);
-    expect(
-      screen.queryByRole("heading", { name: "Requests" }),
-    ).not.toBeInTheDocument();
+  function mockActions(approve: unknown, deny: unknown = vi.fn()) {
+    convex.useAction.mockReturnValue(approve);
+    convex.useMutation.mockReturnValue(deny);
+  }
 
-    rerender(<PendingRequestsSidebar pending={[]} />);
-    expect(screen.getByText("No pending requests.")).toBeVisible();
+  function reduceMotion() {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  }
+
+  it("lists each request with who asked and what for", () => {
+    mockActions(vi.fn());
+    render(<HostRequestRows pending={[hint, giveup] as never} />);
+
+    expect(screen.getByText("Requests · 2")).toBeVisible();
+    expect(screen.getByText("Vic")).toBeVisible();
+    expect(screen.getByText("wants a hint")).toBeVisible();
+    expect(screen.getByText("Noor")).toBeVisible();
+    expect(screen.getByText("wants to give up")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Give hint" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Give up" })).toBeEnabled();
+  });
+
+  it("counts down to when each request expires", () => {
+    vi.useFakeTimers({ now: 45_000, toFake: ["Date"] });
+    try {
+      mockActions(vi.fn());
+      render(
+        <HostRequestRows
+          pending={[{ ...hint, createdAt: 0, expiresAt: 60_000 }] as never}
+        />,
+      );
+      expect(screen.getByText("0:15")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("labels the requests with a heading", () => {
+    mockActions(vi.fn());
+    render(<HostRequestRows pending={[hint] as never} />);
+    expect(screen.getByRole("heading", { name: "Requests · 1" })).toBeVisible();
+  });
+
+  it("offers a way back to requests above the screen", async () => {
+    inView = false;
+    mockActions(vi.fn());
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const user = userEvent.setup();
+    render(<HostRequestRows pending={[hint, giveup] as never} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Scroll up to 2 requests" }),
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+
+  it("lifts the way back above an open on-screen keyboard", () => {
+    inView = false;
+    mockActions(vi.fn());
+    // iOS Safari keeps the layout viewport and shrinks the visual one.
+    vi.stubGlobal("visualViewport", {
+      offsetTop: 0,
+      height: window.innerHeight - 300,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    render(<HostRequestRows pending={[hint] as never} />);
+
+    expect(
+      screen.getByRole("button", { name: "Scroll up to 1 request" }),
+    ).toHaveStyle({ bottom: "316px" }); // 300px keyboard + 1rem
+  });
+
+  it("hides the way back while the requests are on screen", () => {
+    mockActions(vi.fn());
+    render(<HostRequestRows pending={[hint] as never} />);
+    expect(
+      screen.queryByRole("button", { name: /^Scroll up to/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps an empty live region until a request arrives", () => {
+    mockActions(vi.fn());
+    const { rerender } = render(<HostRequestRows pending={[]} />);
+    const region = screen.getByRole("status", { name: "Requests" });
+    expect(region).toBeEmptyDOMElement();
+
+    rerender(<HostRequestRows pending={[hint] as never} />);
+    expect(screen.getByRole("status", { name: "Requests" })).toBe(region);
+    expect(region).toHaveTextContent("Vic");
+  });
+
+  it("denies a request", async () => {
+    const deny = vi.fn().mockResolvedValue(null);
+    mockActions(vi.fn(), deny);
+    const user = userEvent.setup();
+    render(<HostRequestRows pending={[hint] as never} />);
+
+    await user.click(screen.getByRole("button", { name: "Deny" }));
+    expect(deny).toHaveBeenCalledWith({ requestId: "hint1" });
+  });
+
+  it("shuffles while the hint is found, then reveals it in the requester's row", async () => {
+    reduceMotion();
+    let resolve: (value: unknown) => void = () => {};
+    const approve = vi.fn(() => new Promise((r) => (resolve = r)));
+    mockActions(approve);
+    const user = userEvent.setup();
+    const { rerender } = render(<HostRequestRows pending={[hint] as never} />);
+
+    await user.click(screen.getByRole("button", { name: "Give hint" }));
+    expect(approve).toHaveBeenCalledWith({ requestId: "hint1" });
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+
+    // The request leaves the pending list before the action returns.
+    rerender(<HostRequestRows pending={[]} />);
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+
+    await act(async () => resolve({ lemma: "pomelo", distance: 299 }));
+    expect(screen.getByText("pomelo")).toBeVisible();
+    expect(screen.getByText("300")).toBeVisible();
+    expect(screen.getByText("V")).toBeVisible();
+  });
+
+  it("clears a given hint a few seconds after it settles", async () => {
+    reduceMotion();
+    vi.useFakeTimers();
+    try {
+      mockActions(
+        vi.fn().mockResolvedValue({ lemma: "pomelo", distance: 299 }),
+      );
+      render(<HostRequestRows pending={[hint] as never} />);
+      await act(async () => {
+        screen.getByRole("button", { name: "Give hint" }).click();
+      });
+      expect(screen.getByText("pomelo")).toBeVisible();
+
+      await act(() => vi.advanceTimersByTimeAsync(4000));
+      expect(screen.queryByText("pomelo")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("puts the buttons back and reports when no hint can be found", async () => {
+    mockActions(
+      vi.fn().mockRejectedValue({ data: "Could not find an unguessed hint" }),
+    );
+    const user = userEvent.setup();
+    render(<HostRequestRows pending={[hint] as never} />);
+
+    await user.click(screen.getByRole("button", { name: "Give hint" }));
+    expect(
+      await screen.findByRole("button", { name: "Give hint" }),
+    ).toBeEnabled();
+    expect(reportClientError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        context: "request.approve.hint",
+        userMessage: "No unguessed hints remain.",
+      }),
+    );
+  });
+
+  it("approves a give-up without a reveal", async () => {
+    const approve = vi.fn().mockResolvedValue({ lemma: "answer" });
+    mockActions(approve);
+    const user = userEvent.setup();
+    render(<HostRequestRows pending={[giveup] as never} />);
+
+    await user.click(screen.getByRole("button", { name: "Give up" }));
+    expect(approve).toHaveBeenCalledWith({ requestId: "giveup1" });
+    expect(screen.queryByText("answer")).not.toBeInTheDocument();
   });
 });
 

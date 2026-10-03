@@ -61,7 +61,7 @@ test("two registered players complete a cooperative game", async ({
   await test.step("deny one request and approve game completion", async () => {
     await partner.page.getByRole("button", { name: "Request hint" }).click();
     await expect(partner.page.getByText("Incoming hint")).toBeVisible();
-    await expect(host.page.getByText(/wants a hint/)).toBeVisible();
+    await expect(host.page.getByText("wants a hint")).toBeVisible();
     await host.page.getByRole("button", { name: "Deny" }).click();
     await expect(partner.page.getByText("Hint declined")).toBeVisible();
     await expect(
@@ -69,14 +69,22 @@ test("two registered players complete a cooperative game", async ({
     ).toBeEnabled();
 
     await partner.page.getByRole("button", { name: "Request hint" }).click();
-    await expect(host.page.getByText(/wants a hint/)).toBeVisible();
-    await host.page.getByRole("button", { name: "Approve" }).click();
+    await expect(host.page.getByText("wants a hint")).toBeVisible();
+    await host.page.getByRole("button", { name: "Give hint" }).click();
     await expect(partner.page.getByText("Hint approved")).toBeVisible();
-    await expect(host.page.getByText("hint", { exact: true })).toHaveCount(2);
+    await expect(
+      host.page
+        .getByText("All guesses (closest first)")
+        .locator("..")
+        .getByText("hint", { exact: true }),
+    ).toHaveCount(1);
 
     await partner.page.getByRole("button", { name: "Request give up" }).click();
-    await expect(host.page.getByText(/wants to give up/)).toBeVisible();
-    await host.page.getByRole("button", { name: "Approve" }).click();
+    await expect(host.page.getByText("wants to give up")).toBeVisible();
+    await host.page
+      .getByRole("status", { name: "Requests" })
+      .getByRole("button", { name: "Give up" })
+      .click();
     await expect(
       host.page.getByRole("heading", { name: "Game given up" }),
     ).toBeVisible();
