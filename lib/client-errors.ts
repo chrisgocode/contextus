@@ -35,12 +35,26 @@ export function expectedClientErrorMessage(
     if (data === "Request not found or already handled")
       return "This request was already handled.";
   }
+  if (context?.startsWith("request.cancel.")) {
+    if (data === "Request not found or already handled")
+      return "The host already answered this request.";
+  }
   if (context?.startsWith("request.deny.")) {
     if (data === "Request not found")
       return "This request is no longer available.";
   }
   if (context === "request.hint" && data === "hint request already pending")
     return "Hint request already pending.";
+  if (
+    context === "request.hint" &&
+    data === "Another hint request is already pending"
+  )
+    return "Someone already asked for a hint.";
+  if (
+    context === "request.giveup" &&
+    data === "Another giveup request is already pending"
+  )
+    return "Someone already asked to give up.";
   if (context === "request.giveup" && data === "giveup request already pending")
     return "Give-up request already pending.";
   if (

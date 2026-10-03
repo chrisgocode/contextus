@@ -24,6 +24,7 @@ import { GuessList } from "./_components/GuessList";
 import { HintGiveupBar } from "./_components/HintGiveupBar";
 import { HostRequestScrollHint } from "./_components/HostRequestScrollHint";
 import { PendingRequestsSidebar } from "./_components/PendingRequestsSidebar";
+import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { useElementInViewport } from "./_components/useElementInViewport";
 import { usePresenceSet } from "./_components/usePresenceSet";
@@ -265,6 +266,8 @@ function RoomLoaded({
   const recent =
     lastFinished && lastFinished.length > 0 ? lastFinished[0] : null;
   const onlineSet = usePresenceSet(room._id, viewerUserId ?? "anon");
+  const hostMember = members.find((m) => m.isHost);
+  const viewerMember = members.find((m) => m.userId === viewerUserId);
   const pendingRequests = useQuery(
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
@@ -403,6 +406,13 @@ function RoomLoaded({
                   )
                 }
               />
+              {!isViewerHost && hostMember && viewerMember && (
+                <RequestRows
+                  gameId={activeGame._id}
+                  host={hostMember.player}
+                  viewer={viewerMember.player}
+                />
+              )}
               <GuessList
                 gameId={activeGame._id}
                 duplicate={

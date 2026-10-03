@@ -62,16 +62,21 @@ export async function mergeRequest(
   merge: MergeState,
 ) {
   const { targetUserId } = merge;
-  const existing = await ctx.db
-    .query("pendingRequests")
-    .withIndex("by_requester_game_type_status", (q) =>
-      q
-        .eq("requesterUserId", targetUserId)
-        .eq("gameId", row.gameId)
-        .eq("type", row.type)
-        .eq("status", row.status),
-    )
-    .unique();
+  // Only a pending request has to be unique per requester; handled ones are
+  // history, and asking again after a denial or an expiry repeats them.
+  const existing =
+    row.status === "pending"
+      ? await ctx.db
+          .query("pendingRequests")
+          .withIndex("by_requester_game_type_status", (q) =>
+            q
+              .eq("requesterUserId", targetUserId)
+              .eq("gameId", row.gameId)
+              .eq("type", row.type)
+              .eq("status", "pending"),
+          )
+          .first()
+      : null;
   if (existing === null) {
     await ctx.db.patch("pendingRequests", row._id, {
       requesterUserId: targetUserId,

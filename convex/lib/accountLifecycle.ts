@@ -452,7 +452,7 @@ async function deleteAuthSessionBatch(
 }
 
 async function deleteRoom(ctx: LifecycleCtx, room: Doc<"rooms">) {
-  for (const status of ["pending", "approved", "denied"] as const) {
+  for (const status of ["pending", "approved", "denied", "expired"] as const) {
     const requests = await ctx.db
       .query("pendingRequests")
       .withIndex("by_room_status", (q) =>

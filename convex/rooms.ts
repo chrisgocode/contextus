@@ -156,6 +156,17 @@ export const leave = mutation({
     if (member !== null) {
       await ctx.db.delete("roomMembers", member._id);
     }
+    // A former member can't take their requests back, and each one would
+    // keep other members from asking for the same thing.
+    for await (const request of ctx.db
+      .query("pendingRequests")
+      .withIndex("by_room_status", (q) =>
+        q.eq("roomId", roomId).eq("status", "pending"),
+      )) {
+      if (request.requesterUserId === userId) {
+        await ctx.db.delete("pendingRequests", request._id);
+      }
+    }
     const room = await ctx.db.get("rooms", roomId);
     if (room === null) return null;
     const stillActive =

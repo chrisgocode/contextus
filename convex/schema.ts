@@ -203,11 +203,24 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("approved"),
       v.literal("denied"),
+      // Nobody answered before `expiresAt`.
+      v.literal("expired"),
     ),
     createdAt: v.number(),
+    // Optional only for requests made before requests expired.
+    expiresAt: v.optional(v.number()),
+    // When the Host last started approving it. Expiry waits for that.
+    approvalStartedAt: v.optional(v.number()),
+    // The Hint an approved hint request produced, so the requester sees it.
+    hint: v.optional(v.object({ lemma: v.string(), distance: v.number() })),
   })
     .index("by_game_status", ["gameId", "status"])
+    .index("by_game_type_status", ["gameId", "type", "status"])
     .index("by_room_status", ["roomId", "status"])
+    // Sorts a requester's requests of one type by `_creationTime`, so
+    // latestMine can take the newest whatever its status.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
+    .index("by_requester_game_type", ["requesterUserId", "gameId", "type"])
     .index("by_requester_game_type_status", [
       "requesterUserId",
       "gameId",
