@@ -28,30 +28,45 @@ const REQUEST_TTL_MS = 60_000;
 // finishes still lets the request expire.
 const APPROVAL_GRACE_MS = 30_000;
 
-// Whether a pending request still holds its type. Requests made before
-// requests expired have no expiresAt and no scheduled expiry, so they count
-// as due a minute after they were made.
+// Requests made before requests expired have no expiresAt and no scheduled
+// expiry, so they count as due a minute after they were made.
+function deadlineOf(req: Doc<"pendingRequests">) {
+  return req.expiresAt ?? req.createdAt + REQUEST_TTL_MS;
+}
+
+// Whether a pending request still holds its type.
 function isLive(req: Doc<"pendingRequests">, now: number) {
-  const deadline = req.expiresAt ?? req.createdAt + REQUEST_TTL_MS;
   return (
-    now < deadline ||
+    now < deadlineOf(req) ||
     (req.approvalStartedAt !== undefined &&
       now < req.approvalStartedAt + APPROVAL_GRACE_MS)
   );
 }
 
-async function pendingOfType(
+function pendingOfType(
   ctx: QueryCtx,
   gameId: Id<"games">,
   type: Doc<"pendingRequests">["type"],
 ) {
-  // One pending request of each type per Game, so the first is the one.
-  return await ctx.db
+  return ctx.db
     .query("pendingRequests")
     .withIndex("by_game_type_status", (q) =>
       q.eq("gameId", gameId).eq("type", type).eq("status", "pending"),
-    )
-    .first();
+    );
+}
+
+// The pending request holding this type. Requests made before the limit can
+// leave overdue rows ahead of it, so skip past those.
+async function livePendingOfType(
+  ctx: QueryCtx,
+  gameId: Id<"games">,
+  type: Doc<"pendingRequests">["type"],
+  now: number,
+) {
+  for await (const row of pendingOfType(ctx, gameId, type)) {
+    if (isLive(row, now)) return row;
+  }
+  return null;
 }
 
 async function markExpired(ctx: MutationCtx, req: Doc<"pendingRequests">) {
@@ -127,9 +142,12 @@ export const latestMine = query({
           .first());
       if (row === null) return null;
       const { _id, status, createdAt, expiresAt, hint } = row;
+      // Only create and the scheduled expiry write the status, so one that
+      // is overdue can still read pending here.
+      const overdue = status === "pending" && !isLive(row, Date.now());
       return {
         _id,
-        status,
+        status: overdue ? ("expired" as const) : status,
         createdAt,
         ...(expiresAt === undefined ? {} : { expiresAt }),
         ...(hint === undefined ? {} : { hint }),
@@ -152,12 +170,8 @@ export const pendingFromOthers = query({
     if (access === null) return { hint: null, giveup: null };
     const now = Date.now();
     const holder = async (type: Doc<"pendingRequests">["type"]) => {
-      const row = await pendingOfType(ctx, gameId, type);
-      if (
-        row === null ||
-        row.requesterUserId === access.userId ||
-        !isLive(row, now)
-      ) {
+      const row = await livePendingOfType(ctx, gameId, type, now);
+      if (row === null || row.requesterUserId === access.userId) {
         return null;
       }
       const players = await loadPlayers(ctx, [row.requesterUserId]);
@@ -181,19 +195,20 @@ export const create = mutation({
     if (room.hostUserId === userId) {
       throw new ConvexError(`Host should use the direct ${type} action`);
     }
-    // One pending request of each type per Game, whoever asked. One that is
-    // overdue only blocks until someone asks again.
+    // One pending request of each type per Game, whoever asked. Ones that
+    // are overdue only block until someone asks again, and are expired here
+    // so they don't pile up.
     const createdAt = Date.now();
-    const existing = await pendingOfType(ctx, gameId, type);
-    if (existing !== null && !isLive(existing, createdAt)) {
-      await markExpired(ctx, existing);
-    } else if (existing !== null) {
+    const existing = await pendingOfType(ctx, gameId, type).collect();
+    const live = existing.find((r) => isLive(r, createdAt));
+    if (live !== undefined) {
       throw new ConvexError(
-        existing.requesterUserId === userId
+        live.requesterUserId === userId
           ? `${type} request already pending`
           : `Another ${type} request is already pending`,
       );
     }
+    for (const overdue of existing) await markExpired(ctx, overdue);
     const requestId = await ctx.db.insert("pendingRequests", {
       roomId: game.roomId,
       gameId,
@@ -276,7 +291,7 @@ export const _expire = internalMutation({
     const now = Date.now();
     if (isLive(req, now)) {
       const until = Math.max(
-        req.expiresAt ?? req.createdAt + REQUEST_TTL_MS,
+        deadlineOf(req),
         (req.approvalStartedAt ?? 0) + APPROVAL_GRACE_MS,
       );
       await ctx.scheduler.runAfter(until - now, internal.requests._expire, {
@@ -290,7 +305,8 @@ export const _expire = internalMutation({
 });
 
 // Called by approve before it fetches from Contexto, so the expiry waits
-// for the approval instead of overtaking it.
+// for the approval instead of overtaking it. A request already past its
+// deadline is expired instead, and approve gives up.
 export const _startApproval = internalMutation({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
@@ -302,10 +318,19 @@ export const _startApproval = internalMutation({
     if (req.status !== "pending") {
       throw new ConvexError("Request not found or already handled");
     }
-    await ctx.db.patch("pendingRequests", requestId, {
-      approvalStartedAt: Date.now(),
-    });
-    return null;
+    const now = Date.now();
+    if (!isLive(req, now)) {
+      await markExpired(ctx, req);
+      return false;
+    }
+    // Another approval already in its grace period keeps its start, so
+    // pressing again can't stretch the request past it.
+    if (now < deadlineOf(req)) {
+      await ctx.db.patch("pendingRequests", requestId, {
+        approvalStartedAt: now,
+      });
+    }
+    return true;
   },
 });
 
@@ -329,7 +354,13 @@ export const approve = action({
     if (req === null) {
       throw new ConvexError("Request not found or already handled");
     }
-    await ctx.runMutation(internal.requests._startApproval, { requestId });
+    const started: boolean = await ctx.runMutation(
+      internal.requests._startApproval,
+      { requestId },
+    );
+    if (!started) {
+      throw new ConvexError("Request not found or already handled");
+    }
     const { gameId } = req;
     switch (req.type) {
       case "hint":

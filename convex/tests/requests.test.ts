@@ -573,6 +573,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
   const t = setupTest();
   const { other, roomId, gameId } = await startedGame(t);
   // Guest merge can leave an older pending row behind a newer denied one.
+  const createdAt = Date.now();
   const pendingId = await t.run(async (ctx) => {
     const id = await ctx.db.insert("pendingRequests", {
       roomId,
@@ -580,7 +581,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
       requesterUserId: other,
       type: "hint",
       status: "pending",
-      createdAt: 1,
+      createdAt,
     });
     await ctx.db.insert("pendingRequests", {
       roomId,
@@ -588,7 +589,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
       requesterUserId: other,
       type: "hint",
       status: "denied",
-      createdAt: 2,
+      createdAt: createdAt + 1,
     });
     return id;
   });
@@ -598,7 +599,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
   expect(latest.hint).toEqual({
     _id: pendingId,
     status: "pending",
-    createdAt: 1,
+    createdAt,
   });
 });
 
@@ -835,4 +836,85 @@ test("an overdue request doesn't block a new one", async () => {
     ctx.db.get("pendingRequests", staleId),
   );
   expect(stale?.status).toBe("expired");
+});
+
+test("approve rejects a request that is past its deadline", async () => {
+  const t = setupTest();
+  const oracle = fakeWordOracle({});
+  const { host, other, roomId, gameId } = await startedGame(t);
+  // Made before requests expired, so nothing is scheduled to expire it.
+  const staleId = await t.run(async (ctx) =>
+    ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "pending",
+      createdAt: Date.now() - 2 * 60_000,
+    }),
+  );
+
+  await expect(
+    asUser(t, host).action(api.requests.approve, { requestId: staleId }),
+  ).rejects.toThrow("Request not found or already handled");
+
+  expect(oracle.tip).not.toHaveBeenCalled();
+  const stale = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", staleId),
+  );
+  expect(stale?.status).toBe("expired");
+});
+
+test("create still sees a live request behind an overdue one", async () => {
+  const t = setupTest();
+  const { host, other, roomId, gameId } = await startedGame(t);
+  const third = await seedUser(t, { name: "Third" });
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+  // Before the limit, two members could each have a hint request pending.
+  await t.run(async (ctx) => {
+    await ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "pending",
+      createdAt: Date.now() - 2 * 60_000,
+    });
+    await ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: host,
+      type: "hint",
+      status: "pending",
+      createdAt: Date.now() - 10_000,
+    });
+  });
+
+  expect(
+    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
+  ).toEqual({ hint: { name: "Host" }, giveup: null });
+  await expect(
+    asUser(t, third).mutation(api.requests.create, { gameId, type: "hint" }),
+  ).rejects.toThrow("Another hint request is already pending");
+});
+
+test("latestMine reports an overdue request as expired", async () => {
+  const t = setupTest();
+  const { other, roomId, gameId } = await startedGame(t);
+  const staleId = await t.run(async (ctx) =>
+    ctx.db.insert("pendingRequests", {
+      roomId,
+      gameId,
+      requesterUserId: other,
+      type: "hint",
+      status: "pending",
+      createdAt: Date.now() - 2 * 60_000,
+    }),
+  );
+
+  const latest = await asUser(t, other).query(api.requests.latestMine, {
+    gameId,
+  });
+  expect(latest.hint).toMatchObject({ _id: staleId, status: "expired" });
 });
