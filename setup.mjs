@@ -6,16 +6,19 @@
  */
 
 import fs from "fs";
-import { config as loadEnvFile } from "dotenv";
+import { parse as parseEnvFile } from "dotenv";
 import { spawnSync } from "child_process";
 
-if (!fs.existsSync(".env.local")) {
-  // Something is off, skip the script.
-  process.exit(0);
+let config;
+try {
+  config = parseEnvFile(fs.readFileSync(".env.local"));
+} catch (error) {
+  if (error.code === "ENOENT") {
+    // Something is off, skip the script.
+    process.exit(0);
+  }
+  throw error;
 }
-
-const config = {};
-loadEnvFile({ path: ".env.local", processEnv: config, quiet: true });
 
 const runOnceWorkflow = process.argv.includes("--once");
 
