@@ -1,4 +1,11 @@
-import { createRoom, expect, roomMemberItems, test } from "./fixtures";
+import {
+  createRoom,
+  expect,
+  leaveRoom,
+  openAssist,
+  roomMemberItems,
+  test,
+} from "./fixtures";
 
 test("two registered players complete a cooperative game", async ({
   createRegisteredUser,
@@ -46,7 +53,7 @@ test("two registered players complete a cooperative game", async ({
   });
 
   await test.step("leave and resume the active puzzle", async () => {
-    await partner.page.getByRole("button", { name: "Leave" }).click();
+    await leaveRoom(partner.page);
     await expect(partner.page).toHaveURL("/");
     await expect(roomMemberItems(host.page)).toHaveCount(1);
 
@@ -59,16 +66,24 @@ test("two registered players complete a cooperative game", async ({
   });
 
   await test.step("deny one request and approve game completion", async () => {
+    await openAssist(partner.page);
     await partner.page.getByRole("button", { name: "Request hint" }).click();
     await expect(partner.page.getByText("Incoming hint")).toBeVisible();
+    await expect(
+      host.page.getByRole("button", { name: "Need help? 1 request waiting" }),
+    ).toBeVisible();
+    await openAssist(host.page);
     await expect(host.page.getByText("wants a hint")).toBeVisible();
     await host.page.getByRole("button", { name: "Deny" }).click();
     await expect(partner.page.getByText("Hint declined")).toBeVisible();
+    await host.page.keyboard.press("Escape");
+
+    await openAssist(partner.page);
     await expect(
       partner.page.getByRole("button", { name: "Request hint" }),
     ).toBeEnabled();
-
     await partner.page.getByRole("button", { name: "Request hint" }).click();
+    await openAssist(host.page);
     await expect(host.page.getByText("wants a hint")).toBeVisible();
     await host.page.getByRole("button", { name: "Give hint" }).click();
     await expect(partner.page.getByText("Hint approved")).toBeVisible();
@@ -79,10 +94,12 @@ test("two registered players complete a cooperative game", async ({
         .getByText("hint", { exact: true }),
     ).toHaveCount(1);
 
+    await openAssist(partner.page);
     await partner.page.getByRole("button", { name: "Request give up" }).click();
+    await openAssist(host.page);
     await expect(host.page.getByText("wants to give up")).toBeVisible();
     await host.page
-      .getByRole("status", { name: "Requests" })
+      .getByRole("region", { name: "Waiting requests" })
       .getByRole("button", { name: "Give up" })
       .click();
     await expect(

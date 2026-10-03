@@ -1,7 +1,11 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  Copy01Icon,
+  MoreHorizontalIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
@@ -13,16 +17,25 @@ import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-me
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api } from "@/convex/_generated/api";
 import { reportClientError } from "@/lib/report-error";
+import { AssistSheet } from "./_components/AssistSheet";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
 import { clearCreatedRoom, isCreatedRoom } from "./_components/created-room";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
-import { HintGiveupBar } from "./_components/HintGiveupBar";
-import { HostRequestRows } from "./_components/HostRequestRows";
+import {
+  HostRequestRows,
+  useHostRequests,
+} from "./_components/HostRequestRows";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { usePresenceSet } from "./_components/usePresenceSet";
@@ -270,6 +283,10 @@ function RoomLoaded({
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
   );
+  const hostRequests = useHostRequests(
+    pendingRequests,
+    activeGame?._id ?? null,
+  );
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
@@ -302,49 +319,52 @@ function RoomLoaded({
 
   return (
     <main className="mx-auto max-w-6xl p-6 flex flex-col gap-6">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:items-center sm:gap-4">
+      <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">Room</p>
           <h1 className="truncate font-mono text-3xl font-bold tracking-widest">
             {room.code}
           </h1>
         </div>
-        {/* Phones get an icon-only Copy so the room code and the appearance
-            picker both fit on one row beside the host controls. */}
-        <div className="flex flex-nowrap items-center justify-end gap-1 sm:gap-2">
+        {/* Room actions that aren't part of playing sit in one menu, so the
+            header stays a single row on phones. */}
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {/* Icon-only on phones, so the room code isn't truncated. */}
           <Button
             variant="outline"
             onClick={onCopy}
-            className="w-8 shrink-0 px-0 sm:w-auto sm:min-w-28 sm:px-2.5"
+            className="w-8 px-0 sm:w-auto sm:min-w-28 sm:px-2.5"
           >
             <HugeiconsIcon
               icon={copied ? Tick02Icon : Copy01Icon}
               strokeWidth={2}
               aria-hidden="true"
-              className="size-4 sm:hidden"
             />
             <span className="sr-only sm:not-sr-only">
               {copied ? "Copied!" : "Copy code"}
             </span>
           </Button>
-          <Button
-            variant="outline"
-            onClick={onLeave}
-            className="shrink-0 px-2 sm:px-2.5"
-          >
-            Leave
-          </Button>
-          {isViewerHost && (
-            <Button
-              variant="destructive"
-              onClick={onEnd}
-              className="shrink-0 px-2 sm:px-2.5"
-            >
-              <span className="sm:hidden">End</span>
-              <span className="hidden sm:inline">End room</span>
-            </Button>
-          )}
           <AppearancePicker />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Room menu">
+                <HugeiconsIcon
+                  icon={MoreHorizontalIcon}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className="size-5"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+              <DropdownMenuItem onSelect={onLeave}>Leave room</DropdownMenuItem>
+              {isViewerHost && (
+                <DropdownMenuItem variant="destructive" onSelect={onEnd}>
+                  End room
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -366,12 +386,6 @@ function RoomLoaded({
             </>
           ) : (
             <>
-              <div className="flex items-baseline justify-between gap-4 flex-wrap">
-                <p className="text-sm text-muted-foreground">
-                  Game #{activeGame.contextoGameId}
-                </p>
-                <HintGiveupBar gameId={activeGame._id} isHost={isViewerHost} />
-              </div>
               <GuessInput
                 gameId={activeGame._id}
                 onAchievementsUnlocked={onAchievementsUnlocked}
@@ -380,8 +394,17 @@ function RoomLoaded({
                     lemma ? { gameId: activeGame._id, lemma } : null,
                   )
                 }
-              />
-              {isViewerHost && <HostRequestRows pending={pendingRequests} />}
+              >
+                <AssistSheet
+                  gameId={activeGame._id}
+                  isHost={isViewerHost}
+                  requests={isViewerHost ? hostRequests : null}
+                />
+              </GuessInput>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Game #{activeGame.contextoGameId}
+              </p>
+              {isViewerHost && <HostRequestRows requests={hostRequests} />}
               {!isViewerHost && hostMember && viewerMember && (
                 <RequestRows
                   gameId={activeGame._id}

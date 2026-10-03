@@ -1,4 +1,11 @@
-import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
+import {
+  createRoom,
+  endRoom,
+  expect,
+  leaveRoom,
+  roomMemberItems,
+  test,
+} from "./fixtures";
 
 test("creates a room as a guest", async ({ page }) => {
   await createRoom(page);
@@ -25,12 +32,12 @@ test("joins another player's room as a guest", async ({
 
   await page.goto(host.page.url());
   await page.getByRole("button", { name: "Join as guest" }).click();
-  await expect(page.getByRole("button", { name: "Leave" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Room menu" })).toBeVisible();
 
   const members = roomMemberItems(host.page);
   await expect(members).toHaveCount(2);
 
-  await page.getByRole("button", { name: "Leave" }).click();
+  await leaveRoom(page);
   await expect(page).toHaveURL("/");
   await expect(members).toHaveCount(1);
 });
