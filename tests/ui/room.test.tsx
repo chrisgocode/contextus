@@ -50,11 +50,12 @@ vi.mock("@/app/(app)/r/[code]/_components/usePresenceSet", () => ({
 vi.mock("@/app/(app)/r/[code]/_components/GuessList", () => ({
   GuessList: () => <div>Guess list</div>,
 }));
-vi.mock("@/app/(app)/r/[code]/_components/HintGiveupBar", () => ({
-  HintGiveupBar: () => <div>Hint controls</div>,
+vi.mock("@/app/(app)/r/[code]/_components/AssistSheet", () => ({
+  AssistSheet: () => <div>Hint controls</div>,
 }));
 vi.mock("@/app/(app)/r/[code]/_components/HostRequestRows", () => ({
   HostRequestRows: () => <div>Requests</div>,
+  useHostRequests: () => null,
 }));
 vi.mock("@/app/(app)/r/[code]/_components/GameSetupCalendar", () => ({
   GameSetupCalendar: () => <div>Game setup</div>,
@@ -218,7 +219,8 @@ describe("RoomPage", () => {
     const user = userEvent.setup();
     const view = await renderRoom();
 
-    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await user.click(screen.getByRole("button", { name: "Room menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Leave room" }));
     expect(mocks.leave).toHaveBeenCalledWith({ roomId: "room" });
     expect(mocks.push).toHaveBeenCalledWith("/");
 
@@ -478,7 +480,8 @@ describe("RoomPage", () => {
     const user = userEvent.setup();
     await renderRoom();
 
-    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await user.click(screen.getByRole("button", { name: "Room menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Leave room" }));
 
     await waitFor(() =>
       expect(reportClientError).toHaveBeenCalledWith(expect.any(Error), {

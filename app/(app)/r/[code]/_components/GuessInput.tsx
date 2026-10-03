@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useAction } from "convex/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -37,10 +39,13 @@ export function GuessInput({
   gameId,
   onAchievementsUnlocked,
   onDuplicate,
+  children,
 }: {
   gameId: Id<"games">;
   onAchievementsUnlocked: (ids: string[]) => void;
   onDuplicate: (lemma: string | null) => void;
+  // Controls beside the input, such as the Assist button.
+  children?: React.ReactNode;
 }) {
   const submit = useAction(api.guesses.submit);
   // Only mounted once the game has loaded on the client, so reading storage
@@ -98,23 +103,41 @@ export function GuessInput({
           }
         }}
       >
-        <div className="flex gap-2">
-          <Input
-            ref={inputRef}
-            placeholder="Type a word…"
-            value={word}
-            onChange={(e) => {
-              updateWord(e.target.value);
-              setError(null);
-            }}
-            disabled={busy}
-            aria-invalid={error !== null}
-            aria-describedby={error ? "guess-error" : undefined}
-            autoFocus
-          />
-          <Button type="submit" disabled={busy || !word.trim()}>
-            {busy ? "…" : "Guess"}
-          </Button>
+        <div className="flex items-stretch gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Input
+              className="h-11 pr-11 text-base md:text-sm"
+              ref={inputRef}
+              placeholder="Type a word…"
+              value={word}
+              onChange={(e) => {
+                updateWord(e.target.value);
+                setError(null);
+              }}
+              disabled={busy}
+              aria-invalid={error !== null}
+              aria-describedby={error ? "guess-error" : undefined}
+              autoFocus
+            />
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Guess"
+              disabled={busy || !word.trim()}
+              className="absolute top-1/2 right-1.5 -translate-y-1/2"
+            >
+              {busy ? (
+                "…"
+              ) : (
+                <HugeiconsIcon
+                  icon={ArrowUp02Icon}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              )}
+            </Button>
+          </div>
+          {children}
         </div>
         {error && (
           <p

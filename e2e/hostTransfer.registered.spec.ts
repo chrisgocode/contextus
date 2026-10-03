@@ -1,4 +1,11 @@
-import { createRoom, expect, roomMemberItems, test } from "./fixtures";
+import {
+  createRoom,
+  expect,
+  leaveRoom,
+  openAssist,
+  roomMemberItems,
+  test,
+} from "./fixtures";
 
 test("the partner becomes Host live when the Host leaves mid-game", async ({
   createRegisteredUser,
@@ -11,7 +18,7 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
   await expect(roomMemberItems(host.page)).toHaveCount(2);
   await host.page.getByRole("button", { name: "Start game" }).click();
   await expect(
-    partner.page.getByRole("button", { name: "Request hint" }),
+    partner.page.getByRole("button", { name: "Hints and give up" }),
   ).toBeVisible();
   await expect(
     partner.page.getByRole("status", { name: "Requests" }),
@@ -21,7 +28,7 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
     document.documentElement.dataset.e2eNoReload = "1";
   });
 
-  await host.page.getByRole("button", { name: "Leave" }).click();
+  await leaveRoom(host.page);
   await expect(host.page).toHaveURL("/");
 
   const members = roomMemberItems(partner.page);
@@ -31,12 +38,14 @@ test("the partner becomes Host live when the Host leaves mid-game", async ({
       .filter({ hasText: partner.name })
       .getByText("host", { exact: true }),
   ).toBeVisible();
+  await openAssist(partner.page);
   await expect(
     partner.page.getByRole("button", { name: "Get hint" }),
   ).toBeVisible();
   await expect(
     partner.page.getByRole("button", { name: "Give up", exact: true }),
   ).toBeVisible();
+  await partner.page.keyboard.press("Escape");
   await expect(
     partner.page.getByRole("status", { name: "Requests" }),
   ).toBeAttached();

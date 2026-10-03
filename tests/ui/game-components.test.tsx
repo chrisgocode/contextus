@@ -5,7 +5,12 @@ import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
 import { loadCalendar } from "@/app/(app)/r/[code]/_components/calendar-loader";
 import { GameSetupCalendar } from "@/app/(app)/r/[code]/_components/GameSetupCalendar";
 import { HintGiveupBar } from "@/app/(app)/r/[code]/_components/HintGiveupBar";
-import { HostRequestRows } from "@/app/(app)/r/[code]/_components/HostRequestRows";
+import { AssistSheet } from "@/app/(app)/r/[code]/_components/AssistSheet";
+import {
+  HostRequestList,
+  HostRequestRows,
+  useHostRequests,
+} from "@/app/(app)/r/[code]/_components/HostRequestRows";
 import { RequestRows } from "@/app/(app)/r/[code]/_components/RequestRows";
 import { reportClientError } from "@/lib/report-error";
 import { act, cleanup, render, screen, userEvent, waitFor } from "./test-utils";
@@ -249,6 +254,20 @@ describe("HintGiveupBar", () => {
     );
   });
 
+  it("tells the sheet to close once a request is sent", async () => {
+    convex.useMutation.mockReturnValue(vi.fn().mockResolvedValue(null));
+    convex.useAction.mockReturnValue(vi.fn());
+    mockRequestQueries({});
+    const onDone = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <HintGiveupBar gameId={"game" as never} isHost={false} onDone={onDone} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Request hint" }));
+    expect(onDone).toHaveBeenCalled();
+  });
+
   it("shows an exhausted hint pool inline", async () => {
     mockHostHint(
       vi.fn().mockRejectedValue({ data: "Could not find an unguessed hint" }),
@@ -480,6 +499,29 @@ describe("RequestRows", () => {
   });
 });
 
+// The page's arrangement: requests answered in the Assist sheet, the hints
+// they produce revealed above the guess list.
+function HostRequests({
+  pending,
+  onApproved = () => {},
+}: {
+  pending: never[];
+  onApproved?: () => void;
+}) {
+  const requests = useHostRequests(pending);
+  return (
+    <>
+      <HostRequestList requests={requests} onApproved={onApproved} />
+      <HostRequestRows requests={requests} />
+    </>
+  );
+}
+
+function SheetWithRequests({ pending }: { pending: never[] }) {
+  const requests = useHostRequests(pending);
+  return <AssistSheet gameId={"game" as never} isHost requests={requests} />;
+}
+
 describe("HostRequestRows", () => {
   const request = (
     id: string,
@@ -533,9 +575,9 @@ describe("HostRequestRows", () => {
 
   it("lists each request with who asked and what for", () => {
     mockActions(vi.fn());
-    render(<HostRequestRows pending={[hint, giveup] as never} />);
+    render(<HostRequests pending={[hint, giveup] as never} />);
 
-    expect(screen.getByText("Requests · 2")).toBeVisible();
+    expect(screen.getByText("Waiting on you · 2")).toBeVisible();
     expect(screen.getByText("Vic")).toBeVisible();
     expect(screen.getByText("wants a hint")).toBeVisible();
     expect(screen.getByText("Noor")).toBeVisible();
@@ -549,7 +591,7 @@ describe("HostRequestRows", () => {
     try {
       mockActions(vi.fn());
       render(
-        <HostRequestRows
+        <HostRequests
           pending={[{ ...hint, createdAt: 0, expiresAt: 60_000 }] as never}
         />,
       );
@@ -561,28 +603,25 @@ describe("HostRequestRows", () => {
 
   it("labels the requests with a heading", () => {
     mockActions(vi.fn());
-    render(<HostRequestRows pending={[hint] as never} />);
-    expect(screen.getByRole("heading", { name: "Requests · 1" })).toBeVisible();
+    render(<HostRequests pending={[hint] as never} />);
+    expect(
+      screen.getByRole("heading", { name: "Waiting on you · 1" }),
+    ).toBeVisible();
   });
 
-  it("offers a way back to requests above the screen", async () => {
+  it("offers a way to the requests from down the page", async () => {
     inView = false;
     mockActions(vi.fn());
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+    convex.useQuery.mockReturnValue(undefined);
     const user = userEvent.setup();
-    render(<HostRequestRows pending={[hint, giveup] as never} />);
+    render(<SheetWithRequests pending={[hint, giveup] as never} />);
 
-    await user.click(
-      screen.getByRole("button", { name: "Scroll up to 2 requests" }),
-    );
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "start",
-    });
+    await user.click(screen.getByRole("button", { name: "Show 2 requests" }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.getByText("Waiting on you · 2")).toBeVisible();
   });
 
-  it("lifts the way back above an open on-screen keyboard", () => {
+  it("lifts the way to the requests above an open on-screen keyboard", () => {
     inView = false;
     mockActions(vi.fn());
     // iOS Safari keeps the layout viewport and shrinks the visual one.
@@ -592,37 +631,54 @@ describe("HostRequestRows", () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     });
-    render(<HostRequestRows pending={[hint] as never} />);
+    render(<SheetWithRequests pending={[hint] as never} />);
 
-    expect(
-      screen.getByRole("button", { name: "Scroll up to 1 request" }),
-    ).toHaveStyle({ bottom: "316px" }); // 300px keyboard + 1rem
+    expect(screen.getByRole("button", { name: "Show 1 request" })).toHaveStyle({
+      bottom: "316px",
+    }); // 300px keyboard + 1rem
   });
 
-  it("hides the way back while the requests are on screen", () => {
+  it("counts waiting requests on the Assist button", () => {
     mockActions(vi.fn());
-    render(<HostRequestRows pending={[hint] as never} />);
+    render(<SheetWithRequests pending={[hint] as never} />);
     expect(
-      screen.queryByRole("button", { name: /^Scroll up to/ }),
+      screen.getByRole("button", { name: "Hints and give up, 1 request" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /^Show / }),
     ).not.toBeInTheDocument();
+  });
+
+  it("closes the sheet to show the hint being given", async () => {
+    mockActions(vi.fn(() => new Promise(() => {})));
+    convex.useQuery.mockReturnValue(undefined);
+    const user = userEvent.setup();
+    render(<SheetWithRequests pending={[hint] as never} />);
+    await user.click(
+      screen.getByRole("button", { name: "Hints and give up, 1 request" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Give hint" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("keeps an empty live region until a request arrives", () => {
     mockActions(vi.fn());
-    const { rerender } = render(<HostRequestRows pending={[]} />);
+    const { rerender } = render(<HostRequests pending={[]} />);
     const region = screen.getByRole("status", { name: "Requests" });
     expect(region).toBeEmptyDOMElement();
 
-    rerender(<HostRequestRows pending={[hint] as never} />);
+    rerender(<HostRequests pending={[hint] as never} />);
     expect(screen.getByRole("status", { name: "Requests" })).toBe(region);
-    expect(region).toHaveTextContent("Vic");
+    expect(region).toHaveTextContent("1 request waiting");
   });
 
   it("denies a request", async () => {
     const deny = vi.fn().mockResolvedValue(null);
     mockActions(vi.fn(), deny);
     const user = userEvent.setup();
-    render(<HostRequestRows pending={[hint] as never} />);
+    render(<HostRequests pending={[hint] as never} />);
 
     await user.click(screen.getByRole("button", { name: "Deny" }));
     expect(deny).toHaveBeenCalledWith({ requestId: "hint1" });
@@ -634,14 +690,14 @@ describe("HostRequestRows", () => {
     const approve = vi.fn(() => new Promise((r) => (resolve = r)));
     mockActions(approve);
     const user = userEvent.setup();
-    const { rerender } = render(<HostRequestRows pending={[hint] as never} />);
+    const { rerender } = render(<HostRequests pending={[hint] as never} />);
 
     await user.click(screen.getByRole("button", { name: "Give hint" }));
     expect(approve).toHaveBeenCalledWith({ requestId: "hint1" });
     expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
 
     // The request leaves the pending list before the action returns.
-    rerender(<HostRequestRows pending={[]} />);
+    rerender(<HostRequests pending={[]} />);
     expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
 
     await act(async () => resolve({ lemma: "pomelo", distance: 299 }));
@@ -657,7 +713,7 @@ describe("HostRequestRows", () => {
       mockActions(
         vi.fn().mockResolvedValue({ lemma: "pomelo", distance: 299 }),
       );
-      render(<HostRequestRows pending={[hint] as never} />);
+      render(<HostRequests pending={[hint] as never} />);
       await act(async () => {
         screen.getByRole("button", { name: "Give hint" }).click();
       });
@@ -675,7 +731,7 @@ describe("HostRequestRows", () => {
       vi.fn().mockRejectedValue({ data: "Could not find an unguessed hint" }),
     );
     const user = userEvent.setup();
-    render(<HostRequestRows pending={[hint] as never} />);
+    render(<HostRequests pending={[hint] as never} />);
 
     await user.click(screen.getByRole("button", { name: "Give hint" }));
     expect(
@@ -694,7 +750,7 @@ describe("HostRequestRows", () => {
     const approve = vi.fn().mockResolvedValue({ lemma: "answer" });
     mockActions(approve);
     const user = userEvent.setup();
-    render(<HostRequestRows pending={[giveup] as never} />);
+    render(<HostRequests pending={[giveup] as never} />);
 
     await user.click(screen.getByRole("button", { name: "Give up" }));
     expect(approve).toHaveBeenCalledWith({ requestId: "giveup1" });

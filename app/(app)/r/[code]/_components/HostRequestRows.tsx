@@ -16,8 +16,6 @@ import {
   TimeLeft,
   useNow,
 } from "./RequestReveal";
-import { useElementInViewport } from "./useElementInViewport";
-import { useKeyboardInset } from "./useKeyboardInset";
 
 type PendingRequest = FunctionReturnType<
   typeof api.requests.listPending
@@ -30,15 +28,10 @@ type Giving = {
 // How long an approved hint stays after it settles; the guess list has it.
 const GIVEN_HINT_MS = 4000;
 
-// The Host's Pending requests, above the guess list where the requester sees
-// theirs, each with Deny and Give hint / Give up. Giving a hint shuffles
-// while Contexto finds it, then settles into the word in the requester's
-// row, the same reveal the requester sees.
-export function HostRequestRows({
-  pending,
-}: {
-  pending: PendingRequest[] | undefined;
-}) {
+// The Host's Pending requests. The page owns this state so the requests can
+// be answered in the Assist sheet while the hint they produce is revealed
+// above the guess list, where the requester sees theirs.
+export function useHostRequests(pending: PendingRequest[] | undefined) {
   const approve = useAction(api.requests.approve);
   const deny = useMutation(api.requests.deny);
   const [busy, setBusy] = useState<ReadonlySet<Id<"pendingRequests">>>(
@@ -49,10 +42,6 @@ export function HostRequestRows({
   const [giving, setGiving] = useState<
     ReadonlyMap<Id<"pendingRequests">, Giving>
   >(new Map());
-  const now = useNow((pending?.length ?? 0) > 0);
-  const [region, setRegion] = useState<HTMLElement | null>(null);
-  const regionVisible = useElementInViewport(region, 0.1);
-  const keyboardInset = useKeyboardInset();
 
   const setBusyFor = (id: Id<"pendingRequests">, on: boolean) =>
     setBusy((current) => {
@@ -123,79 +112,94 @@ export function HostRequestRows({
   }
 
   const waiting = (pending ?? []).filter((p) => !giving.has(p._id));
-  const rows = [
-    ...waiting.map((request) => ({ request, giving: undefined })),
-    ...[...giving.values()].map((g) => ({ request: g.request, giving: g })),
-  ].sort((a, b) => a.request._creationTime - b.request._creationTime);
+  return {
+    waiting,
+    giving: [...giving.values()],
+    busy,
+    approve: onApprove,
+    deny: onDeny,
+    forget,
+  };
+}
 
-  // The region stays mounted and in the accessibility tree while empty, so
-  // screen readers announce requests as they arrive. `sr-only` rather than
-  // `hidden`: display:none would drop it from the tree.
+export type HostRequests = ReturnType<typeof useHostRequests>;
+
+// Above the guess list: the hints being given, shuffling while Contexto finds
+// them and then settling into the word in the requester's row, the same
+// reveal the requester sees.
+export function HostRequestRows({ requests }: { requests: HostRequests }) {
+  const { waiting, giving, forget } = requests;
+  const rows = giving.sort(
+    (a, b) => a.request._creationTime - b.request._creationTime,
+  );
+
+  // The region stays mounted and in the accessibility tree without visible
+  // rows, so screen readers announce requests as they arrive. `sr-only`
+  // rather than `hidden`: display:none would drop it from the tree.
   return (
-    <>
-      <section
-        ref={setRegion}
-        role="status"
-        aria-label="Requests"
-        className="flex flex-col gap-1 empty:sr-only"
-      >
-        {rows.length > 0 && (
-          <>
-            <h2 className="text-xs font-normal uppercase tracking-wide text-muted-foreground">
-              Requests · {waiting.length}
-            </h2>
-            <ul className="flex flex-col gap-2">
-              {rows.map(({ request, giving: entry }) => (
-                <li key={request._id}>
-                  {entry === undefined ? (
-                    <RequestRow
-                      request={request}
-                      now={now}
-                      busy={busy.has(request._id)}
-                      onApprove={() => onApprove(request)}
-                      onDeny={() => onDeny(request)}
-                    />
-                  ) : entry.hint === undefined ? (
-                    <FindingHintRow request={request} />
-                  ) : (
-                    <RevealRow
-                      lemma={entry.hint.lemma}
-                      distance={entry.hint.distance}
-                      player={request.requester}
-                      onSettled={() => {
-                        setTimeout(() => forget(request._id), GIVEN_HINT_MS);
-                      }}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
-      {/* The rows sit above the guess list, so a Host scrolled down the list
-        gets a way back to them. */}
-      {waiting.length > 0 && !regionVisible && (
-        <button
-          type="button"
-          aria-label={`Scroll up to ${waiting.length} request${waiting.length === 1 ? "" : "s"}`}
-          onClick={() =>
-            region?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-          // Above the keyboard while it's open (it covers the home
-          // indicator's safe area), else above the safe area.
-          style={
-            keyboardInset > 0
-              ? { bottom: `calc(${keyboardInset}px + 1rem)` }
-              : undefined
-          }
-          className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-10 items-center gap-1.5 rounded-full border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-lg"
-        >
-          <span aria-hidden="true">↑</span>
-          {waiting.length} request{waiting.length === 1 ? "" : "s"}
-        </button>
+    <section
+      role="status"
+      aria-label="Requests"
+      className={rows.length === 0 ? "sr-only" : "flex flex-col gap-2"}
+    >
+      {waiting.length > 0 && (
+        <p className="sr-only">
+          {waiting.length} request{waiting.length === 1 ? "" : "s"} waiting
+        </p>
       )}
-    </>
+      {rows.map(({ request, hint }) =>
+        hint === undefined ? (
+          <FindingHintRow key={request._id} request={request} />
+        ) : (
+          <RevealRow
+            key={request._id}
+            lemma={hint.lemma}
+            distance={hint.distance}
+            player={request.requester}
+            onSettled={() => {
+              setTimeout(() => forget(request._id), GIVEN_HINT_MS);
+            }}
+          />
+        ),
+      )}
+    </section>
+  );
+}
+
+// In the Assist sheet: each waiting request with Deny and Give hint / Give
+// up. `onApproved` lets the sheet close so the Host sees the reveal.
+export function HostRequestList({
+  requests,
+  onApproved,
+}: {
+  requests: HostRequests;
+  onApproved: () => void;
+}) {
+  const { waiting, busy, approve, deny } = requests;
+  const now = useNow(waiting.length > 0);
+  if (waiting.length === 0) return null;
+  return (
+    <section aria-label="Waiting requests" className="flex flex-col gap-2">
+      <h2 className="text-xs font-normal uppercase tracking-wide text-muted-foreground">
+        Waiting on you · {waiting.length}
+      </h2>
+      <ul className="flex flex-col divide-y border">
+        {waiting.map((request) => (
+          <li key={request._id}>
+            <RequestRow
+              request={request}
+              now={now}
+              busy={busy.has(request._id)}
+              onApprove={() => {
+                onApproved();
+                void approve(request);
+              }}
+              onDeny={() => void deny(request)}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -214,34 +218,31 @@ function RequestRow({
 }) {
   const giveup = request.type === "giveup";
   return (
-    <div
-      className={`flex items-center gap-3 rounded-md border border-dashed bg-neutral-900/60 px-3 py-2 text-white ${
-        giveup ? "border-destructive/60" : "border-emerald-400/50"
-      }`}
-    >
-      <PlayerAvatar player={request.requester} className="h-7 w-7" />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-baseline gap-2">
+    <div className="flex flex-col gap-3 p-3">
+      <div className="flex items-center gap-3">
+        <PlayerAvatar player={request.requester} className="h-7 w-7" />
+        <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-semibold">
             {request.requester.name}
           </span>
-          <TimeLeft request={request} now={now} />
-        </span>
-        <span className="truncate text-xs text-white/60">
-          {giveup ? "wants to give up" : "wants a hint"}
-        </span>
+          <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+            {giveup ? "wants to give up" : "wants a hint"}
+            <TimeLeft request={request} now={now} />
+          </span>
+        </div>
       </div>
-      <Button size="sm" variant="ghost" disabled={busy} onClick={onDeny}>
-        Deny
-      </Button>
-      <Button
-        size="sm"
-        variant={giveup ? "destructive" : "default"}
-        disabled={busy}
-        onClick={onApprove}
-      >
-        {giveup ? "Give up" : "Give hint"}
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" disabled={busy} onClick={onDeny}>
+          Deny
+        </Button>
+        <Button
+          variant={giveup ? "destructive" : "default"}
+          disabled={busy}
+          onClick={onApprove}
+        >
+          {giveup ? "Give up" : "Give hint"}
+        </Button>
+      </div>
     </div>
   );
 }
