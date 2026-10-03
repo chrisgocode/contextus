@@ -8,6 +8,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Commit as `deps: …` so release-please lists bumps under Dependencies,
+    # apart from other `build` changes.
+    commit-message:
+      prefix: "deps"
     # Cooldown only delays version updates; security updates open immediately.
     cooldown:
       default-days: 7
@@ -32,6 +36,8 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    commit-message:
+      prefix: "deps"
     schedule:
       interval: "weekly"
     cooldown:
