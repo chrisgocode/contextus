@@ -37,8 +37,6 @@ function importAndInit(): Promise<Sentry> {
 
       // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
       tracesSampleRate: 0.1,
-      // Enable logs to be sent to Sentry
-      enableLogs: true,
 
       // Define how likely Replay events are sampled.
       // This sets the sample rate to be 10%. You may want this to be 100% while
@@ -48,9 +46,11 @@ function importAndInit(): Promise<Sentry> {
       // Define how likely Replay events are sampled when an error occurs.
       replaysOnErrorSampleRate: 1.0,
 
-      // Enable sending user PII (Personally Identifiable Information)
-      // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-      sendDefaultPii: true,
+      // Send user PII (IP address, request headers, and so on) like
+      // `sendDefaultPii: true`, except cookies: those are the Convex Auth
+      // session tokens, and Sentry doesn't need them.
+      // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/
+      dataCollection: { userInfo: true, cookies: false },
     });
 
     // Fetch Replay from the Sentry CDN instead of bundling it for every
