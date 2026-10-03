@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Page, Request } from "@playwright/test";
 import { api } from "../convex/_generated/api";
 import { e2eAccountEmail } from "./accounts";
 import { authToken, clientFor, purgeAccount } from "./convex";
@@ -15,6 +15,50 @@ async function playAsGuest(page: Page) {
   await page.getByRole("button", { name: "Guess" }).click();
   await expect(page.getByText("house", { exact: true })).toHaveCount(2);
   return roomUrl;
+}
+
+// Holds the first token refresh any tab sends once `arm` resolves, until
+// `release`; `held` resolves to its request. Tabs share a lock around
+// refreshes, and a tab skips its own refresh when another tab's lands while it
+// waits for the lock, so the held refresh may not be the signing-in page's.
+// `arm` first waits out refreshes already sent, since one of those could make
+// the page skip its refresh while none is held (#191).
+async function holdTokenRefresh(context: BrowserContext) {
+  const isRefresh = (request: Request) =>
+    request.url().endsWith("/api/auth") &&
+    request.postDataJSON()?.args?.refreshToken !== undefined;
+  const inFlight = new Set<Request>();
+  const settle = (request: Request) => inFlight.delete(request);
+  context.on("requestfinished", settle);
+  context.on("requestfailed", settle);
+  let armed = false;
+  let release!: () => void;
+  let onHeld!: (request: Request) => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  const held = new Promise<Request>((resolve) => (onHeld = resolve));
+  await context.route("**/api/auth", async (route) => {
+    const request = route.request();
+    if (!isRefresh(request)) return route.fallback();
+    if (!armed) {
+      inFlight.add(request);
+      return route.fallback();
+    }
+    armed = false;
+    const response = await route.fetch();
+    onHeld(request);
+    await released;
+    await route.fulfill({ response });
+  });
+  return {
+    arm: async () => {
+      // Tabs refresh one at a time, so this can outlast the expect timeout;
+      // the test's timeout still bounds it.
+      await expect.poll(() => inFlight.size, { timeout: 0 }).toBe(0);
+      armed = true;
+    },
+    held,
+    release,
+  };
 }
 
 // Another tab left open as the Guest. Once the merge deletes the Guest it
@@ -82,6 +126,8 @@ for (const { authorize, returning } of [
     const email = e2eAccountEmail(test.info().parallelIndex, 0);
     const name = email.split("@")[0];
     await purgeAccount(email);
+    // Before any page loads, so every refresh goes through it.
+    const refresh = await holdTokenRefresh(context);
     const roomUrl = await test.step("play as a Guest", () => playAsGuest(page));
     const guestToken = await authToken(context);
     const otherTab = await openGuestTab(context);
@@ -94,26 +140,9 @@ for (const { authorize, returning } of [
           { name: "account", value: name, url: issuer },
         ]);
       }
-      let releaseRefresh!: () => void;
-      let refreshReady!: () => void;
-      const held = new Promise<void>((resolve) => (releaseRefresh = resolve));
-      const ready = new Promise<void>((resolve) => (refreshReady = resolve));
-      await page.route("**/api/auth", async (route) => {
-        if (route.request().postDataJSON()?.args?.refreshToken === undefined) {
-          return route.continue();
-        }
-        const response = await route.fetch();
-        refreshReady();
-        await held;
-        await route.fulfill({ response });
-      });
+      await refresh.arm();
       await page.goto("/signin");
-      await ready;
-      const refreshResponse = page.waitForResponse(
-        (response) =>
-          response.url().endsWith("/api/auth") &&
-          response.request().postDataJSON()?.args?.refreshToken !== undefined,
-      );
+      const refreshResponse = (await refresh.held).response();
       const signInResponse = page.waitForResponse(
         (response) =>
           response.url().endsWith("/api/auth") &&
@@ -125,7 +154,7 @@ for (const { authorize, returning } of [
       try {
         await signInResponse;
       } finally {
-        releaseRefresh();
+        refresh.release();
       }
       await refreshResponse;
       await click;
