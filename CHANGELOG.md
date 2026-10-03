@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/chrisgocode/contextus/compare/v0.2.0...v0.3.0) (2026-10-03)
+
+
+### Features
+
+* **rooms:** move hint, give-up and request controls into an Assist sheet ([#199](https://github.com/chrisgocode/contextus/issues/199)) ([fabb341](https://github.com/chrisgocode/contextus/commit/fabb3412bb3513b6f295e894cb965a733689885c))
+* **rooms:** show a requester their pending hint or give-up in the guess list ([#194](https://github.com/chrisgocode/contextus/issues/194)) ([90b8c20](https://github.com/chrisgocode/contextus/commit/90b8c2055ea22a0c34beb8e575cdb03b0dfd7a84))
+* **rooms:** show the Host's requests above the guess list ([#197](https://github.com/chrisgocode/contextus/issues/197)) ([8c7d45a](https://github.com/chrisgocode/contextus/commit/8c7d45aa15b30301fc0902c6c1706db403c65c60))
+
+
+### Bug Fixes
+
+* **security:** rate limit Contexto traffic and Guest sign-ups ([#176](https://github.com/chrisgocode/contextus/issues/176)) ([2c33a68](https://github.com/chrisgocode/contextus/commit/2c33a683e3704709ab4818cc3074333e76b3b659))
+
+
+### Build System
+
+* **deps-dev:** bump dotenv from 17.4.2 to 18.0.4 ([#88](https://github.com/chrisgocode/contextus/issues/88)) ([26d34e1](https://github.com/chrisgocode/contextus/commit/26d34e19fb8fcb572459e74dff177232baf3a914))
+* **deps:** bump the minor-and-patch group across 1 directory with 7 updates ([#196](https://github.com/chrisgocode/contextus/issues/196)) ([a2b68f3](https://github.com/chrisgocode/contextus/commit/a2b68f33565c9d15c31511c9374e81b1e8eddf51))
+
 ## [0.2.0](https://github.com/chrisgocode/contextus/compare/v0.1.1...v0.2.0) (2026-10-01)
 
 
