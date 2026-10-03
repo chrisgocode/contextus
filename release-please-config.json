@@ -20,8 +20,12 @@
       "section": "Reverts"
     },
     {
-      "type": "build",
+      "type": "deps",
       "section": "Dependencies"
+    },
+    {
+      "type": "build",
+      "section": "Build System"
     }
   ],
   "packages": {
