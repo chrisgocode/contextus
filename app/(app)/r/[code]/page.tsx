@@ -283,7 +283,10 @@ function RoomLoaded({
     api.requests.listPending,
     activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
   );
-  const hostRequests = useHostRequests(pendingRequests);
+  const hostRequests = useHostRequests(
+    pendingRequests,
+    activeGame?._id ?? null,
+  );
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
@@ -326,13 +329,20 @@ function RoomLoaded({
         {/* Room actions that aren't part of playing sit in one menu, so the
             header stays a single row on phones. */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <Button variant="outline" onClick={onCopy} className="sm:min-w-28">
+          {/* Icon-only on phones, so the room code isn't truncated. */}
+          <Button
+            variant="outline"
+            onClick={onCopy}
+            className="w-8 px-0 sm:w-auto sm:min-w-28 sm:px-2.5"
+          >
             <HugeiconsIcon
               icon={copied ? Tick02Icon : Copy01Icon}
               strokeWidth={2}
               aria-hidden="true"
             />
-            {copied ? "Copied!" : "Copy code"}
+            <span className="sr-only sm:not-sr-only">
+              {copied ? "Copied!" : "Copy code"}
+            </span>
           </Button>
           <AppearancePicker />
           <DropdownMenu>

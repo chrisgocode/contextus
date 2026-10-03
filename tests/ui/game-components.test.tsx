@@ -503,12 +503,14 @@ describe("RequestRows", () => {
 // they produce revealed above the guess list.
 function HostRequests({
   pending,
+  gameId = "game",
   onApproved = () => {},
 }: {
   pending: never[];
+  gameId?: string;
   onApproved?: () => void;
 }) {
-  const requests = useHostRequests(pending);
+  const requests = useHostRequests(pending, gameId as never);
   return (
     <>
       <HostRequestList requests={requests} onApproved={onApproved} />
@@ -518,7 +520,7 @@ function HostRequests({
 }
 
 function SheetWithRequests({ pending }: { pending: never[] }) {
-  const requests = useHostRequests(pending);
+  const requests = useHostRequests(pending, "game" as never);
   return <AssistSheet gameId={"game" as never} isHost requests={requests} />;
 }
 
@@ -724,6 +726,19 @@ describe("HostRequestRows", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("doesn't carry a hint being given into the next game", async () => {
+    mockActions(vi.fn(() => new Promise(() => {})));
+    const user = userEvent.setup();
+    const { rerender } = render(<HostRequests pending={[hint] as never} />);
+    await user.click(screen.getByRole("button", { name: "Give hint" }));
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+
+    rerender(<HostRequests pending={[]} gameId="next" />);
+    expect(
+      screen.queryByText("Finding a hint for Vic"),
+    ).not.toBeInTheDocument();
   });
 
   it("puts the buttons back and reports when no hint can be found", async () => {

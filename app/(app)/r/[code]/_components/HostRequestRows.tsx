@@ -31,7 +31,10 @@ const GIVEN_HINT_MS = 4000;
 // The Host's Pending requests. The page owns this state so the requests can
 // be answered in the Assist sheet while the hint they produce is revealed
 // above the guess list, where the requester sees theirs.
-export function useHostRequests(pending: PendingRequest[] | undefined) {
+export function useHostRequests(
+  pending: PendingRequest[] | undefined,
+  gameId: Id<"games"> | null,
+) {
   const approve = useAction(api.requests.approve);
   const deny = useMutation(api.requests.deny);
   const [busy, setBusy] = useState<ReadonlySet<Id<"pendingRequests">>>(
@@ -42,6 +45,14 @@ export function useHostRequests(pending: PendingRequest[] | undefined) {
   const [giving, setGiving] = useState<
     ReadonlyMap<Id<"pendingRequests">, Giving>
   >(new Map());
+  // The page outlives each Game, so a hint still being revealed when one
+  // ends mustn't carry over into the next.
+  const [forGame, setForGame] = useState(gameId);
+  if (forGame !== gameId) {
+    setForGame(gameId);
+    setGiving(new Map());
+    setBusy(new Set());
+  }
 
   const setBusyFor = (id: Id<"pendingRequests">, on: boolean) =>
     setBusy((current) => {
