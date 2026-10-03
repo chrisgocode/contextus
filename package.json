@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev --start 'next dev'",
+    "prototype:room": "echo http://localhost:3200/prototype/room-layout && next dev -p 3200",
     "dev:e2e": "convex dev --once && next dev -p 3100",
     "start:e2e": "next start -p 3100",
     "predev": "convex init && node setup.mjs --once",
