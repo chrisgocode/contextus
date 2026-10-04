@@ -20,8 +20,12 @@ import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
+import { GuestLimitPrompt } from "../r/[code]/_components/GuestLimitPrompt";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
-import { useCreateRoom } from "../r/[code]/_components/room-entry";
+import {
+  type EntryFailure,
+  useCreateRoom,
+} from "../r/[code]/_components/room-entry";
 
 export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -125,7 +129,7 @@ function CreateRoom({
   const router = useRouter();
   const createRoom = useCreateRoom();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<EntryFailure | null>(null);
   return (
     <section className="rounded-lg border p-6 flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Start a new room</h2>
@@ -135,38 +139,31 @@ function CreateRoom({
       <Button
         disabled={busy}
         onClick={async () => {
-          setError(null);
+          setFailure(null);
           setBusy(true);
           onOpeningChange("waiting");
           // The new room opens on the game setup calendar.
           preloadCalendar();
-          // Shown inline, including the Guest room limit's sign-up prompt.
-          const result = await runMutation(createRoom, {
-            context: "room.create",
-            fallback: "Could not create room. Try again.",
-            showToast: false,
-          });
-          if (result.ok) {
-            markRoomCreated(result.value);
-            router.push(`/r/${result.value}`);
+          // A failure is shown inline.
+          const result = await createRoom();
+          if (result.kind === "created") {
+            markRoomCreated(result.code);
+            router.push(`/r/${result.code}`);
           } else {
             onOpeningChange(false);
-            setError(result.message);
+            setFailure(result);
           }
           setBusy(false);
         }}
       >
         {busy ? "Creating…" : "Create room"}
       </Button>
-      {error === "Guest room limit reached" ? (
+      {failure?.kind === "guestLimit" ? (
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>Create an account to host or join more active rooms.</p>
-          <Button variant="outline" onClick={() => router.push("/signin")}>
-            Create account
-          </Button>
+          <GuestLimitPrompt redirectTo="/" buttonVariant="outline" />
         </div>
-      ) : error ? (
-        <p className="text-sm text-destructive">{error}</p>
+      ) : failure?.kind === "error" ? (
+        <p className="text-sm text-destructive">{failure.message}</p>
       ) : null}
     </section>
   );
