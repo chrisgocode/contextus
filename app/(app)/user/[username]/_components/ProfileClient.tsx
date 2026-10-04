@@ -16,8 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { reportClientError } from "@/lib/report-error";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
+import { runMutation } from "@/lib/report-error";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
 
@@ -201,51 +200,50 @@ export function ProfileClient({ username }: { username: string }) {
 
     setIsSaving(true);
     setError(null);
-    try {
-      let avatarStorageId: Id<"_storage"> | undefined;
-      if (selectedAvatarFile !== null) {
-        const uploadUrl = await generateUploadUrl({});
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": selectedAvatarFile.type },
-          body: selectedAvatarFile,
-        });
-        if (!uploadResponse.ok) {
-          throw new Error("Profile image upload failed.");
+    const result = await runMutation(
+      async () => {
+        let avatarStorageId: Id<"_storage"> | undefined;
+        if (selectedAvatarFile !== null) {
+          const uploadUrl = await generateUploadUrl({});
+          const uploadResponse = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": selectedAvatarFile.type },
+            body: selectedAvatarFile,
+          });
+          if (!uploadResponse.ok) {
+            throw new Error("Profile image upload failed.");
+          }
+          const { storageId } = (await uploadResponse.json()) as {
+            storageId: Id<"_storage">;
+          };
+          avatarStorageId = storageId;
         }
-        const { storageId } = (await uploadResponse.json()) as {
-          storageId: Id<"_storage">;
-        };
-        avatarStorageId = storageId;
-      }
-
-      await updateProfile({
-        name: trimmedName,
-        username: trimmedUsername,
-        ...(avatarStorageId === undefined ? {} : { avatarStorageId }),
-      });
-      const nextUsername = trimmedUsername.toLowerCase();
-      setIsEditing(false);
-      setSelectedAvatarFile(null);
-      setSelectedAvatarPreview((previous) => {
-        if (previous !== null) URL.revokeObjectURL(previous);
-        return null;
-      });
-      if (nextUsername !== loadedProfile.username) {
-        router.replace(`/user/${nextUsername}`);
-      }
-    } catch (caught) {
-      const message =
-        expectedClientErrorMessage(caught, "profile.update") ??
-        "Could not save profile. Check your details and try again.";
-      setError(message);
-      reportClientError(caught, {
-        userMessage: message,
+        await updateProfile({
+          name: trimmedName,
+          username: trimmedUsername,
+          ...(avatarStorageId === undefined ? {} : { avatarStorageId }),
+        });
+      },
+      {
         context: "profile.update",
+        fallback: "Could not save profile. Check your details and try again.",
         showToast: false,
-      });
-    } finally {
-      setIsSaving(false);
+      },
+    );
+    setIsSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const nextUsername = trimmedUsername.toLowerCase();
+    setIsEditing(false);
+    setSelectedAvatarFile(null);
+    setSelectedAvatarPreview((previous) => {
+      if (previous !== null) URL.revokeObjectURL(previous);
+      return null;
+    });
+    if (nextUsername !== loadedProfile.username) {
+      router.replace(`/user/${nextUsername}`);
     }
   }
 

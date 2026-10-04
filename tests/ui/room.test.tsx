@@ -9,7 +9,7 @@ import {
 import { RoomSkeleton } from "@/app/(app)/r/[code]/_components/RoomSkeleton";
 import RoomLoading from "@/app/(app)/r/[code]/loading";
 import RoomPage from "@/app/(app)/r/[code]/page";
-import { reportClientError } from "@/lib/report-error";
+import { captureException } from "@/lib/sentry-client";
 import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
@@ -43,7 +43,7 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ code: "abcdef" }),
   useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
 }));
-vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
+vi.mock("@/lib/sentry-client", () => ({ captureException: vi.fn() }));
 vi.mock("@/app/(app)/r/[code]/_components/usePresenceSet", () => ({
   usePresenceSet: () => new Set(["friend"]),
 }));
@@ -413,7 +413,7 @@ describe("RoomPage", () => {
     expect(
       screen.queryByText("Could not join room. Try again."),
     ).not.toBeInTheDocument();
-    expect(reportClientError).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
     expect(mocks.join).toHaveBeenCalledTimes(2);
     await act(async () => resolveNew(null));
   });
@@ -472,7 +472,7 @@ describe("RoomPage", () => {
     view.unmount();
     await act(async () => rejectJoin(new Error("Room not found")));
 
-    expect(reportClientError).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
   });
 
   it("stays in the Room without rejoining when leaving fails", async () => {
@@ -484,9 +484,8 @@ describe("RoomPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "Leave room" }));
 
     await waitFor(() =>
-      expect(reportClientError).toHaveBeenCalledWith(expect.any(Error), {
-        userMessage: "Could not leave room.",
-        context: "room.leave",
+      expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
+        tags: { surface: "room.leave" },
       }),
     );
     expect(screen.getByRole("heading", { name: "ABCDEF" })).toBeVisible();
@@ -506,7 +505,7 @@ describe("RoomPage", () => {
     await renderRoom();
 
     expect(mocks.join).not.toHaveBeenCalled();
-    expect(reportClientError).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
     expect(screen.getByText("Session expired. Signing you out…")).toBeVisible();
     expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
   });
@@ -529,7 +528,7 @@ describe("RoomPage", () => {
         "Create an account to host or join more active rooms.",
       ),
     ).toBeVisible();
-    expect(reportClientError).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Create account" }));
     expect(mocks.push).toHaveBeenCalledWith("/signin?redirectTo=%2Fr%2FABCDEF");
   });

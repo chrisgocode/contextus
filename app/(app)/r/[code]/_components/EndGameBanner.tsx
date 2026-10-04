@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 
 const COLORS = {
   green: "rgb(76 175 121)",
@@ -94,15 +94,11 @@ function GuestAccountPrompt() {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   const dismiss = useCallback(async () => {
-    try {
-      await dismissPrompt({});
-      dialogRef.current?.close();
-    } catch (error) {
-      reportClientError(error, {
-        userMessage: "Could not dismiss this message. Try again.",
-        context: "guestPrompt.dismiss",
-      });
-    }
+    const result = await runMutation(() => dismissPrompt({}), {
+      context: "guestPrompt.dismiss",
+      fallback: "Could not dismiss this message. Try again.",
+    });
+    if (result.ok) dialogRef.current?.close();
   }, [dismissPrompt]);
 
   // No auto-dismiss: showModal() moves focus inside, and closing a modal on a

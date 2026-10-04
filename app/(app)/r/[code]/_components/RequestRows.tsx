@@ -6,8 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 import {
   HintTag,
   type Player,
@@ -187,19 +186,11 @@ function TakeBack({
       disabled={busy}
       onClick={async () => {
         setBusy(true);
-        try {
-          await cancel({ requestId: request._id });
-        } catch (err) {
-          const context = `request.cancel.${type}`;
-          reportClientError(err, {
-            userMessage:
-              expectedClientErrorMessage(err, context) ??
-              "Could not take back the request.",
-            context,
-          });
-        } finally {
-          setBusy(false);
-        }
+        await runMutation(() => cancel({ requestId: request._id }), {
+          context: `request.cancel.${type}`,
+          fallback: "Could not take back the request.",
+        });
+        setBusy(false);
       }}
     >
       Take back

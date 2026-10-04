@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 import { lazyToast } from "@/lib/toast";
 
 // Unsent guesses live in sessionStorage so a reload (e.g. from the new-version
@@ -71,7 +70,16 @@ export function GuessInput({
           onDuplicate(null);
           setBusy(true);
           try {
-            const res = await submit({ gameId, word });
+            const result = await runMutation(() => submit({ gameId, word }), {
+              context: "guess.submit",
+              fallback: "Could not submit guess. Try again.",
+              showToast: false,
+            });
+            if (!result.ok) {
+              setError(result.message);
+              return;
+            }
+            const res = result.value;
             if (res.alreadyGuessed && res.lemma) {
               onDuplicate(res.lemma);
               updateWord("");
@@ -87,16 +95,6 @@ export function GuessInput({
             }
             if (res.won)
               lazyToast((toast) => toast.success(`You got it: ${res.lemma}!`));
-          } catch (err) {
-            const message =
-              expectedClientErrorMessage(err, "guess.submit") ??
-              "Could not submit guess. Try again.";
-            setError(message);
-            reportClientError(err, {
-              userMessage: message,
-              context: "guess.submit",
-              showToast: false,
-            });
           } finally {
             setBusy(false);
             requestAnimationFrame(() => inputRef.current?.focus());

@@ -4,7 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
-import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
+import { getErrorData } from "@/lib/client-errors";
 import { reportClientError } from "@/lib/report-error";
 
 // Room entry: the auth ordering behind creating and joining a Room. Pages
@@ -118,18 +118,13 @@ export function useRoomEntry(code: string) {
     join({ code })
       .catch((err) => {
         if (currentAttempt.current !== attempt) return;
-        const isRoomLimit = getErrorData(err) === GUEST_ROOM_LIMIT;
-        const message = isRoomLimit
-          ? GUEST_ROOM_LIMIT
-          : (expectedClientErrorMessage(err, "room.autojoin") ??
-            "Could not join room. Try again.");
+        // Shown in place of the Room, including the Guest room limit.
+        const message = reportClientError(err, {
+          userMessage: "Could not join room. Try again.",
+          context: "room.autojoin",
+          showToast: false,
+        });
         setFailure({ attempt, message });
-        if (!isRoomLimit) {
-          reportClientError(err, {
-            userMessage: message,
-            context: "room.autojoin",
-          });
-        }
       })
       .finally(() => {
         if (pendingAttempt.current === attempt) pendingAttempt.current = null;

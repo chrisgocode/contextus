@@ -1,4 +1,5 @@
 import { getFunctionName } from "convex/server";
+import { toast } from "sonner";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
 import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
@@ -12,7 +13,6 @@ import {
   useHostRequests,
 } from "@/app/(app)/r/[code]/_components/HostRequestRows";
 import { RequestRows } from "@/app/(app)/r/[code]/_components/RequestRows";
-import { reportClientError } from "@/lib/report-error";
 import { act, cleanup, render, screen, userEvent, waitFor } from "./test-utils";
 
 const convex = vi.hoisted(() => ({
@@ -22,8 +22,7 @@ const convex = vi.hoisted(() => ({
 }));
 
 vi.mock("convex/react", () => convex);
-vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -113,7 +112,7 @@ describe("GuessInput", () => {
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
   });
 
-  it("shows unknown words without reporting them", async () => {
+  it("shows unknown words inline", async () => {
     convex.useAction.mockReturnValue(
       vi.fn().mockResolvedValue({ message: "Unknown word." }),
     );
@@ -129,10 +128,9 @@ describe("GuessInput", () => {
     await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
     await user.click(screen.getByRole("button", { name: "Guess" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Unknown word.");
-    expect(reportClientError).not.toHaveBeenCalled();
   });
 
-  it("reports unexpected submission failures", async () => {
+  it("shows unexpected submission failures inline", async () => {
     const error = new Error("offline");
     convex.useAction.mockReturnValue(vi.fn().mockRejectedValue(error));
     const user = userEvent.setup();
@@ -149,10 +147,6 @@ describe("GuessInput", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not submit guess. Try again.",
-    );
-    expect(reportClientError).toHaveBeenCalledWith(
-      error,
-      expect.objectContaining({ context: "guess.submit" }),
     );
   });
 
@@ -229,7 +223,7 @@ describe("HintGiveupBar", () => {
     expect(hostHint).toHaveBeenCalledWith({ gameId: "game" });
   });
 
-  it("disables a guest's pending request and reports request failures", async () => {
+  it("disables a guest's pending request and shows request failures", async () => {
     const createRequest = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(createRequest);
     convex.useAction.mockReturnValue(vi.fn());
@@ -248,10 +242,6 @@ describe("HintGiveupBar", () => {
     expect(
       await screen.findByText("Could not request to give up. Try again."),
     ).toBeVisible();
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ context: "request.giveup" }),
-    );
   });
 
   it("tells the sheet to close once a request is sent", async () => {
@@ -477,7 +467,7 @@ describe("RequestRows", () => {
     expect(screen.getByText("Give-up requested")).toBeInTheDocument();
   });
 
-  it("reports a take-back the Host already answered", async () => {
+  it("tells the requester when the Host already answered a take-back", async () => {
     convex.useMutation.mockReturnValue(
       vi
         .fn()
@@ -489,12 +479,10 @@ describe("RequestRows", () => {
       <RequestRows gameId={"game" as never} host={host} viewer={viewer} />,
     );
     await user.click(screen.getByRole("button", { name: "Take back" }));
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        context: "request.cancel.hint",
-        userMessage: "The host already answered this request.",
-      }),
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "The host already answered this request.",
+      ),
     );
   });
 });
@@ -741,7 +729,7 @@ describe("HostRequestRows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("puts the buttons back and reports when no hint can be found", async () => {
+  it("puts the buttons back and says when no hint can be found", async () => {
     mockActions(
       vi.fn().mockRejectedValue({ data: "Could not find an unguessed hint" }),
     );
@@ -752,12 +740,8 @@ describe("HostRequestRows", () => {
     expect(
       await screen.findByRole("button", { name: "Give hint" }),
     ).toBeEnabled();
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        context: "request.approve.hint",
-        userMessage: "No unguessed hints remain.",
-      }),
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("No unguessed hints remain."),
     );
   });
 
@@ -907,7 +891,7 @@ describe("GameSetupCalendar", () => {
     }
   });
 
-  it("reports a failed attempt to start the selected puzzle", async () => {
+  it("shows a failed attempt to start the selected puzzle", async () => {
     const start = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(start);
     convex.useQuery.mockReturnValue([]);
@@ -922,10 +906,6 @@ describe("GameSetupCalendar", () => {
       contextoGameId: expect.any(Number),
       roomId: "room",
     });
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ context: "game.start" }),
-    );
   });
 
   it("shows an already-started game inline", async () => {

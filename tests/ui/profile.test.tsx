@@ -2,7 +2,6 @@ import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileClient } from "@/app/(app)/user/[username]/_components/ProfileClient";
 import UserProfilePage from "@/app/(app)/user/[username]/page";
-import { reportClientError } from "@/lib/report-error";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
@@ -24,7 +23,7 @@ vi.mock("next/navigation", () => ({
   notFound: mocks.notFound,
   useRouter: () => ({ replace: mocks.replace }),
 }));
-vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
+
 vi.mock("@/app/(app)/user/[username]/_components/ActivityGraph", () => ({
   ActivityGraph: () => <div>Activity graph</div>,
 }));
@@ -157,10 +156,6 @@ describe("ProfileClient", () => {
       ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
-    expect(reportClientError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ context: "profile.update" }),
-    );
   });
 
   it("shows a username conflict inline", async () => {

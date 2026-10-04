@@ -6,8 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useId, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 
 // The viewer's own hint and give-up, in the Assist sheet. A Host acts
 // directly; anyone else asks the Host. `onDone` closes the sheet once the
@@ -42,34 +41,31 @@ export function HintGiveupBar({
   async function run(kind: "hint" | "giveup") {
     setError(null);
     setBusy(kind);
-    try {
-      if (isHost) {
-        if (kind === "hint") await hostHint({ gameId });
-        else await hostGiveup({ gameId });
-      } else {
-        await createRequest({ gameId, type: kind });
-      }
-      onDone?.();
-    } catch (e) {
-      const context = `${isHost ? "host" : "request"}.${kind}`;
-      const message =
-        expectedClientErrorMessage(e, context) ??
-        (kind === "hint"
-          ? isHost
-            ? "Could not get a hint. Try again."
-            : "Could not request a hint. Try again."
-          : isHost
-            ? "Could not give up. Try again."
-            : "Could not request to give up. Try again.");
-      setError(message);
-      reportClientError(e, {
-        userMessage: message,
-        context,
+    const result = await runMutation(
+      async () => {
+        if (isHost) {
+          if (kind === "hint") await hostHint({ gameId });
+          else await hostGiveup({ gameId });
+        } else {
+          await createRequest({ gameId, type: kind });
+        }
+      },
+      {
+        context: `${isHost ? "host" : "request"}.${kind}`,
+        fallback:
+          kind === "hint"
+            ? isHost
+              ? "Could not get a hint. Try again."
+              : "Could not request a hint. Try again."
+            : isHost
+              ? "Could not give up. Try again."
+              : "Could not request to give up. Try again.",
         showToast: false,
-      });
-    } finally {
-      setBusy(null);
-    }
+      },
+    );
+    if (result.ok) onDone?.();
+    else setError(result.message);
+    setBusy(null);
   }
 
   return (

@@ -16,9 +16,8 @@ import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
-import { expectedClientErrorMessage, getErrorData } from "@/lib/client-errors";
 import { roomPath } from "@/lib/room-code";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { RoomSkeleton } from "../r/[code]/_components/RoomSkeleton";
@@ -141,28 +140,20 @@ function CreateRoom({
           onOpeningChange("waiting");
           // The new room opens on the game setup calendar.
           preloadCalendar();
-          try {
-            const code = await createRoom();
-            markRoomCreated(code);
-            router.push(`/r/${code}`);
-          } catch (err) {
+          // Shown inline, including the Guest room limit's sign-up prompt.
+          const result = await runMutation(createRoom, {
+            context: "room.create",
+            fallback: "Could not create room. Try again.",
+            showToast: false,
+          });
+          if (result.ok) {
+            markRoomCreated(result.value);
+            router.push(`/r/${result.value}`);
+          } else {
             onOpeningChange(false);
-            const isRoomLimit =
-              getErrorData(err) === "Guest room limit reached";
-            const message = isRoomLimit
-              ? "Guest room limit reached"
-              : (expectedClientErrorMessage(err, "room.create") ??
-                "Could not create room. Try again.");
-            setError(message);
-            if (!isRoomLimit) {
-              reportClientError(err, {
-                userMessage: message,
-                context: "room.create",
-              });
-            }
-          } finally {
-            setBusy(false);
+            setError(result.message);
           }
+          setBusy(false);
         }}
       >
         {busy ? "Creating…" : "Create room"}
@@ -315,19 +306,16 @@ function RecentGroups() {
                 onClick={async () => {
                   setError(null);
                   setBusyRoomId(group.roomId);
-                  try {
-                    const { code } = await playAgain({ roomId: group.roomId });
-                    router.push(`/r/${code}`);
-                  } catch (caught) {
-                    const message = "Could not start this room. Try again.";
-                    setError(message);
-                    reportClientError(caught, {
-                      userMessage: message,
+                  const result = await runMutation(
+                    () => playAgain({ roomId: group.roomId }),
+                    {
                       context: "room.playAgain",
-                    });
-                  } finally {
-                    setBusyRoomId(null);
-                  }
+                      fallback: "Could not start this room. Try again.",
+                    },
+                  );
+                  if (result.ok) router.push(`/r/${result.value.code}`);
+                  else setError(result.message);
+                  setBusyRoomId(null);
                 }}
               >
                 {busyRoomId === group.roomId ? "Starting…" : "Play Contextus"}

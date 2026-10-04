@@ -33,7 +33,10 @@ vi.mock("next/error", () => ({
     <p>Application error {statusCode}</p>
   ),
 }));
-vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
+vi.mock("@/lib/report-error", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/report-error")>()),
+  reportClientError: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
