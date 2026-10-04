@@ -39,6 +39,7 @@ import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
+import { isLive } from "./lib/pendingRequests";
 import { enforceRateLimit, RATE_LIMITED_MESSAGE } from "./lib/rateLimits";
 import { upsertRoomActivity } from "./lib/roomActivity";
 import {
@@ -94,8 +95,8 @@ async function authorize(
     : await requireLiveHostByGame(ctx, { gameId });
 }
 
-// A turn may resolve a Pending request only if it is still pending, belongs
-// to this Game, and asks for this kind of turn.
+// A turn may resolve a Pending request only if it is still live, belongs to
+// this Game, and asks for this kind of turn.
 async function requirePendingRequest(
   ctx: QueryCtx | MutationCtx,
   gameId: Id<"games">,
@@ -106,7 +107,7 @@ async function requirePendingRequest(
   const req = await ctx.db.get("pendingRequests", requestId);
   if (
     req === null ||
-    req.status !== "pending" ||
+    !isLive(req, Date.now()) ||
     req.gameId !== gameId ||
     req.type !== kind
   ) {

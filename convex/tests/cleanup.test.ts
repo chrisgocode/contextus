@@ -556,3 +556,36 @@ describe("E2E guest expiry", () => {
     ).resolves.toMatchObject({ code: expect.any(String) });
   });
 });
+
+test("cleanup withdraws the new Host's pending requests when it moves the Host", async () => {
+  const t = setupTest();
+  const hostUser = await seedUser(t, { name: "Host" });
+  const member = await seedUser(t, { name: "Member" });
+  const { roomId, code } = await asUser(t, hostUser).mutation(
+    api.rooms.create,
+    {},
+  );
+  await asUser(t, member).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, hostUser).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, member).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  await asUser(t, member).mutation(api.presence.heartbeat, {
+    roomId,
+    userId: member,
+    sessionId: "s1",
+    interval: 10000,
+  });
+
+  await t.action(internal.cleanup.tick, {});
+
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  expect(room?.hostUserId).toBe(member);
+  expect(
+    await asUser(t, member).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
+});

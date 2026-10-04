@@ -203,6 +203,7 @@ test("guest merge deduplicates overlapping pending requests", async () => {
     contextoGameId: 1336,
   });
   // Seeded directly: create allows one pending hint request per Game.
+  const createdAt = Date.now();
   await t.run(async (ctx) => {
     for (const requesterUserId of [guest, target]) {
       await ctx.db.insert("pendingRequests", {
@@ -211,7 +212,8 @@ test("guest merge deduplicates overlapping pending requests", async () => {
         requesterUserId,
         type: "hint",
         status: "pending",
-        createdAt: 1,
+        createdAt,
+        expiresAt: createdAt + 60_000,
       });
     }
   });

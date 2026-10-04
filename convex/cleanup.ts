@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import { expireGuest } from "./lib/accountLifecycle";
 import { decideRoomCleanup } from "./lib/cleanup";
+import { withdrawAllFor } from "./lib/pendingRequests";
 import { closeRoom } from "./lib/roomLifecycle";
 import { onlineUserIdsForRoom } from "./presence";
 
@@ -63,6 +64,7 @@ export const _cleanupRoom = internalMutation({
       await ctx.db.patch("rooms", roomId, {
         hostUserId: decision.newHostUserId,
       });
+      await withdrawAllFor(ctx, { roomId, userId: decision.newHostUserId });
     } else if (decision.kind === "endRoom") {
       await closeRoom(ctx, roomId);
     }

@@ -918,3 +918,124 @@ test("latestMine reports an overdue request as expired", async () => {
   });
   expect(latest.hint).toMatchObject({ _id: staleId, status: "expired" });
 });
+
+// Seeded sessions last a minute; keep everyone signed in past that.
+async function extendSessions(t: ReturnType<typeof setupTest>) {
+  await t.run(async (ctx) => {
+    for (const session of await ctx.db.query("authSessions").collect()) {
+      await ctx.db.patch("authSessions", session._id, {
+        expirationTime: Date.now() + 10 * 60_000,
+      });
+    }
+  });
+}
+
+test("listPending hides a request past its deadline before its expiry runs", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { host, other, gameId } = await startedGame(t);
+    await extendSessions(t);
+    await createRequest(t, other, gameId, "hint");
+
+    // Moves the clock without running the scheduled expiry.
+    vi.setSystemTime(Date.now() + 60_000);
+
+    expect(
+      await asUser(t, host).query(api.requests.listPending, { gameId }),
+    ).toEqual([]);
+    expect(
+      await asUser(t, other).query(api.requests.listPending, { gameId }),
+    ).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("approve rejects a request that stops being live while Contexto is fetching", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const oracle = fakeWordOracle({});
+    const { host, other, gameId } = await startedGame(t);
+    await extendSessions(t);
+    const requestId = await createRequest(t, other, gameId, "hint");
+    const before = await snapshot(t, gameId);
+    // The fetch outlasts both the deadline and the approval's grace period.
+    oracle.tip.mockImplementationOnce(async () => {
+      vi.setSystemTime(Date.now() + 2 * 60_000);
+      return { lemma: "pomelo", distance: 299 };
+    });
+
+    await expect(
+      asUser(t, host).action(api.requests.approve, { requestId }),
+    ).rejects.toThrow("Request not found or already handled");
+
+    expect(await snapshot(t, gameId)).toEqual(before);
+    const row = await t.run(async (ctx) =>
+      ctx.db.get("pendingRequests", requestId),
+    );
+    expect(row?.status).toBe("pending");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a member who becomes Host has their pending requests withdrawn", async () => {
+  const t = setupTest();
+  fakeWordOracle({ tips: { 1336: { 299: "pomelo" } } });
+  const { host, other, roomId, gameId } = await startedGame(t);
+  const requestId = await createRequest(t, other, gameId, "hint");
+
+  await asUser(t, host).mutation(api.rooms.leave, { roomId });
+
+  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+  expect(room?.hostUserId).toBe(other);
+  expect(
+    await asUser(t, other).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
+  await expect(
+    asUser(t, other).action(api.requests.approve, { requestId }),
+  ).rejects.toThrow("Request not found or already handled");
+});
+
+test("the legacy request migration expires overdue rows and gives the rest a deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { other, roomId, gameId } = await startedGame(t);
+    const now = Date.now();
+    // Made before requests expired: no expiresAt and no scheduled expiry.
+    const legacy = (type: "hint" | "giveup", createdAt: number) =>
+      t.run(async (ctx) =>
+        ctx.db.insert("pendingRequests", {
+          roomId,
+          gameId,
+          requesterUserId: other,
+          type,
+          status: "pending",
+          createdAt,
+        }),
+      );
+    const overdueId = await legacy("hint", now - 2 * 60_000);
+    const freshId = await legacy("giveup", now - 10_000);
+
+    await t.mutation(internal.requests._migrateLegacyRequests, {
+      cursor: null,
+    });
+
+    const read = (id: Id<"pendingRequests">) =>
+      t.run(async (ctx) => ctx.db.get("pendingRequests", id));
+    expect(await read(overdueId)).toMatchObject({ status: "expired" });
+    expect(await read(freshId)).toMatchObject({
+      status: "pending",
+      expiresAt: now + 50_000,
+    });
+
+    vi.advanceTimersByTime(50_000);
+    await t.finishInProgressScheduledFunctions();
+    expect(await read(freshId)).toMatchObject({ status: "expired" });
+  } finally {
+    vi.useRealTimers();
+  }
+});
