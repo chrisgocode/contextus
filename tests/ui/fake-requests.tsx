@@ -16,8 +16,8 @@ type Others = {
 
 // The one fake for Pending requests: what the requests queries return, and
 // the mutations and actions behind each request. A query skipped for the
-// viewer's role returns undefined, like Convex. Change a field, then
-// rerender, to model a query update.
+// viewer's role returns undefined, like Convex, and stays out of
+// `subscribed`. Change a field, then rerender, to model a query update.
 export function fakeRequests(
   convex: ConvexHooks,
   initial: {
@@ -39,6 +39,7 @@ export function fakeRequests(
     create: vi.fn().mockResolvedValue(null),
     hostHint: vi.fn().mockResolvedValue(null),
     hostGiveup: vi.fn().mockResolvedValue(null),
+    subscribed: new Set<string>(),
   };
   const queries: Record<string, () => unknown> = {
     "requests:listPending": () => fake.listPending,
@@ -57,7 +58,9 @@ export function fakeRequests(
     const name = getFunctionName(reference);
     const query = queries[name];
     if (query === undefined) throw new Error(`Unexpected query: ${name}`);
-    return args === "skip" ? undefined : query();
+    if (args === "skip") return undefined;
+    fake.subscribed.add(name);
+    return query();
   });
   const route = (reference: never) => {
     const name = getFunctionName(reference);

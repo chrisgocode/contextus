@@ -69,10 +69,11 @@ describe("usePendingRequests for the Host", () => {
   const giveup = request("giveup1", "giveup", 2);
 
   it("waits on every pending request and asks nothing of a requester", () => {
-    fakeRequests(convex, { listPending: [hint, giveup] });
+    const fake = fakeRequests(convex, { listPending: [hint, giveup] });
     const { result } = renderRequests(true);
     const host = asHost(result.current);
 
+    expect([...fake.subscribed]).toEqual(["requests:listPending"]);
     expect(host.waiting.map((r) => r._id)).toEqual(["hint1", "giveup1"]);
     expect(host.canAsk).toEqual({ hint: true, giveup: true });
   });
@@ -209,7 +210,10 @@ describe("usePendingRequests for a requester", () => {
     });
     const { result } = renderRequests(false);
 
-    expect("waiting" in result.current).toBe(false);
+    expect([...fake.subscribed].sort()).toEqual([
+      "requests:latestMine",
+      "requests:pendingFromOthers",
+    ]);
     expect(await act(() => result.current.ask("giveup"))).toBe(true);
     expect(fake.create).toHaveBeenCalledWith({
       gameId: "game",
