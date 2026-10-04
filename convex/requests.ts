@@ -1,86 +1,36 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
   internalQuery,
   mutation,
-  type MutationCtx,
   query,
-  type QueryCtx,
 } from "./_generated/server";
 import {
+  isHost,
   requireHostByRoom,
   requireLiveMemberByGame,
   requireMemberByGame,
   tryMemberByGame,
 } from "./access";
 import { performTurn } from "./turns";
+import {
+  deadlineOf,
+  isLive,
+  livePendingFor,
+  livePendingOfType,
+  liveUntil,
+  markExpired,
+  pendingOfType,
+  REQUEST_TTL_MS,
+  type RequestType,
+} from "./lib/pendingRequests";
 import { loadPlayers } from "./lib/player";
 import { track } from "./analytics";
 
 const REQUEST_TYPE = v.union(v.literal("hint"), v.literal("giveup"));
-
-// A request nobody answers expires after this long.
-const REQUEST_TTL_MS = 60_000;
-// An approval started before the deadline gets this long to finish, so a
-// slow Contexto fetch isn't overtaken by the expiry. An approval that never
-// finishes still lets the request expire.
-const APPROVAL_GRACE_MS = 30_000;
-
-// Requests made before requests expired have no expiresAt and no scheduled
-// expiry, so they count as due a minute after they were made.
-function deadlineOf(req: Doc<"pendingRequests">) {
-  return req.expiresAt ?? req.createdAt + REQUEST_TTL_MS;
-}
-
-// Whether a pending request still holds its type.
-function isLive(req: Doc<"pendingRequests">, now: number) {
-  return (
-    now < deadlineOf(req) ||
-    (req.approvalStartedAt !== undefined &&
-      now < req.approvalStartedAt + APPROVAL_GRACE_MS)
-  );
-}
-
-function pendingOfType(
-  ctx: QueryCtx,
-  gameId: Id<"games">,
-  type: Doc<"pendingRequests">["type"],
-) {
-  return ctx.db
-    .query("pendingRequests")
-    .withIndex("by_game_type_status", (q) =>
-      q.eq("gameId", gameId).eq("type", type).eq("status", "pending"),
-    );
-}
-
-// The pending request holding this type. Requests made before the limit can
-// leave overdue rows ahead of it, so skip past those.
-async function livePendingOfType(
-  ctx: QueryCtx,
-  gameId: Id<"games">,
-  type: Doc<"pendingRequests">["type"],
-  now: number,
-) {
-  for await (const row of pendingOfType(ctx, gameId, type)) {
-    if (isLive(row, now)) return row;
-  }
-  return null;
-}
-
-async function markExpired(ctx: MutationCtx, req: Doc<"pendingRequests">) {
-  await ctx.db.patch("pendingRequests", req._id, { status: "expired" });
-  await track(ctx, req.requesterUserId, {
-    name: "request_expired",
-    properties: {
-      request_id: req._id,
-      game_id: req.gameId,
-      request_type: req.type,
-    },
-  });
-}
 
 export const listPending = query({
   args: { gameId: v.id("games") },
@@ -88,16 +38,12 @@ export const listPending = query({
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return [];
     const { userId, room } = access;
-    const isHost = room.hostUserId === userId;
-    const rowsRaw = await ctx.db
-      .query("pendingRequests")
-      .withIndex("by_game_status", (q) =>
-        q.eq("gameId", gameId).eq("status", "pending"),
-      )
-      .collect();
-    const rows = isHost
-      ? rowsRaw
-      : rowsRaw.filter((r) => r.requesterUserId === userId);
+    const rows = await livePendingFor(
+      ctx,
+      gameId,
+      { userId, isHost: await isHost(ctx, room, userId) },
+      Date.now(),
+    );
     const players = await loadPlayers(
       ctx,
       rows.map((r) => r.requesterUserId),
@@ -116,7 +62,7 @@ export const latestMine = query({
   handler: async (ctx, { gameId }) => {
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return { hint: null, giveup: null };
-    const latest = async (type: Doc<"pendingRequests">["type"]) => {
+    const latest = async (type: RequestType) => {
       // A pending row wins even when it isn't the newest: guest merge can
       // leave one behind a newer handled row, and create still sees it.
       const pending = await ctx.db
@@ -170,7 +116,7 @@ export const pendingFromOthers = query({
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return { hint: null, giveup: null };
     const now = Date.now();
-    const holder = async (type: Doc<"pendingRequests">["type"]) => {
+    const holder = async (type: RequestType) => {
       const row = await livePendingOfType(ctx, gameId, type, now);
       if (row === null || row.requesterUserId === access.userId) {
         return null;
@@ -293,13 +239,13 @@ export const _expire = internalMutation({
     if (req === null || req.status !== "pending") return null;
     const now = Date.now();
     if (isLive(req, now)) {
-      const until = Math.max(
-        deadlineOf(req),
-        (req.approvalStartedAt ?? 0) + APPROVAL_GRACE_MS,
+      await ctx.scheduler.runAfter(
+        liveUntil(req) - now,
+        internal.requests._expire,
+        {
+          requestId,
+        },
       );
-      await ctx.scheduler.runAfter(until - now, internal.requests._expire, {
-        requestId,
-      });
       return null;
     }
     await markExpired(ctx, req);
@@ -334,6 +280,45 @@ export const _startApproval = internalMutation({
       });
     }
     return true;
+  },
+});
+
+// One-off: requests made before requests expired have no expiresAt and
+// nothing scheduled to expire them. Expires the overdue ones and gives the
+// rest a deadline and an expiry, a page at a time. Once it has run in prod,
+// deadlineOf can drop its createdAt fallback.
+export const _migrateLegacyRequests = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db
+      .query("pendingRequests")
+      .paginate({ cursor, numItems: 100 });
+    const now = Date.now();
+    for (const req of page.page) {
+      if (req.status !== "pending" || req.expiresAt !== undefined) continue;
+      if (!isLive(req, now)) {
+        await markExpired(ctx, req);
+        continue;
+      }
+      await ctx.db.patch("pendingRequests", req._id, {
+        expiresAt: deadlineOf(req),
+      });
+      await ctx.scheduler.runAfter(
+        liveUntil(req) - now,
+        internal.requests._expire,
+        { requestId: req._id },
+      );
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.requests._migrateLegacyRequests,
+        {
+          cursor: page.continueCursor,
+        },
+      );
+    }
+    return null;
   },
 });
 

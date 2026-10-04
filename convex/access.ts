@@ -117,7 +117,7 @@ async function isMember(
 }
 
 // A Host who has left the room keeps no Host privileges.
-async function isHost(
+export async function isHost(
   ctx: DbCtx,
   room: Doc<"rooms">,
   userId: Id<"users">,
