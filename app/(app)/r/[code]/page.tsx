@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/convex/_generated/api";
-import { reportClientError } from "@/lib/report-error";
+import { reportClientError, runMutation } from "@/lib/report-error";
 import { AssistSheet } from "./_components/AssistSheet";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
@@ -103,25 +103,20 @@ export default function RoomPage({
       if (data == null || leavingView !== null) return;
       setLeavingView({ data, activeGame, lastFinished });
       router.push("/");
-      leave().catch((err) => {
-        setLeavingView(null);
-        reportClientError(err, {
-          userMessage: "Could not leave room.",
-          context: "room.leave",
-        });
+      void runMutation(leave, {
+        context: "room.leave",
+        fallback: "Could not leave room.",
+      }).then((result) => {
+        if (!result.ok) setLeavingView(null);
       });
     },
     onEnd: async () => {
       if (data == null) return;
-      try {
-        await endRoom({ roomId: data.room._id });
-        router.push("/");
-      } catch (err) {
-        reportClientError(err, {
-          userMessage: "Could not end room.",
-          context: "room.end",
-        });
-      }
+      const result = await runMutation(
+        () => endRoom({ roomId: data.room._id }),
+        { context: "room.end", fallback: "Could not end room." },
+      );
+      if (result.ok) router.push("/");
     },
     copied,
     onCopy: () => {

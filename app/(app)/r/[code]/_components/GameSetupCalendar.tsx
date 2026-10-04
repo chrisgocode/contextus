@@ -12,8 +12,7 @@ import {
   launchDate,
   todayLocalMidnight,
 } from "@/lib/contexto";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 
 // Loaded on demand; see calendar-loader.ts for who preloads it. The import
 // is written out here rather than reusing loadCalendar so Next can attach its
@@ -84,21 +83,16 @@ export function GameSetupCalendar({
           if (gameId === null) return;
           setError(null);
           setBusy(true);
-          try {
-            await start({ roomId, contextoGameId: gameId });
-          } catch (e) {
-            const message =
-              expectedClientErrorMessage(e, "game.start") ??
-              "Could not start the game. Try again.";
-            setError(message);
-            reportClientError(e, {
-              userMessage: message,
+          const result = await runMutation(
+            () => start({ roomId, contextoGameId: gameId }),
+            {
               context: "game.start",
+              fallback: "Could not start the game. Try again.",
               showToast: false,
-            });
-          } finally {
-            setBusy(false);
-          }
+            },
+          );
+          if (!result.ok) setError(result.message);
+          setBusy(false);
         }}
       >
         {busy ? "Starting…" : "Start game"}

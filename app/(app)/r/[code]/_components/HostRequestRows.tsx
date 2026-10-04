@@ -6,8 +6,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { expectedClientErrorMessage } from "@/lib/client-errors";
-import { reportClientError } from "@/lib/report-error";
+import { runMutation } from "@/lib/report-error";
 import {
   HintTag,
   PlayerAvatar,
@@ -79,47 +78,40 @@ export function useHostRequests(
   );
 
   async function onApprove(request: PendingRequest) {
-    const context = `request.approve.${request.type}`;
     if (request.type === "hint") updateGiving(request._id, { request });
     setBusyFor(request._id, true);
-    try {
-      const { lemma, distance } = await approve({ requestId: request._id });
-      if (request.type === "hint") {
-        // Hint turns always score a distance; without one, skip the reveal.
-        updateGiving(
-          request._id,
-          distance === undefined
-            ? null
-            : { request, hint: { lemma, distance } },
-        );
-      }
-    } catch (err) {
-      if (request.type === "hint") updateGiving(request._id, null);
-      reportClientError(err, {
-        userMessage:
-          expectedClientErrorMessage(err, context) ??
-          "Could not approve request.",
-        context,
-      });
-    } finally {
-      setBusyFor(request._id, false);
+    const result = await runMutation(
+      () => approve({ requestId: request._id }),
+      {
+        context: `request.approve.${request.type}`,
+        fallback: "Could not approve request.",
+      },
+    );
+    if (request.type === "hint") {
+      // Hint turns always score a distance; without one, skip the reveal.
+      updateGiving(
+        request._id,
+        !result.ok || result.value.distance === undefined
+          ? null
+          : {
+              request,
+              hint: {
+                lemma: result.value.lemma,
+                distance: result.value.distance,
+              },
+            },
+      );
     }
+    setBusyFor(request._id, false);
   }
 
   async function onDeny(request: PendingRequest) {
-    const context = `request.deny.${request.type}`;
     setBusyFor(request._id, true);
-    try {
-      await deny({ requestId: request._id });
-    } catch (err) {
-      reportClientError(err, {
-        userMessage:
-          expectedClientErrorMessage(err, context) ?? "Could not deny request.",
-        context,
-      });
-    } finally {
-      setBusyFor(request._id, false);
-    }
+    await runMutation(() => deny({ requestId: request._id }), {
+      context: `request.deny.${request.type}`,
+      fallback: "Could not deny request.",
+    });
+    setBusyFor(request._id, false);
   }
 
   const waiting = (pending ?? []).filter((p) => !giving.has(p._id));

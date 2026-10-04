@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import { renderToString } from "react-dom/server";
 import Home from "@/app/(app)/(home)/page";
-import { reportClientError } from "@/lib/report-error";
+import { captureException } from "@/lib/sentry-client";
 import { render, screen, userEvent, waitFor } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock("@convex-dev/auth/react", () => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
 }));
-vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
+vi.mock("@/lib/sentry-client", () => ({ captureException: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -153,7 +153,7 @@ describe("Home", () => {
         "Create an account to host or join more active rooms.",
       ),
     ).toBeVisible();
-    expect(reportClientError).not.toHaveBeenCalled();
+    expect(captureException).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Create account" }));
     expect(mocks.push).toHaveBeenCalledWith("/signin");
