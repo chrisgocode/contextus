@@ -32,10 +32,8 @@ import { clearCreatedRoom, isCreatedRoom } from "./_components/created-room";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
-import {
-  HostRequestRows,
-  useHostRequests,
-} from "./_components/HostRequestRows";
+import { HostRequestRows } from "./_components/HostRequestRows";
+import { PendingRequestsProvider } from "./_components/PendingRequests";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { usePresenceSet } from "./_components/usePresenceSet";
@@ -274,14 +272,6 @@ function RoomLoaded({
   const onlineSet = usePresenceSet(room._id, viewerUserId ?? "anon");
   const hostMember = members.find((m) => m.isHost);
   const viewerMember = members.find((m) => m.userId === viewerUserId);
-  const pendingRequests = useQuery(
-    api.requests.listPending,
-    activeGame && isViewerHost ? { gameId: activeGame._id } : "skip",
-  );
-  const hostRequests = useHostRequests(
-    pendingRequests,
-    activeGame?._id ?? null,
-  );
   const [achievementUnlocks, setAchievementUnlocks] = useState<
     AchievementUnlockQueueItem[]
   >([]);
@@ -380,7 +370,10 @@ function RoomLoaded({
               <GameSetupCalendar roomId={room._id} isHost={isViewerHost} />
             </>
           ) : (
-            <>
+            <PendingRequestsProvider
+              gameId={activeGame._id}
+              isHost={isViewerHost}
+            >
               <GuessInput
                 gameId={activeGame._id}
                 onAchievementsUnlocked={onAchievementsUnlocked}
@@ -390,19 +383,14 @@ function RoomLoaded({
                   )
                 }
               >
-                <AssistSheet
-                  gameId={activeGame._id}
-                  isHost={isViewerHost}
-                  requests={isViewerHost ? hostRequests : null}
-                />
+                <AssistSheet />
               </GuessInput>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
                 Game #{activeGame.contextoGameId}
               </p>
-              {isViewerHost && <HostRequestRows requests={hostRequests} />}
-              {!isViewerHost && hostMember && viewerMember && (
+              <HostRequestRows />
+              {hostMember && viewerMember && (
                 <RequestRows
-                  gameId={activeGame._id}
                   host={hostMember.player}
                   viewer={viewerMember.player}
                 />
@@ -415,7 +403,7 @@ function RoomLoaded({
                     : null
                 }
               />
-            </>
+            </PendingRequestsProvider>
           )}
         </div>
 

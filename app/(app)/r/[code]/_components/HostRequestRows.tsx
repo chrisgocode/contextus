@@ -1,12 +1,7 @@
 "use client";
 
-import { useAction, useMutation } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { runMutation } from "@/lib/report-error";
+import { type PendingRequest, usePendingRequests } from "./PendingRequests";
 import {
   HintTag,
   PlayerAvatar,
@@ -16,125 +11,13 @@ import {
   useNow,
 } from "./RequestReveal";
 
-type PendingRequest = FunctionReturnType<
-  typeof api.requests.listPending
->[number];
-type Giving = {
-  request: PendingRequest;
-  hint?: { lemma: string; distance: number };
-};
-
-// How long an approved hint stays after it settles; the guess list has it.
-const GIVEN_HINT_MS = 4000;
-
-// The Host's Pending requests. The page owns this state so the requests can
-// be answered in the Assist sheet while the hint they produce is revealed
-// above the guess list, where the requester sees theirs.
-export function useHostRequests(
-  pending: PendingRequest[] | undefined,
-  gameId: Id<"games"> | null,
-) {
-  const approve = useAction(api.requests.approve);
-  const deny = useMutation(api.requests.deny);
-  const [busy, setBusy] = useState<ReadonlySet<Id<"pendingRequests">>>(
-    new Set(),
-  );
-  // The hint request leaves `pending` as soon as it's approved, so the row
-  // that reveals it lives here until it's done.
-  const [giving, setGiving] = useState<
-    ReadonlyMap<Id<"pendingRequests">, Giving>
-  >(new Map());
-  // The page outlives each Game, so a hint still being revealed when one
-  // ends mustn't carry over into the next.
-  const [forGame, setForGame] = useState(gameId);
-  if (forGame !== gameId) {
-    setForGame(gameId);
-    setGiving(new Map());
-    setBusy(new Set());
-  }
-
-  const setBusyFor = (id: Id<"pendingRequests">, on: boolean) =>
-    setBusy((current) => {
-      const next = new Set(current);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  const updateGiving = (id: Id<"pendingRequests">, entry: Giving | null) =>
-    setGiving((current) => {
-      const next = new Map(current);
-      if (entry === null) next.delete(id);
-      else next.set(id, entry);
-      return next;
-    });
-  const forget = useCallback(
-    (id: Id<"pendingRequests">) =>
-      setGiving((current) => {
-        const next = new Map(current);
-        next.delete(id);
-        return next;
-      }),
-    [],
-  );
-
-  async function onApprove(request: PendingRequest) {
-    if (request.type === "hint") updateGiving(request._id, { request });
-    setBusyFor(request._id, true);
-    const result = await runMutation(
-      () => approve({ requestId: request._id }),
-      {
-        context: `request.approve.${request.type}`,
-        fallback: "Could not approve request.",
-      },
-    );
-    if (request.type === "hint") {
-      // Hint turns always score a distance; without one, skip the reveal.
-      updateGiving(
-        request._id,
-        !result.ok || result.value.distance === undefined
-          ? null
-          : {
-              request,
-              hint: {
-                lemma: result.value.lemma,
-                distance: result.value.distance,
-              },
-            },
-      );
-    }
-    setBusyFor(request._id, false);
-  }
-
-  async function onDeny(request: PendingRequest) {
-    setBusyFor(request._id, true);
-    await runMutation(() => deny({ requestId: request._id }), {
-      context: `request.deny.${request.type}`,
-      fallback: "Could not deny request.",
-    });
-    setBusyFor(request._id, false);
-  }
-
-  const waiting = (pending ?? []).filter((p) => !giving.has(p._id));
-  return {
-    waiting,
-    giving: [...giving.values()],
-    busy,
-    approve: onApprove,
-    deny: onDeny,
-    forget,
-  };
-}
-
-export type HostRequests = ReturnType<typeof useHostRequests>;
-
 // Above the guess list: the hints being given, shuffling while Contexto finds
 // them and then settling into the word in the requester's row, the same
 // reveal the requester sees.
-export function HostRequestRows({ requests }: { requests: HostRequests }) {
-  const { waiting, giving, forget } = requests;
-  const rows = giving.sort(
-    (a, b) => a.request._creationTime - b.request._creationTime,
-  );
+export function HostRequestRows() {
+  const requests = usePendingRequests();
+  if (requests.role !== "host") return null;
+  const { waiting, giving: rows, settled } = requests;
 
   // The region stays mounted and in the accessibility tree without visible
   // rows, so screen readers announce requests as they arrive. `sr-only`
@@ -159,9 +42,7 @@ export function HostRequestRows({ requests }: { requests: HostRequests }) {
             lemma={hint.lemma}
             distance={hint.distance}
             player={request.requester}
-            onSettled={() => {
-              setTimeout(() => forget(request._id), GIVEN_HINT_MS);
-            }}
+            onSettled={() => settled(request._id)}
           />
         ),
       )}
@@ -171,16 +52,12 @@ export function HostRequestRows({ requests }: { requests: HostRequests }) {
 
 // In the Assist sheet: each waiting request with Deny and Give hint / Give
 // up. `onApproved` lets the sheet close so the Host sees the reveal.
-export function HostRequestList({
-  requests,
-  onApproved,
-}: {
-  requests: HostRequests;
-  onApproved: () => void;
-}) {
-  const { waiting, busy, approve, deny } = requests;
+export function HostRequestList({ onApproved }: { onApproved: () => void }) {
+  const requests = usePendingRequests();
+  const waiting = requests.role === "host" ? requests.waiting : [];
   const now = useNow(waiting.length > 0);
-  if (waiting.length === 0) return null;
+  if (requests.role !== "host" || waiting.length === 0) return null;
+  const { busy, approve, deny } = requests;
   return (
     <section aria-label="Waiting requests" className="flex flex-col gap-2">
       <h2 className="text-xs font-normal uppercase tracking-wide text-muted-foreground">

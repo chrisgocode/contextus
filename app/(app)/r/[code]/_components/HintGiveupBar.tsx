@@ -1,89 +1,40 @@
 "use client";
 
-import { useAction, useMutation, useQuery } from "convex/react";
 import { BulbIcon, Flag01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useId, useState } from "react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { runMutation } from "@/lib/report-error";
+import { useId } from "react";
+import { type RequestKind, usePendingRequests } from "./PendingRequests";
 
 // The viewer's own hint and give-up, in the Assist sheet. A Host acts
 // directly; anyone else asks the Host. `onDone` closes the sheet once the
 // action lands, so the result shows above the guess list.
-export function HintGiveupBar({
-  gameId,
-  isHost,
-  onDone,
-}: {
-  gameId: Id<"games">;
-  isHost: boolean;
-  onDone?: () => void;
-}) {
-  const createRequest = useMutation(api.requests.create);
-  const hostHint = useAction(api.hints.hostHint);
-  const hostGiveup = useAction(api.giveup.hostGiveup);
-  // RequestRows shows a pending request's status; the buttons only disable.
-  const mine = useQuery(api.requests.latestMine, isHost ? "skip" : { gameId });
-  // One request of each type at a time per Game.
-  const others = useQuery(
-    api.requests.pendingFromOthers,
-    isHost ? "skip" : { gameId },
-  );
-  const [busy, setBusy] = useState<"hint" | "giveup" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function HintGiveupBar({ onDone }: { onDone?: () => void }) {
+  const requests = usePendingRequests();
+  const { asking, askError, canAsk } = requests;
+  const isHost = requests.role === "host";
+  // RequestRows shows the viewer's pending request; the buttons only
+  // disable, and say who else got there first.
+  const othersHint = isHost ? null : requests.others.hint;
+  const othersGiveup = isHost ? null : requests.others.giveup;
 
-  const myHintPending = mine?.hint?.status === "pending";
-  const myGiveupPending = mine?.giveup?.status === "pending";
-  const othersHint = others?.hint ?? null;
-  const othersGiveup = others?.giveup ?? null;
-
-  async function run(kind: "hint" | "giveup") {
-    setError(null);
-    setBusy(kind);
-    const result = await runMutation(
-      async () => {
-        if (isHost) {
-          if (kind === "hint") await hostHint({ gameId });
-          else await hostGiveup({ gameId });
-        } else {
-          await createRequest({ gameId, type: kind });
-        }
-      },
-      {
-        context: `${isHost ? "host" : "request"}.${kind}`,
-        fallback:
-          kind === "hint"
-            ? isHost
-              ? "Could not get a hint. Try again."
-              : "Could not request a hint. Try again."
-            : isHost
-              ? "Could not give up. Try again."
-              : "Could not request to give up. Try again.",
-        showToast: false,
-      },
-    );
-    if (result.ok) onDone?.();
-    else setError(result.message);
-    setBusy(null);
+  async function run(kind: RequestKind) {
+    if (await requests.ask(kind)) onDone?.();
   }
 
   return (
     <div className="flex flex-col gap-2">
       <ActionButton
         icon={BulbIcon}
-        label={busy === "hint" ? "…" : isHost ? "Get hint" : "Request hint"}
+        label={asking === "hint" ? "…" : isHost ? "Get hint" : "Request hint"}
         description={
           isHost
             ? "Adds a closer word to everyone's guesses."
             : "The host decides whether to give one."
         }
-        disabled={
-          busy !== null || (!isHost && (myHintPending || othersHint !== null))
-        }
+        disabled={!canAsk.hint}
         onClick={() => run("hint")}
       />
-      {!isHost && othersHint !== null && (
+      {othersHint !== null && (
         <p className="text-xs text-muted-foreground">
           {othersHint.name} already asked for a hint.
         </p>
@@ -91,24 +42,23 @@ export function HintGiveupBar({
       <ActionButton
         icon={Flag01Icon}
         destructive
-        label={busy === "giveup" ? "…" : isHost ? "Give up" : "Request give up"}
+        label={
+          asking === "giveup" ? "…" : isHost ? "Give up" : "Request give up"
+        }
         description={
           isHost
             ? "Ends this game and shows the word."
             : "The host decides whether to end the game."
         }
-        disabled={
-          busy !== null ||
-          (!isHost && (myGiveupPending || othersGiveup !== null))
-        }
+        disabled={!canAsk.giveup}
         onClick={() => run("giveup")}
       />
-      {!isHost && othersGiveup !== null && (
+      {othersGiveup !== null && (
         <p className="text-xs text-muted-foreground">
           {othersGiveup.name} already asked to give up.
         </p>
       )}
-      {error && <p className="text-sm text-rose-400">{error}</p>}
+      {askError && <p className="text-sm text-rose-400">{askError}</p>}
     </div>
   );
 }

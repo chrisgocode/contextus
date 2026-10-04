@@ -55,7 +55,6 @@ vi.mock("@/app/(app)/r/[code]/_components/AssistSheet", () => ({
 }));
 vi.mock("@/app/(app)/r/[code]/_components/HostRequestRows", () => ({
   HostRequestRows: () => <div>Requests</div>,
-  useHostRequests: () => null,
 }));
 vi.mock("@/app/(app)/r/[code]/_components/GameSetupCalendar", () => ({
   GameSetupCalendar: () => <div>Game setup</div>,
@@ -106,6 +105,7 @@ beforeEach(() => {
     if (name === "rooms:leave") return mocks.leave;
     if (name === "rooms:endRoom") return vi.fn();
     if (name === "rooms:join") return mocks.join;
+    if (name.startsWith("requests:")) return vi.fn();
     throw new Error(`Unexpected mutation: ${name}`);
   });
   mocks.useQuery.mockImplementation((reference) => {
@@ -113,7 +113,7 @@ beforeEach(() => {
     if (name === "rooms:getByCode") return room;
     if (name === "games:getActive") return { _id: "game", contextoGameId: 123 };
     if (name === "games:listFinished") return [];
-    if (name === "requests:listPending") return [];
+    if (name.startsWith("requests:")) return undefined;
     throw new Error(`Unexpected query: ${name}`);
   });
 });
@@ -141,7 +141,7 @@ describe("RoomPage", () => {
       if (name === "rooms:getByCode") return room;
       if (name === "games:getActive") return activeGame;
       if (name === "games:listFinished") return [];
-      if (name === "requests:listPending") return [];
+      if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });
     const user = userEvent.setup();
@@ -182,7 +182,7 @@ describe("RoomPage", () => {
       if (name === "rooms:getByCode") return room;
       if (name === "games:getActive") return undefined;
       if (name === "games:listFinished") return [];
-      if (name === "requests:listPending") return [];
+      if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });
     markRoomCreated("ABCDEF");
@@ -213,7 +213,7 @@ describe("RoomPage", () => {
       if (name === "games:getActive")
         return { _id: "game", contextoGameId: 123 };
       if (name === "games:listFinished") return [];
-      if (name === "requests:listPending") return [];
+      if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });
     const user = userEvent.setup();
@@ -298,7 +298,7 @@ describe("RoomPage", () => {
         };
       if (name === "games:getActive" || name === "games:listFinished")
         return undefined;
-      if (name === "requests:listPending") return [];
+      if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });
     mocks.join.mockRejectedValueOnce(new Error("Session expired"));
@@ -547,7 +547,7 @@ describe("RoomPage", () => {
         return { ...room, room: { ...room.room, status: "ended" } };
       if (name === "games:getActive") return null;
       if (name === "games:listFinished") return [];
-      if (name === "requests:listPending") return [];
+      if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });
     view.rerender(
