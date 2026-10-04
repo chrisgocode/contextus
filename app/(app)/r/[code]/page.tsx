@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   Copy01Icon,
   MoreHorizontalIcon,
@@ -28,16 +28,16 @@ import { reportClientError, runMutation } from "@/lib/report-error";
 import { AssistSheet } from "./_components/AssistSheet";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
-import { clearCreatedRoom, isCreatedRoom } from "./_components/created-room";
 import { GameSetupCalendar } from "./_components/GameSetupCalendar";
 import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
+import { GuestLimitPrompt } from "./_components/GuestLimitPrompt";
 import { HostRequestRows } from "./_components/HostRequestRows";
 import { PendingRequestsProvider } from "./_components/PendingRequests";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
 import { usePresenceSet } from "./_components/usePresenceSet";
-import { useRoomEntry } from "./_components/room-entry";
+import { type RoomView, useRoomEntry } from "./_components/room-entry";
 
 export default function RoomPage({
   params,
@@ -47,80 +47,37 @@ export default function RoomPage({
   const { code } = use(params);
   const upper = code.toUpperCase();
   const router = useRouter();
-  const { isLoading, isAuthenticated } = useConvexAuth();
-  const { data, isMember, joinError, joinAsGuest, leave } = useRoomEntry(upper);
+  const entry = useRoomEntry(upper);
   const endRoom = useMutation(api.rooms.endRoom);
   const [copied, setCopied] = useState(false);
-  // The room as it looked when the viewer clicked Leave. Once the leave
-  // mutation lands, the queries describe a non-member, so the page keeps
-  // showing this until the home route replaces it.
-  const [leavingView, setLeavingView] = useState<Omit<
-    RoomLoadedProps,
-    "onLeave" | "onEnd" | "copied" | "onCopy"
-  > | null>(null);
 
   // Start fetching the calendar chunk now rather than once the room and game
   // queries say it's needed, so it isn't a second round trip for hosts.
   // (Creating a room from home starts it even earlier.)
   useEffect(() => preloadCalendar(), []);
 
-  // Consumed on mount, so a visit abandoned before the game query resolves
-  // can't leave the marker set for a later visit to the same room.
-  const [createdCode, setCreatedCode] = useState(() =>
-    isCreatedRoom(upper) ? upper : null,
-  );
-  const created = createdCode === upper;
-  const activeGameResult = useQuery(
-    api.games.getActive,
-    data !== undefined && data !== null && isMember
-      ? { roomId: data.room._id }
-      : "skip",
-  );
-  // A room this client just created has no game yet, so skip straight to the
-  // setup calendar rather than flashing the guess list skeleton.
-  if (created && activeGameResult !== undefined) setCreatedCode(null);
-  const activeGame =
-    activeGameResult === undefined && created ? null : activeGameResult;
-  const lastFinished = useQuery(
-    api.games.listFinished,
-    data !== undefined && data !== null && isMember && activeGame === null
-      ? { roomId: data.room._id }
-      : "skip",
-  );
-
-  useEffect(() => clearCreatedRoom(upper), [upper]);
-
   useEffect(() => {
-    if (data && data.room.status === "ended") {
-      router.replace("/");
-    }
-  }, [data, router]);
+    if (entry.kind === "ended") router.replace("/");
+  }, [entry.kind, router]);
 
-  const roomLoadedHandlers = {
+  const roomPath = `/r/${upper}`;
+  const roomHandlers = (view: RoomView) => ({
     onLeave: () => {
-      if (data == null || leavingView !== null) return;
-      setLeavingView({ data, activeGame, lastFinished });
+      if (entry.kind !== "member") return;
       router.push("/");
-      void runMutation(leave, {
-        context: "room.leave",
-        fallback: "Could not leave room.",
-      }).then((result) => {
-        if (!result.ok) setLeavingView(null);
-      });
+      void entry.leave();
     },
     onEnd: async () => {
-      if (data == null) return;
       const result = await runMutation(
-        () => endRoom({ roomId: data.room._id }),
+        () => endRoom({ roomId: view.data.room._id }),
         { context: "room.end", fallback: "Could not end room." },
       );
       if (result.ok) router.push("/");
     },
     copied,
     onCopy: () => {
-      if (data == null) return;
       navigator.clipboard
-        .writeText(data.room.code)
+        .writeText(view.data.room.code)
         .then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
@@ -132,78 +89,62 @@ export default function RoomPage({
           });
         });
     },
-  };
+  });
 
-  if (leavingView !== null)
-    return <RoomLoaded {...leavingView} {...roomLoadedHandlers} />;
-  if (isLoading) return <RoomSkeleton waiting={created} />;
-  if (data === undefined) return <RoomSkeleton waiting={created} />;
-  if (data === null)
-    return (
-      <Centered>
-        <p>Room not found.</p>
-        <Button onClick={() => router.push("/")}>Home</Button>
-      </Centered>
-    );
-  if (!isAuthenticated) {
-    return (
-      <GuestJoinPrompt
-        code={data.room.code}
-        onGuest={joinAsGuest}
-        onSignIn={() =>
-          router.push(`/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`)
-        }
-      />
-    );
-  }
-  if (data.viewerUserId === null) {
-    return (
-      <Centered>
-        <p>Session expired. Signing you out…</p>
-        <Button onClick={() => window.location.reload()}>Retry</Button>
-      </Centered>
-    );
-  }
-  if (!isMember && joinError === "Guest room limit reached") {
-    return (
-      <Centered>
-        <p>Create an account to host or join more active rooms.</p>
-        <Button
-          onClick={() =>
-            router.push(
-              `/signin?redirectTo=${encodeURIComponent(`/r/${upper}`)}`,
-            )
+  switch (entry.kind) {
+    case "loading":
+    case "joining":
+      return <RoomSkeleton waiting={entry.waiting} />;
+    case "ended":
+      return <RoomSkeleton />;
+    case "notFound":
+      return (
+        <Centered>
+          <p>Room not found.</p>
+          <Button onClick={() => router.push("/")}>Home</Button>
+        </Centered>
+      );
+    case "needsAuth":
+      return (
+        <GuestJoinPrompt
+          code={entry.code}
+          onGuest={entry.joinAsGuest}
+          onSignIn={() =>
+            router.push(`/signin?redirectTo=${encodeURIComponent(roomPath)}`)
           }
-        >
-          Create account
-        </Button>
-        <Button variant="outline" onClick={() => router.push("/")}>
-          Cancel
-        </Button>
-      </Centered>
-    );
+        />
+      );
+    case "sessionExpired":
+      return (
+        <Centered>
+          <p>Session expired. Signing you out…</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </Centered>
+      );
+    case "guestLimit":
+      return (
+        <Centered>
+          <GuestLimitPrompt redirectTo={roomPath}>
+            <Button variant="outline" onClick={() => router.push("/")}>
+              Cancel
+            </Button>
+          </GuestLimitPrompt>
+        </Centered>
+      );
+    case "joinFailed":
+      return (
+        <Centered>
+          <p>{entry.message}</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+          <Button variant="outline" onClick={() => router.push("/")}>
+            Home
+          </Button>
+        </Centered>
+      );
+    case "member":
+    case "leaving":
+      return <RoomLoaded {...entry.view} {...roomHandlers(entry.view)} />;
   }
-  if (!isMember && joinError !== null) {
-    return (
-      <Centered>
-        <p>{joinError}</p>
-        <Button onClick={() => window.location.reload()}>Retry</Button>
-        <Button variant="outline" onClick={() => router.push("/")}>
-          Home
-        </Button>
-      </Centered>
-    );
-  }
-  if (!isMember) return <RoomSkeleton waiting={created} />;
-
-  return (
-    <RoomLoaded
-      data={data}
-      activeGame={activeGame}
-      lastFinished={lastFinished}
-      {...roomLoadedHandlers}
-    />
-  );
 }
 
 function GuestJoinPrompt({
@@ -247,10 +188,7 @@ function GuestJoinPrompt({
   );
 }
 
-type RoomLoadedProps = {
-  data: NonNullable<ReturnType<typeof useQuery<typeof api.rooms.getByCode>>>;
-  activeGame: ReturnType<typeof useQuery<typeof api.games.getActive>>;
-  lastFinished: ReturnType<typeof useQuery<typeof api.games.listFinished>>;
+type RoomLoadedProps = RoomView & {
   onLeave: () => void;
   onEnd: () => void;
   copied: boolean;
