@@ -1,12 +1,11 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { runMutation } from "@/lib/report-error";
+import {
+  type MyRequest,
+  type RequestKind,
+  usePendingRequests,
+} from "./PendingRequests";
 import {
   HintTag,
   type Player,
@@ -17,62 +16,35 @@ import {
   useNow,
 } from "./RequestReveal";
 
-type Latest = FunctionReturnType<typeof api.requests.latestMine>;
-type Request = NonNullable<Latest["hint"]>;
-
 // A non-Host's hint and give-up requests, shown above the guess list where
 // their result will land: a pending hint as a placeholder row of shuffling
 // letters, a pending give-up as a hidden answer row. When the Host approves a
-// hint the letters settle into the word. An outcome shows only for the last
-// request of its type this page watched while pending, so a reload doesn't
-// replay old decisions and a newer request retires the one before it.
+// hint the letters settle into the word. Which requests and outcomes show is
+// up to usePendingRequests.
 export function RequestRows({
-  gameId,
   host,
   viewer,
 }: {
-  gameId: Id<"games">;
   host: Player;
   viewer: Player;
 }) {
-  const latest = useQuery(api.requests.latestMine, { gameId });
-  const [watching, setWatching] = useState<{ hint?: string; giveup?: string }>(
-    {},
+  const requests = usePendingRequests();
+  const mine = requests.role === "requester" ? requests.mine : null;
+  const now = useNow(
+    mine?.hint?.status === "pending" || mine?.giveup?.status === "pending",
   );
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
-  const pendingHint =
-    latest?.hint?.status === "pending" ? latest.hint._id : null;
-  const pendingGiveup =
-    latest?.giveup?.status === "pending" ? latest.giveup._id : null;
-  if (
-    (pendingHint !== null && pendingHint !== watching.hint) ||
-    (pendingGiveup !== null && pendingGiveup !== watching.giveup)
-  ) {
-    setWatching({
-      hint: pendingHint ?? watching.hint,
-      giveup: pendingGiveup ?? watching.giveup,
-    });
-  }
-  const now = useNow(pendingHint !== null || pendingGiveup !== null);
-
-  const shown = (r: Request | null | undefined, type: "hint" | "giveup") =>
-    r != null &&
-    (r.status === "pending" ||
-      (r._id === watching[type] && !dismissed.has(r._id)));
-  const dismiss = (id: string) => setDismissed(new Set([...dismissed, id]));
-  const hint = latest?.hint;
-  const giveup = latest?.giveup;
-  // An approved give-up ends the Game, and the end screen takes over.
-  const showGiveup = shown(giveup, "giveup") && giveup?.status !== "approved";
-  const showHint = shown(hint, "hint");
+  if (requests.role !== "requester") return null;
+  const {
+    mine: { hint, giveup },
+    dismiss,
+  } = requests;
 
   // The live region stays mounted and in the accessibility tree while empty,
   // so screen readers announce rows as they appear. `sr-only` rather than
   // `hidden`: display:none would drop it from the tree.
   return (
     <div className="flex flex-col gap-3 empty:sr-only" role="status">
-      {showGiveup &&
-        giveup &&
+      {giveup &&
         (giveup.status === "pending" ? (
           <section>
             <RowLabel
@@ -106,8 +78,7 @@ export function RequestRows({
             onDismiss={() => dismiss(giveup._id)}
           />
         ))}
-      {showHint &&
-        hint &&
+      {hint &&
         (hint.status === "pending" ? (
           <section>
             <RowLabel
@@ -174,24 +145,17 @@ function TakeBack({
   request,
   type,
 }: {
-  request: Request;
-  type: "hint" | "giveup";
+  request: MyRequest;
+  type: RequestKind;
 }) {
-  const cancel = useMutation(api.requests.cancel);
-  const [busy, setBusy] = useState(false);
+  const requests = usePendingRequests();
+  if (requests.role !== "requester") return null;
   return (
     <Button
       variant="ghost"
       size="xs"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        await runMutation(() => cancel({ requestId: request._id }), {
-          context: `request.cancel.${type}`,
-          fallback: "Could not take back the request.",
-        });
-        setBusy(false);
-      }}
+      disabled={requests.busy.has(request._id)}
+      onClick={() => void requests.takeBack(type, request)}
     >
       Take back
     </Button>
@@ -212,7 +176,7 @@ function Outcome({
   what,
   onDismiss,
 }: {
-  status: Request["status"];
+  status: MyRequest["status"];
   what: "Hint" | "Give-up";
   onDismiss: () => void;
 }) {

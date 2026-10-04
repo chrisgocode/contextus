@@ -12,29 +12,23 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import type { Id } from "@/convex/_generated/dataModel";
 import { HintGiveupBar } from "./HintGiveupBar";
-import { HostRequestList, type HostRequests } from "./HostRequestRows";
+import { HostRequestList } from "./HostRequestRows";
+import { usePendingRequests } from "./PendingRequests";
 import { useElementInViewport } from "./useElementInViewport";
 import { useKeyboardInset } from "./useKeyboardInset";
 
 // One button beside the guess input for everything that isn't guessing:
 // getting or asking for a hint, giving up, and, for the Host, answering
 // requests. Its badge counts the requests waiting on the Host.
-export function AssistSheet({
-  gameId,
-  isHost,
-  requests,
-}: {
-  gameId: Id<"games">;
-  isHost: boolean;
-  requests: HostRequests | null;
-}) {
+export function AssistSheet() {
+  const requests = usePendingRequests();
+  const isHost = requests.role === "host";
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<HTMLElement | null>(null);
   const triggerVisible = useElementInViewport(trigger, 0.1);
   const keyboardInset = useKeyboardInset();
-  const waiting = requests?.waiting.length ?? 0;
+  const waiting = isHost ? requests.waiting.length : 0;
   const waitingLabel = `${waiting} request${waiting === 1 ? "" : "s"}`;
   const close = () => setOpen(false);
 
@@ -96,12 +90,12 @@ export function AssistSheet({
               : "The host decides for the room."}
           </SheetDescription>
         </SheetHeader>
-        {requests && <HostRequestList requests={requests} onApproved={close} />}
+        <HostRequestList onApproved={close} />
         <section aria-label="Your actions" className="flex flex-col gap-2">
           <h2 className="text-xs font-normal tracking-wide text-muted-foreground uppercase">
             You
           </h2>
-          <HintGiveupBar gameId={gameId} isHost={isHost} onDone={close} />
+          <HintGiveupBar onDone={close} />
         </section>
       </SheetContent>
     </Sheet>
