@@ -9,6 +9,8 @@ import { track } from "../analytics";
 
 export type RequestType = Doc<"pendingRequests">["type"];
 
+const REQUEST_TYPES: RequestType[] = ["hint", "giveup"];
+
 // A request nobody answers expires after this long.
 export const REQUEST_TTL_MS = 60_000;
 // An approval started before the deadline gets this long to finish, so a
@@ -68,22 +70,20 @@ export async function livePendingOfType(
 }
 
 // Every live request in this Game. The Host sees all of them; anyone else
-// sees only their own.
+// sees only their own. At most one per type is live, so this reads one row
+// per type plus any overdue rows ahead of it.
 export async function livePendingFor(
   ctx: QueryCtx,
   gameId: Id<"games">,
   viewer: { userId: Id<"users">; isHost: boolean },
   now: number,
 ) {
-  const rows = await ctx.db
-    .query("pendingRequests")
-    .withIndex("by_game_status", (q) =>
-      q.eq("gameId", gameId).eq("status", "pending"),
-    )
-    .collect();
-  return rows.filter(
-    (r) =>
-      isLive(r, now) && (viewer.isHost || r.requesterUserId === viewer.userId),
+  const holders = await Promise.all(
+    REQUEST_TYPES.map((type) => livePendingOfType(ctx, gameId, type, now)),
+  );
+  return holders.filter(
+    (r): r is Doc<"pendingRequests"> =>
+      r !== null && (viewer.isHost || r.requesterUserId === viewer.userId),
   );
 }
 
