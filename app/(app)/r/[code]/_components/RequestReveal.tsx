@@ -3,7 +3,6 @@
 import {
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -131,14 +130,14 @@ export function PlayerAvatar({
 }
 
 // Time until the request expires; requests made before they expired show
-// time waited instead.
+// time waited instead. Its clock starts when it mounts, which is when the
+// request appears, so it never counts from a stale time.
 export function TimeLeft({
   request,
-  now,
 }: {
   request: { createdAt: number; expiresAt?: number };
-  now: number;
 }) {
+  const now = useNow();
   const ms =
     request.expiresAt === undefined
       ? now - request.createdAt
@@ -151,16 +150,12 @@ export function TimeLeft({
   );
 }
 
-export function useNow(active: boolean) {
+function useNow() {
   const [now, setNow] = useState(() => Date.now());
-  // The clock only ticks while active, so catch up before paint when it
-  // turns on rather than showing a stale reading until the first tick.
-  useLayoutEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
+  useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [active]);
+  }, []);
   return now;
 }
 

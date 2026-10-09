@@ -13,7 +13,6 @@ import {
   RevealRow,
   Scramble,
   TimeLeft,
-  useNow,
 } from "./RequestReveal";
 
 // A non-Host's hint and give-up requests, shown above the guess list where
@@ -29,10 +28,6 @@ export function RequestRows({
   viewer: Player;
 }) {
   const requests = usePendingRequests();
-  const mine = requests.role === "requester" ? requests.mine : null;
-  const now = useNow(
-    mine?.hint?.status === "pending" || mine?.giveup?.status === "pending",
-  );
   if (requests.role !== "requester") return null;
   const {
     mine: { hint, giveup },
@@ -63,7 +58,7 @@ export function RequestRows({
                     />
                   ))}
                 </span>
-                <TimeLeft request={giveup} now={now} />
+                <TimeLeft request={giveup} />
                 <PlayerAvatar player={host} />
                 <span className="min-w-[3ch] text-right font-mono text-sm">
                   1
@@ -92,7 +87,7 @@ export function RequestRows({
                   <span className="sr-only">Hint requested</span>
                   <Scramble />
                 </span>
-                <TimeLeft request={hint} now={now} />
+                <TimeLeft request={hint} />
                 <HintTag />
                 <PlayerAvatar player={viewer} />
                 <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
