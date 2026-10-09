@@ -325,6 +325,28 @@ describe("RequestRows", () => {
     }
   });
 
+  it("starts the countdown from now, not from when the page loaded", () => {
+    vi.useFakeTimers({ now: 0, toFake: ["Date"] });
+    try {
+      const { fake, view, rows } = renderRows({ hint: null, giveup: null });
+      vi.setSystemTime(240_000);
+      fake.latestMine = {
+        hint: { ...pendingHint, createdAt: 240_000, expiresAt: 300_000 },
+        giveup: null,
+      };
+      view.rerender(rows());
+      expect(screen.getByText("1:00")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("credits a pending hint to the requester, not the Host", () => {
+    renderRows({ hint: pendingHint, giveup: null });
+    expect(screen.getByText("V")).toBeVisible();
+    expect(screen.queryByText("H")).not.toBeInTheDocument();
+  });
+
   it("tells the requester when nobody answered in time", () => {
     renderRows(
       { hint: pendingHint, giveup: null },

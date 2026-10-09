@@ -8,7 +8,6 @@ import {
   RevealRow,
   Scramble,
   TimeLeft,
-  useNow,
 } from "./RequestReveal";
 
 // Above the guess list: the hints being given, shuffling while Contexto finds
@@ -55,7 +54,6 @@ export function HostRequestRows() {
 export function HostRequestList({ onApproved }: { onApproved: () => void }) {
   const requests = usePendingRequests();
   const waiting = requests.role === "host" ? requests.waiting : [];
-  const now = useNow(waiting.length > 0);
   if (requests.role !== "host" || waiting.length === 0) return null;
   const { busy, approve, deny } = requests;
   return (
@@ -68,7 +66,6 @@ export function HostRequestList({ onApproved }: { onApproved: () => void }) {
           <li key={request._id}>
             <RequestRow
               request={request}
-              now={now}
               busy={busy.has(request._id)}
               onApprove={() => {
                 onApproved();
@@ -85,13 +82,11 @@ export function HostRequestList({ onApproved }: { onApproved: () => void }) {
 
 function RequestRow({
   request,
-  now,
   busy,
   onApprove,
   onDeny,
 }: {
   request: PendingRequest;
-  now: number;
   busy: boolean;
   onApprove: () => void;
   onDeny: () => void;
@@ -107,7 +102,7 @@ function RequestRow({
           </span>
           <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
             {giveup ? "wants to give up" : "wants a hint"}
-            <TimeLeft request={request} now={now} />
+            <TimeLeft request={request} />
           </span>
         </div>
       </div>
