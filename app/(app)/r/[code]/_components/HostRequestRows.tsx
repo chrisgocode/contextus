@@ -1,50 +1,123 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { type PendingRequest, usePendingRequests } from "./PendingRequests";
+import {
+  type Giving,
+  type PendingRequest,
+  usePendingRequests,
+} from "./PendingRequests";
 import {
   HintTag,
   PlayerAvatar,
   RevealRow,
+  RowLabel,
   Scramble,
   TimeLeft,
+  WaitingRow,
 } from "./RequestReveal";
 
-// Above the guess list: the hints being given, shuffling while Contexto finds
-// them and then settling into the word in the requester's row, the same
-// reveal the requester sees.
+// Above the guess list, oldest first: each request waiting on the Host as
+// the row its result will fill, with Deny and Give beside it, the same row the
+// requester sees. A hint given stays in place, shuffling while Contexto finds
+// it and then settling into the word.
 export function HostRequestRows() {
   const requests = usePendingRequests();
+  const waiting = requests.role === "host" ? requests.waiting : [];
   if (requests.role !== "host") return null;
-  const { waiting, giving: rows, settled } = requests;
+  const { giving, busy, approve, deny, settled } = requests;
+  const rows: Giving[] = [
+    ...waiting.map((request) => ({ request })),
+    ...giving,
+  ].sort((a, b) => a.request._creationTime - b.request._creationTime);
+  const isGiving = new Set(giving.map(({ request }) => request._id));
 
-  // The region stays mounted and in the accessibility tree without visible
-  // rows, so screen readers announce requests as they arrive. `sr-only`
-  // rather than `hidden`: display:none would drop it from the tree.
+  // The live region stays mounted and in the accessibility tree while empty,
+  // so screen readers announce requests as they arrive. `sr-only` rather than
+  // `hidden`: display:none would drop it from the tree.
   return (
     <section
       role="status"
       aria-label="Requests"
-      className={rows.length === 0 ? "sr-only" : "flex flex-col gap-2"}
+      className="flex flex-col gap-3 empty:sr-only"
     >
-      {waiting.length > 0 && (
-        <p className="sr-only">
-          {waiting.length} request{waiting.length === 1 ? "" : "s"} waiting
-        </p>
-      )}
       {rows.map(({ request, hint }) =>
-        hint === undefined ? (
-          <FindingHintRow key={request._id} request={request} />
-        ) : (
-          <RevealRow
+        !isGiving.has(request._id) ? (
+          <WaitingRequest
             key={request._id}
-            lemma={hint.lemma}
-            distance={hint.distance}
-            player={request.requester}
-            onSettled={() => settled(request._id)}
+            request={request}
+            busy={busy.has(request._id)}
+            onApprove={() => void approve(request)}
+            onDeny={() => void deny(request)}
           />
+        ) : (
+          <section key={request._id}>
+            <RowLabel
+              label={`Hint for ${request.requester.name}`}
+              action={null}
+            />
+            {hint === undefined ? (
+              <FindingHintRow request={request} />
+            ) : (
+              <RevealRow
+                lemma={hint.lemma}
+                distance={hint.distance}
+                player={request.requester}
+                onSettled={() => settled(request._id)}
+              />
+            )}
+          </section>
         ),
       )}
+    </section>
+  );
+}
+
+function WaitingRequest({
+  request,
+  busy,
+  onApprove,
+  onDeny,
+}: {
+  request: PendingRequest;
+  busy: boolean;
+  onApprove: () => void;
+  onDeny: () => void;
+}) {
+  const giveup = request.type === "giveup";
+  const name = request.requester.name;
+  return (
+    <section>
+      <RowLabel
+        label={`${name} ${giveup ? "wants to give up" : "wants a hint"}`}
+        action={
+          <span className="flex shrink-0 gap-1">
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              onClick={onDeny}
+              aria-label={`Deny ${name}'s request`}
+            >
+              Deny
+            </Button>
+            <Button
+              variant={giveup ? "destructive" : "default"}
+              size="xs"
+              disabled={busy}
+              onClick={onApprove}
+              aria-label={`${giveup ? "Give up" : "Give hint"} for ${name}`}
+            >
+              {giveup ? "Give up" : "Give hint"}
+            </Button>
+          </span>
+        }
+      />
+      <WaitingRow
+        type={request.type}
+        request={request}
+        player={request.requester}
+        label={giveup ? "Answer, if you give up" : `Hint for ${name}`}
+      />
     </section>
   );
 }

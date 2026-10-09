@@ -482,7 +482,11 @@ describe("HostRequestRows", () => {
       fakeRequests(convex, {
         listPending: [{ ...hint, createdAt: 0, expiresAt: 60_000 }],
       });
-      render(list());
+      render(
+        <RequestsProvider isHost>
+          <HostRequestList onApproved={() => {}} />
+        </RequestsProvider>,
+      );
       expect(screen.getByText("0:15")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -545,7 +549,96 @@ describe("HostRequestRows", () => {
     fake.listPending = [hint];
     rerender(list());
     expect(screen.getByRole("status", { name: "Requests" })).toBe(region);
-    expect(region).toHaveTextContent("1 request waiting");
+    expect(region).toHaveTextContent("Vic wants a hint");
+  });
+
+  const rows = () => (
+    <RequestsProvider isHost>
+      <HostRequestRows />
+    </RequestsProvider>
+  );
+
+  it("shows each waiting request above the guess list, oldest first", () => {
+    vi.useFakeTimers({ now: 45_000, toFake: ["Date"] });
+    try {
+      fakeRequests(convex, {
+        listPending: [
+          { ...hint, createdAt: 0, expiresAt: 60_000 },
+          { ...giveup, createdAt: 0, expiresAt: 50_000 },
+        ],
+      });
+      render(rows());
+
+      const labels = screen
+        .getAllByText(/wants/)
+        .map((label) => label.textContent);
+      expect(labels).toEqual(["Vic wants a hint", "Noor wants to give up"]);
+      expect(screen.getByText("Hint for Vic")).toBeInTheDocument();
+      expect(screen.getByText("0:15")).toBeInTheDocument();
+      expect(screen.getByText("0:05")).toBeInTheDocument();
+      expect(screen.getByText("V")).toBeVisible();
+      expect(screen.getByText("N")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("denies a request from its row", async () => {
+    const fake = fakeRequests(convex, { listPending: [hint] });
+    const user = userEvent.setup();
+    render(rows());
+
+    await user.click(
+      screen.getByRole("button", { name: "Deny Vic's request" }),
+    );
+    expect(fake.deny).toHaveBeenCalledWith({ requestId: "hint1" });
+  });
+
+  it("gives up from a request's row", async () => {
+    const fake = fakeRequests(convex, { listPending: [giveup] });
+    const user = userEvent.setup();
+    render(rows());
+
+    await user.click(screen.getByRole("button", { name: "Give up for Noor" }));
+    expect(fake.approve).toHaveBeenCalledWith({ requestId: "giveup1" });
+  });
+
+  it("reveals a hint given from its row in the row's place", async () => {
+    reduceMotion();
+    const fake = fakeRequests(convex, { listPending: [hint, giveup] });
+    let resolve: (value: unknown) => void = () => {};
+    fake.approve.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const user = userEvent.setup();
+    const { rerender } = render(rows());
+
+    await user.click(screen.getByRole("button", { name: "Give hint for Vic" }));
+    expect(fake.approve).toHaveBeenCalledWith({ requestId: "hint1" });
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Give hint for Vic" }),
+    ).not.toBeInTheDocument();
+
+    fake.listPending = [giveup];
+    rerender(rows());
+    await act(async () => resolve({ lemma: "pomelo", distance: 299 }));
+    const region = screen.getByRole("status", { name: "Requests" });
+    expect(region.textContent?.indexOf("pomelo")).toBeLessThan(
+      region.textContent?.indexOf("Noor wants to give up") ?? 0,
+    );
+  });
+
+  it("disables a request's buttons while it's being answered", async () => {
+    const fake = fakeRequests(convex, { listPending: [giveup] });
+    fake.deny.mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    render(rows());
+
+    await user.click(
+      screen.getByRole("button", { name: "Deny Noor's request" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Give up for Noor" }),
+    ).toBeDisabled();
   });
 
   it("denies a request", async () => {
