@@ -3,6 +3,7 @@
 import {
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -152,15 +153,11 @@ export function TimeLeft({
 
 export function useNow(active: boolean) {
   const [now, setNow] = useState(() => Date.now());
-  // The clock only ticks while active, so catch up as soon as it turns on
-  // rather than showing a stale reading until the first tick.
-  const [wasActive, setWasActive] = useState(active);
-  if (active !== wasActive) {
-    setWasActive(active);
-    if (active) setNow(Date.now());
-  }
-  useEffect(() => {
+  // The clock only ticks while active, so catch up before paint when it
+  // turns on rather than showing a stale reading until the first tick.
+  useLayoutEffect(() => {
     if (!active) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [active]);
