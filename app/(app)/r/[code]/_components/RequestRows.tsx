@@ -94,7 +94,7 @@ export function RequestRows({
                 </span>
                 <TimeLeft request={hint} now={now} />
                 <HintTag />
-                <PlayerAvatar player={host} />
+                <PlayerAvatar player={viewer} />
                 <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
                   ?
                 </span>
