@@ -562,9 +562,10 @@ describe("HostRequestRows", () => {
     vi.useFakeTimers({ now: 45_000, toFake: ["Date"] });
     try {
       fakeRequests(convex, {
+        // Out of order, so the rows have to sort them.
         listPending: [
-          { ...hint, createdAt: 0, expiresAt: 60_000 },
           { ...giveup, createdAt: 0, expiresAt: 50_000 },
+          { ...hint, createdAt: 0, expiresAt: 60_000 },
         ],
       });
       render(rows());
