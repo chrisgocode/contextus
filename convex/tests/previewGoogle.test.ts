@@ -188,6 +188,30 @@ test("the E2E issuer wins over the preview variables", () => {
   });
 });
 
+test("a rejected code exchange logs Google's reason", async () => {
+  stubGoogle();
+  const signIn = await getAuthorizationUrl(await previewProvider());
+  const cookies = Object.fromEntries(
+    signIn.cookies.map(({ name, value }) => [name, value]),
+  );
+  // Built before Google starts refusing, since building it runs discovery.
+  const provider = await previewProvider();
+  const reason = { error: "invalid_client", error_description: "Unauthorized" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json(reason, { status: 401 })),
+  );
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  await expect(
+    handleOAuth({ code: "google-code", state: STATE }, cookies, provider),
+  ).rejects.toThrow();
+
+  expect(logged).toHaveBeenCalledWith(
+    expect.stringContaining('(401): {"error":"invalid_client"'),
+  );
+});
+
 test("the verifier signature is stored unchanged outside a preview", async () => {
   const t = setupTest();
   const verifier = await t.run((ctx) => ctx.db.insert("authVerifiers", {}));

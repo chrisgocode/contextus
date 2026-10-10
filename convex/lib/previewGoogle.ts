@@ -45,14 +45,21 @@ function previewGoogle(forwardUrl: string, state: string) {
     // code exchange; Google requires the one it redirected to. This must be
     // on the provider object: inside `Google({...})` it is dropped, because
     // Convex Auth merges options with `for...in`, which skips symbol keys.
-    [customFetch]: (input: RequestInfo | URL, init?: RequestInit) => {
-      if (
-        init?.body instanceof URLSearchParams &&
-        init.body.has("redirect_uri")
-      ) {
-        init.body.set("redirect_uri", forwardUrl);
+    [customFetch]: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const isCodeExchange =
+        init?.body instanceof URLSearchParams && init.body.has("redirect_uri");
+      if (isCodeExchange) {
+        (init.body as URLSearchParams).set("redirect_uri", forwardUrl);
       }
-      return fetch(input, init);
+      const response = await fetch(input, init);
+      // Convex Auth logs a failed exchange without Google's reason. The body
+      // of an error holds only an error code and description, no secrets.
+      if (isCodeExchange && !response.ok) {
+        console.error(
+          `Google rejected the preview code exchange (${response.status}): ${await response.clone().text()}`,
+        );
+      }
+      return response;
     },
   };
 }
