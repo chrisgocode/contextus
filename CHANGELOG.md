@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.1](https://github.com/chrisgocode/contextus/compare/v0.3.0...v0.3.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* judge Pending request liveness in one module ([#217](https://github.com/chrisgocode/contextus/issues/217)) ([0286a46](https://github.com/chrisgocode/contextus/commit/0286a46bab32971238feb64854edd55daea7b9c4))
+* reject turns and Pending requests after a Room ends ([#215](https://github.com/chrisgocode/contextus/issues/215)) ([2f99f70](https://github.com/chrisgocode/contextus/commit/2f99f708e37298b0ede7e1c22401e58eba4113da)), closes [#213](https://github.com/chrisgocode/contextus/issues/213)
+* show requests waiting on the Host above the guess list ([#225](https://github.com/chrisgocode/contextus/issues/225)) ([a87f479](https://github.com/chrisgocode/contextus/commit/a87f479d1c08765a997528fde7cb11c535414124))
+* start hint countdown from now and show the requester's avatar on pending hints ([#224](https://github.com/chrisgocode/contextus/issues/224)) ([2083ba9](https://github.com/chrisgocode/contextus/commit/2083ba9cbfb06e52fd481a26b1a2f111c43a685c))
+* **ui:** match page margins to the home page ([#205](https://github.com/chrisgocode/contextus/issues/205)) ([e2537b1](https://github.com/chrisgocode/contextus/commit/e2537b12fd592d8dc8a779991d6d852aff4b590f))
+
+
+### Performance Improvements
+
+* add Vercel Speed Insights ([#207](https://github.com/chrisgocode/contextus/issues/207)) ([ffb94d3](https://github.com/chrisgocode/contextus/commit/ffb94d35b99702224e0356d90946445a26821505))
+
 ## [0.3.0](https://github.com/chrisgocode/contextus/compare/v0.2.0...v0.3.0) (2026-10-03)
 
 
