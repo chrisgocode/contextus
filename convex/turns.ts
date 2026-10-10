@@ -41,7 +41,7 @@ import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
 import { isLive } from "./lib/pendingRequests";
 import { enforceRateLimit, RATE_LIMITED_MESSAGE } from "./lib/rateLimits";
-import { upsertRoomActivity } from "./lib/roomActivity";
+import { touchRoomActivity } from "./lib/roomMembership";
 import {
   type ContextoRequest,
   puzzleWordOracle,
@@ -261,7 +261,7 @@ async function applyScoredLemma(
   if (decision.gamePatch !== null) {
     await ctx.db.patch("games", game._id, decision.gamePatch);
   }
-  await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
+  await touchRoomActivity(ctx, game.roomId, decision.lastActivityAt);
   await upsertHistory(
     ctx,
     decision.upsertHistoryForUserId,
@@ -312,7 +312,7 @@ async function applyGiveup(
     throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
   }
   await ctx.db.patch("games", game._id, decision.gamePatch);
-  await upsertRoomActivity(ctx, game.roomId, decision.lastActivityAt);
+  await touchRoomActivity(ctx, game.roomId, decision.lastActivityAt);
   await recordGuestGameCompletion(ctx, game._id);
   await scheduleGameOutcome(
     ctx,

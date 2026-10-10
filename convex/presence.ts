@@ -1,8 +1,6 @@
 import { Presence } from "@convex-dev/presence";
 import { v } from "convex/values";
 import { components } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { tryMemberByRoom } from "./access";
 
@@ -46,15 +44,3 @@ export const disconnect = mutation({
     return await presence.disconnect(ctx, sessionToken);
   },
 });
-
-export async function onlineUserIdsForRoom(
-  ctx: ActionCtx | MutationCtx,
-  roomId: Id<"rooms">,
-): Promise<Set<Id<"users">>> {
-  const list = await presence.listRoom(ctx, roomId, true);
-  const out = new Set<Id<"users">>();
-  for (const entry of list) {
-    out.add(entry.userId as Id<"users">);
-  }
-  return out;
-}

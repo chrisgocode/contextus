@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
-import { IDLE_TIMEOUT_MS, decideRoomCleanup } from "../lib/cleanup";
+import {
+  IDLE_TIMEOUT_MS,
+  openRoom,
+  touchRoomActivity,
+} from "../lib/roomMembership";
 import type { Id } from "../_generated/dataModel";
 import {
   E2E_DEPLOYMENT_URL,
@@ -10,37 +14,6 @@ import {
   seedUser,
   setupTest,
 } from "../testHelpers.test";
-
-const host = "u_host" as unknown as Id<"users">;
-const other = "u_other" as unknown as Id<"users">;
-const newer = "u_newer" as unknown as Id<"users">;
-
-describe("decideRoomCleanup", () => {
-  test("migrates host to oldest-joined online member", () => {
-    const r = decideRoomCleanup({
-      room: { hostUserId: host, lastActivityAt: Date.now() },
-      members: [
-        { userId: host, joinedAt: 1 },
-        { userId: other, joinedAt: 2 },
-        { userId: newer, joinedAt: 3 },
-      ],
-      onlineUserIds: new Set([other, newer]),
-      now: Date.now(),
-    });
-    expect(r).toEqual({ kind: "migrateHost", newHostUserId: other });
-  });
-
-  test("no-op when no online but not yet idle", () => {
-    const now = Date.now();
-    const r = decideRoomCleanup({
-      room: { hostUserId: host, lastActivityAt: now - 1000 },
-      members: [{ userId: host, joinedAt: 1 }],
-      onlineUserIds: new Set(),
-      now,
-    });
-    expect(r.kind).toBe("noop");
-  });
-});
 
 describe("cleanup.tick", () => {
   test("ends idle room when all members are offline (disconnected presence)", async () => {
@@ -60,17 +33,7 @@ describe("cleanup.tick", () => {
       sessionToken: beat.sessionToken,
     });
 
-    // Force the room past the idle timeout.
-    await t.run(async (ctx) => {
-      const activity = await ctx.db
-        .query("roomActivity")
-        .withIndex("by_room", (q) => q.eq("roomId", roomId))
-        .unique();
-      if (activity === null) throw new Error("missing roomActivity");
-      await ctx.db.patch("roomActivity", activity._id, {
-        lastActivityAt: Date.now() - IDLE_TIMEOUT_MS - 1000,
-      });
-    });
+    await backdateRoomActivity(t, roomId);
 
     await t.action(internal.cleanup.tick, {});
 
@@ -110,22 +73,11 @@ describe("cleanup.tick", () => {
     const t = setupTest({ transactionLimits: { documentsRead: 200 } });
     const hostUser = await seedUser(t);
     const idleAt = Date.now() - IDLE_TIMEOUT_MS - 1000;
-    await t.run(async (ctx) => {
-      for (let i = 0; i < 300; i++) {
-        const roomId = await ctx.db.insert("rooms", {
-          code: `IDLE${i}`,
-          hostUserId: hostUser,
-          status: "active",
-        });
-        await ctx.db.insert("roomMembers", {
-          roomId,
-          userId: hostUser,
-          joinedAt: i,
-          active: true,
-        });
-        await ctx.db.insert("roomActivity", { roomId, lastActivityAt: idleAt });
-      }
-    });
+    for (let i = 0; i < 300; i++) {
+      await t.run((ctx) =>
+        openRoom(ctx, { code: `IDLE${i}`, hostUserId: hostUser }, idleAt),
+      );
+    }
 
     await t.action(internal.cleanup.tick, {});
     await finishScheduledFunctions(t);
@@ -144,16 +96,9 @@ async function backdateRoomActivity(
   t: ReturnType<typeof setupTest>,
   roomId: Id<"rooms">,
 ) {
-  await t.run(async (ctx) => {
-    const activity = await ctx.db
-      .query("roomActivity")
-      .withIndex("by_room", (q) => q.eq("roomId", roomId))
-      .unique();
-    if (activity === null) throw new Error("missing roomActivity");
-    await ctx.db.patch("roomActivity", activity._id, {
-      lastActivityAt: Date.now() - IDLE_TIMEOUT_MS - 1000,
-    });
-  });
+  await t.run((ctx) =>
+    touchRoomActivity(ctx, roomId, Date.now() - IDLE_TIMEOUT_MS - 1000),
+  );
 }
 
 async function goOnline(
@@ -245,6 +190,22 @@ describe("cleanup._cleanupRoom", () => {
     expect(room?.hostUserId).toBe(hostUser);
   });
 
+  test("keeps a room nobody is online in until the idle timeout", async () => {
+    const t = setupTest();
+    const hostUser = await seedUser(t);
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, hostUser).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    expect(room).toMatchObject({ status: "active", hostUserId: hostUser });
+  });
+
   test("keeps a newer host assignment", async () => {
     const t = setupTest();
     const hostUser = await seedUser(t);
@@ -256,12 +217,11 @@ describe("cleanup._cleanupRoom", () => {
     );
     await asUser(t, member).mutation(api.rooms.join, { code });
     await asUser(t, laterMember).mutation(api.rooms.join, { code });
-    await goOnline(t, roomId, member);
+    // Only the later member is online, so cleanup makes them Host.
     await goOnline(t, roomId, laterMember);
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
 
-    await t.run(async (ctx) =>
-      ctx.db.patch("rooms", roomId, { hostUserId: laterMember }),
-    );
+    await goOnline(t, roomId, member);
     await t.mutation(internal.cleanup._cleanupRoom, { roomId });
 
     const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));

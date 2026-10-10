@@ -100,7 +100,8 @@ const seeds: Record<
       gameId,
       requesterUserId: userId,
       type: "hint",
-      status: "pending",
+      // Handled, so it is history. Leaving a Room withdraws a pending one.
+      status: "denied",
       createdAt: 1,
       expiresAt: 2,
     }),

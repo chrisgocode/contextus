@@ -15,6 +15,7 @@ import {
   mergeSolveDay,
   mergeWin,
 } from "./guestMergeRows";
+import { type RoomCtx, depart } from "./roomMembership";
 
 // What happens to a user's rows when a Guest signs in (merge), a Guest
 // expires (expire), or an E2E account is deleted (purge). Every schema field
@@ -22,7 +23,7 @@ import {
 // fails when one is missing. Retention rules are explained in
 // docs/adr/0002-expired-guest-retention.md.
 
-type LifecycleCtx = Pick<MutationCtx, "db">;
+type LifecycleCtx = RoomCtx;
 type UserId = Id<"users">;
 type RowMerge<T extends TableNames> = (
   ctx: LifecycleCtx,
@@ -219,6 +220,7 @@ export const USER_KEYED_TABLES = [
       ctx.db
         .query("roomMembers")
         .withIndex("by_user", (q) => q.eq("userId", userId)),
+    remove: removeMembership,
     merge: { phase: "memberships", row: mergeRoomMembership },
     expire: "delete",
     purge: "delete",
@@ -245,7 +247,8 @@ export const USER_KEYED_TABLES = [
           q.eq("requesterUserId", userId),
         ),
     merge: { phase: "requests", row: mergeRequest },
-    // Part of the Game's record, like its Guesses.
+    // Part of the Game's record, like its Guesses. One still pending is
+    // withdrawn when the Guest's membership goes.
     expire: "keep",
     purge: "delete",
   }),
@@ -378,7 +381,7 @@ export async function expireGuest(
 }
 
 export async function deleteAccount(
-  ctx: Pick<MutationCtx, "db" | "storage">,
+  ctx: Pick<MutationCtx, "db" | "storage" | "runQuery">,
   userId: UserId,
 ) {
   // ponytail: E2E accounts are deleted every run; batch this if a test can
@@ -449,6 +452,17 @@ async function deleteAuthSessionBatch(
   if (tokens.length === limit) return tokens.length;
   await ctx.db.delete("authSessions", session._id);
   return tokens.length + 1;
+}
+
+// An expired Guest leaves each Room the way any member does, so a Room they
+// hosted gets a new Host or ends right away. E2E purge takes the same path.
+async function removeMembership(ctx: LifecycleCtx, row: Doc<"roomMembers">) {
+  await depart(
+    ctx,
+    row.roomId,
+    { reason: "expired", userId: row.userId },
+    Date.now(),
+  );
 }
 
 async function deleteRoom(ctx: LifecycleCtx, room: Doc<"rooms">) {

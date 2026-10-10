@@ -1,12 +1,12 @@
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
 import { applyCounterAchievements } from "../achievements";
+import { type RoomCtx, depart } from "./roomMembership";
 
 // Per-row merge handlers registered in `accountLifecycle.ts` and run by the
 // batched merge in `guestMerge.ts`. Each one moves a guest row onto the
 // target user, combining it with the target's matching row when there is one.
 
-type MergeCtx = Pick<MutationCtx, "db">;
+type MergeCtx = RoomCtx;
 
 // What a merge carries between rows. `guestMerge.ts` loads it from the
 // `guestMerges` job and saves `overlappingSolves` back after each batch.
@@ -16,13 +16,19 @@ export type MergeState = {
   overlappingSolves: number;
 };
 
+// Moves the Host together with the guest's membership, so the account never
+// hosts a Room it isn't in.
 export async function mergeHostedRoom(
   ctx: MergeCtx,
   row: Doc<"rooms">,
   merge: MergeState,
 ) {
-  const { targetUserId } = merge;
-  await ctx.db.patch("rooms", row._id, { hostUserId: targetUserId });
+  await depart(
+    ctx,
+    row._id,
+    { reason: "merged", userId: row.hostUserId, into: merge.targetUserId },
+    Date.now(),
+  );
 }
 
 export async function mergeRoomMembership(
@@ -30,21 +36,12 @@ export async function mergeRoomMembership(
   row: Doc<"roomMembers">,
   merge: MergeState,
 ) {
-  const { targetUserId } = merge;
-  const existing = await ctx.db
-    .query("roomMembers")
-    .withIndex("by_room_user", (q) =>
-      q.eq("roomId", row.roomId).eq("userId", targetUserId),
-    )
-    .unique();
-  if (existing === null) {
-    await ctx.db.patch("roomMembers", row._id, { userId: targetUserId });
-  } else {
-    await ctx.db.patch("roomMembers", existing._id, {
-      joinedAt: Math.min(existing.joinedAt, row.joinedAt),
-    });
-    await ctx.db.delete("roomMembers", row._id);
-  }
+  await depart(
+    ctx,
+    row.roomId,
+    { reason: "merged", userId: row.userId, into: merge.targetUserId },
+    Date.now(),
+  );
 }
 
 export async function mergeGuess(

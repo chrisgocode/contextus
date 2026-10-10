@@ -9,36 +9,23 @@ import {
 } from "./access";
 import { generateRoomCode } from "./lib/code";
 import { track } from "./analytics";
-import { withdrawAllFor } from "./lib/pendingRequests";
 import { loadPlayers } from "./lib/player";
 import { enforceRateLimit } from "./lib/rateLimits";
-import { upsertRoomActivity } from "./lib/roomActivity";
-import { closeRoom, reopenRoom } from "./lib/roomLifecycle";
+import {
+  admit,
+  closeRoom,
+  depart,
+  findMembership,
+  openRoom,
+  reopenRoom,
+} from "./lib/roomMembership";
 
 const MAX_CODE_RETRIES = 10;
-const MAX_GUEST_ACTIVE_ROOMS = 3;
 // ponytail: scans 100 memberships; add a per-user recent-group index if users outgrow it.
 const MAX_RECENT_MEMBERSHIPS = 100;
 // listMine ranks at most this many of the newest active memberships. Idle
 // rooms end after 30 minutes, so hitting this needs 50+ live rooms at once.
 const MAX_ACTIVE_MEMBERSHIPS = 50;
-
-async function requireGuestRoomSlot(
-  ctx: Pick<MutationCtx, "db">,
-  userId: Awaited<ReturnType<typeof requireUser>>,
-) {
-  const user = await ctx.db.get("users", userId);
-  if (user?.isAnonymous !== true) return;
-  const activeMemberships = await ctx.db
-    .query("roomMembers")
-    .withIndex("by_user_and_active", (q) =>
-      q.eq("userId", userId).eq("active", true),
-    )
-    .take(MAX_GUEST_ACTIVE_ROOMS);
-  if (activeMemberships.length >= MAX_GUEST_ACTIVE_ROOMS) {
-    throw new ConvexError("Guest room limit reached");
-  }
-}
 
 async function generateUniqueRoomCode(ctx: Pick<MutationCtx, "db">) {
   for (let i = 0; i < MAX_CODE_RETRIES; i++) {
@@ -56,23 +43,13 @@ export const create = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
-    await requireGuestRoomSlot(ctx, userId);
     await enforceRateLimit(ctx, "createRoom", userId);
-    const now = Date.now();
     const code = await generateUniqueRoomCode(ctx);
-
-    const roomId = await ctx.db.insert("rooms", {
-      code,
-      hostUserId: userId,
-      status: "active",
-    });
-    await ctx.db.insert("roomMembers", {
-      roomId,
-      userId,
-      joinedAt: now,
-      active: true,
-    });
-    await upsertRoomActivity(ctx, roomId, now);
+    const roomId = await openRoom(
+      ctx,
+      { code, hostUserId: userId },
+      Date.now(),
+    );
     await track(ctx, userId, {
       name: "room_created",
       properties: { room_id: roomId },
@@ -93,20 +70,7 @@ export const join = mutation({
     if (room === null || room.status !== "active") {
       throw new ConvexError("Room not found");
     }
-    const existing = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) =>
-        q.eq("roomId", room._id).eq("userId", userId),
-      )
-      .unique();
-    if (existing === null) {
-      await requireGuestRoomSlot(ctx, userId);
-      await ctx.db.insert("roomMembers", {
-        roomId: room._id,
-        userId,
-        joinedAt: Date.now(),
-        active: true,
-      });
+    if (await admit(ctx, room._id, userId, Date.now())) {
       // Capped like playAgain's Room size limit; 101 means "over 100".
       const memberCount = (
         await ctx.db
@@ -119,65 +83,27 @@ export const join = mutation({
         properties: { room_id: room._id, member_count: memberCount },
       });
     }
-    await upsertRoomActivity(ctx, room._id, Date.now());
     return { roomId: room._id };
   },
 });
-
-// The Host must stay a member: hand the room to the longest-standing
-// remaining member, or end it when nobody is left.
-// Returns whether the room is still active afterwards.
-async function handOffHost(
-  ctx: Pick<MutationCtx, "db">,
-  room: Doc<"rooms">,
-): Promise<boolean> {
-  const remaining = await ctx.db
-    .query("roomMembers")
-    .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
-    .collect();
-  const next = remaining.sort((a, b) => a.joinedAt - b.joinedAt)[0];
-  if (next === undefined) {
-    await closeRoom(ctx, room._id);
-    return false;
-  }
-  await ctx.db.patch("rooms", room._id, { hostUserId: next.userId });
-  await withdrawAllFor(ctx, { roomId: room._id, userId: next.userId });
-  return room.status === "active";
-}
 
 export const leave = mutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
     const userId = await requireUser(ctx);
-    const member = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) =>
-        q.eq("roomId", roomId).eq("userId", userId),
-      )
-      .unique();
-    if (member !== null) {
-      await ctx.db.delete("roomMembers", member._id);
-    }
-    await withdrawAllFor(ctx, { roomId, userId });
-    const room = await ctx.db.get("rooms", roomId);
-    if (room === null) return null;
-    const stillActive =
-      room.hostUserId === userId
-        ? await handOffHost(ctx, room)
-        : room.status === "active";
-    if (stillActive) {
-      await upsertRoomActivity(ctx, roomId, Date.now());
-    }
-    if (member !== null) {
+    const { wasMember, hostMoved, roomEnded } = await depart(
+      ctx,
+      roomId,
+      { reason: "left", userId },
+      Date.now(),
+    );
+    if (wasMember) {
       await track(ctx, userId, {
         name: "room_left",
         properties: {
           room_id: roomId,
-          host_moved:
-            room.status === "active" &&
-            room.hostUserId === userId &&
-            stillActive,
-          room_ended: room.status === "active" && !stillActive,
+          host_moved: hostMoved,
+          room_ended: roomEnded,
         },
       });
     }
@@ -205,12 +131,7 @@ export const playAgain = mutation({
     const userId = await requireRegisteredUser(ctx);
     const room = await ctx.db.get("rooms", roomId);
     if (room === null) throw new ConvexError("Room not found");
-    const membership = await ctx.db
-      .query("roomMembers")
-      .withIndex("by_room_user", (q) =>
-        q.eq("roomId", roomId).eq("userId", userId),
-      )
-      .unique();
+    const membership = await findMembership(ctx, roomId, userId);
     if (membership === null) throw new ConvexError("Not a room member");
     if (room.status === "active") return { roomId, code: room.code };
 
@@ -228,9 +149,13 @@ export const playAgain = mutation({
     }
 
     const code = await generateUniqueRoomCode(ctx);
-    const now = Date.now();
-    await reopenRoom(ctx, roomId, { code, hostUserId: userId }, members);
-    await upsertRoomActivity(ctx, roomId, now);
+    await reopenRoom(
+      ctx,
+      roomId,
+      { code, hostUserId: userId },
+      members,
+      Date.now(),
+    );
     return { roomId, code };
   },
 });
@@ -246,14 +171,7 @@ export const getByCode = query({
     if (room === null) return null;
     const viewerId = await getCurrentUserId(ctx);
     const viewerMembership =
-      viewerId === null
-        ? null
-        : await ctx.db
-            .query("roomMembers")
-            .withIndex("by_room_user", (q) =>
-              q.eq("roomId", room._id).eq("userId", viewerId),
-            )
-            .unique();
+      viewerId === null ? null : await findMembership(ctx, room._id, viewerId);
     const members =
       viewerMembership === null
         ? []

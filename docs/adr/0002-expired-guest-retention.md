@@ -5,9 +5,9 @@ A Guest who never signs in expires after `GUEST_LIFETIME_MS` (30 days). We anony
 Rows that belong to a shared Room are kept, still pointing at the anonymized user:
 
 - **Guesses** (`gameGuesses`), so the other members' Games still show every Guess, attributed to "Former Guest".
-- **Pending requests** (`pendingRequests`), as part of the same Game record.
+- **Pending requests** (`pendingRequests`), as part of the same Game record. A request that is still pending is withdrawn instead, as when any member leaves a Room.
 - **Game winner** (`games.winnerUserId`), so a won Game still has a winner.
-- **Hosted Rooms** (`rooms.hostUserId`). Room cleanup moves an offline Host's Room to an online member or ends it, so after 30 days the Room is almost always ended. An ended Room keeps the old Host id so group history still loads.
+- **Hosted Rooms** (`rooms.hostUserId`). Deleting the Guest's membership hands a Room they hosted to another member, or ends it when nobody else is in it. An ended Room keeps the old Host id so group history still loads.
 
 Every table that references `users` declares its merge, expire, and purge policy in `convex/lib/accountLifecycle.ts`. `convex/tests/accountLifecycle.test.ts` fails if a schema field referencing `users` has no policy.
 
