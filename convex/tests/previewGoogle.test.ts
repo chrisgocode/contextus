@@ -208,7 +208,29 @@ test("a rejected code exchange logs Google's reason", async () => {
   ).rejects.toThrow();
 
   expect(logged).toHaveBeenCalledWith(
-    expect.stringContaining('(401): {"error":"invalid_client"'),
+    expect.stringContaining(
+      '(401, PKCE cookie present): {"error":"invalid_client"',
+    ),
+  );
+});
+
+test("a code exchange without the PKCE cookie says the cookie is missing", async () => {
+  stubGoogle();
+  const provider = await previewProvider();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({ error: "invalid_grant" }, { status: 400 }),
+    ),
+  );
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  await expect(
+    handleOAuth({ code: "google-code", state: STATE }, {}, provider),
+  ).rejects.toThrow();
+
+  expect(logged).toHaveBeenCalledWith(
+    expect.stringContaining("(400, PKCE cookie missing)"),
   );
 });
 

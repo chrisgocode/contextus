@@ -55,8 +55,13 @@ function previewGoogle(forwardUrl: string, state: string) {
       // Convex Auth logs a failed exchange without Google's reason. The body
       // of an error holds only an error code and description, no secrets.
       if (isCodeExchange && !response.ok) {
+        // Convex Auth sends "decoy" when the browser didn't return the PKCE
+        // cookie, which is the part of this flow the extra redirect puts at
+        // risk.
+        const verifier = (init.body as URLSearchParams).get("code_verifier");
+        const pkceCookie = verifier === "decoy" ? "missing" : "present";
         console.error(
-          `Google rejected the preview code exchange (${response.status}): ${await response.clone().text()}`,
+          `Google rejected the preview code exchange (${response.status}, PKCE cookie ${pkceCookie}): ${await response.clone().text()}`,
         );
       }
       return response;
