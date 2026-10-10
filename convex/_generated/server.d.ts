@@ -34,6 +34,9 @@ type Env = {
   readonly E2E_TEST: string | undefined;
   readonly POSTHOG_ENVIRONMENT: string | undefined;
   readonly POSTHOG_PROJECT_TOKEN: string;
+  readonly PREVIEW_OAUTH_CALLBACK_URL: string | undefined;
+  readonly PREVIEW_OAUTH_STATE: string | undefined;
+  readonly PREVIEW_OAUTH_STATE_SECRET: string | undefined;
 };
 
 /**

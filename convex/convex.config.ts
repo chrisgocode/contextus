@@ -10,6 +10,11 @@ const app = defineApp({
     E2E_GOOGLE_ISSUER: v.optional(v.string()),
     POSTHOG_PROJECT_TOKEN: v.string(),
     POSTHOG_ENVIRONMENT: v.optional(v.string()),
+    // Google sign-in on PR previews, forwarded through production. The secret
+    // is set on production only, the other two on previews only.
+    PREVIEW_OAUTH_STATE_SECRET: v.optional(v.string()),
+    PREVIEW_OAUTH_CALLBACK_URL: v.optional(v.string()),
+    PREVIEW_OAUTH_STATE: v.optional(v.string()),
   },
 });
 app.use(presence);
