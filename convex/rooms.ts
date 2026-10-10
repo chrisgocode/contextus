@@ -8,6 +8,7 @@ import {
   requireUser,
 } from "./access";
 import { generateRoomCode } from "./lib/code";
+import { appError } from "./lib/errors";
 import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
 import { enforceRateLimit } from "./lib/rateLimits";
@@ -68,7 +69,7 @@ export const join = mutation({
       .withIndex("by_code", (q) => q.eq("code", normalized))
       .unique();
     if (room === null || room.status !== "active") {
-      throw new ConvexError("Room not found");
+      throw appError("roomNotFound");
     }
     if (await admit(ctx, room._id, userId, Date.now())) {
       // Capped like playAgain's Room size limit; 101 means "over 100".
@@ -130,7 +131,7 @@ export const playAgain = mutation({
   handler: async (ctx, { roomId }) => {
     const userId = await requireRegisteredUser(ctx);
     const room = await ctx.db.get("rooms", roomId);
-    if (room === null) throw new ConvexError("Room not found");
+    if (room === null) throw appError("roomNotFound");
     const membership = await findMembership(ctx, roomId, userId);
     if (membership === null) throw new ConvexError("Not a room member");
     if (room.status === "active") return { roomId, code: room.code };

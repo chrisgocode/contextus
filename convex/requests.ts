@@ -15,6 +15,7 @@ import {
   requireMemberByGame,
   tryMemberByGame,
 } from "./access";
+import { appError } from "./lib/errors";
 import { performTurn } from "./turns";
 import {
   deadlineOf,
@@ -139,7 +140,7 @@ export const create = mutation({
       gameId,
     });
     if (game.status !== "in_progress") {
-      throw new ConvexError("Game is no longer in progress");
+      throw appError("gameEnded");
     }
     if (room.hostUserId === userId) {
       throw new ConvexError(`Host should use the direct ${type} action`);
@@ -151,11 +152,12 @@ export const create = mutation({
     const existing = await pendingOfType(ctx, gameId, type).collect();
     const live = existing.find((r) => isLive(r, createdAt));
     if (live !== undefined) {
-      throw new ConvexError(
-        live.requesterUserId === userId
-          ? `${type} request already pending`
-          : `Another ${type} request is already pending`,
-      );
+      throw live.requesterUserId === userId
+        ? appError("requestAlreadyPending", `${type} request already pending`)
+        : appError(
+            "requestPendingByOther",
+            `Another ${type} request is already pending`,
+          );
     }
     for (const overdue of existing) await markExpired(ctx, overdue);
     const requestId = await ctx.db.insert("pendingRequests", {
@@ -186,10 +188,10 @@ export const deny = mutation({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
     const req = await ctx.db.get("pendingRequests", requestId);
-    if (req === null) throw new ConvexError("Request not found");
+    if (req === null) throw appError("requestNotFound");
     const { userId } = await requireHostByRoom(ctx, { roomId: req.roomId });
     if (req.status !== "pending") {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     await ctx.db.patch("pendingRequests", requestId, { status: "denied" });
     await track(ctx, userId, {
@@ -210,11 +212,10 @@ export const cancel = mutation({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
     const req = await ctx.db.get("pendingRequests", requestId);
-    if (req === null)
-      throw new ConvexError("Request not found or already handled");
+    if (req === null) throw appError("requestHandled");
     const { userId } = await requireMemberByGame(ctx, { gameId: req.gameId });
     if (req.requesterUserId !== userId || req.status !== "pending") {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     await ctx.db.delete("pendingRequests", requestId);
     await track(ctx, userId, {
@@ -261,11 +262,11 @@ export const _startApproval = internalMutation({
   handler: async (ctx, { requestId }) => {
     const req = await ctx.db.get("pendingRequests", requestId);
     if (req === null) {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     await requireHostByRoom(ctx, { roomId: req.roomId });
     if (req.status !== "pending") {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     const now = Date.now();
     if (!isLive(req, now)) {
@@ -301,14 +302,14 @@ export const approve = action({
       { requestId },
     );
     if (req === null) {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     const started: boolean = await ctx.runMutation(
       internal.requests._startApproval,
       { requestId },
     );
     if (!started) {
-      throw new ConvexError("Request not found or already handled");
+      throw appError("requestHandled");
     }
     const { gameId } = req;
     switch (req.type) {

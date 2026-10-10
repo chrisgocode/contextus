@@ -11,9 +11,9 @@ import {
 
 test("requireUser throws ConvexError when unauthenticated", async () => {
   const t = setupTest();
-  await expect(t.run(async (ctx) => await requireUser(ctx))).rejects.toThrow(
-    "Not authenticated",
-  );
+  await expect(
+    t.run(async (ctx) => await requireUser(ctx)),
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
 });
 
 test("requireUser returns userId when authenticated", async () => {
@@ -84,7 +84,7 @@ test("requireUser rejects a token whose session was deleted", async () => {
 
   await expect(
     session.run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toThrow("Not authenticated");
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
 });
 
 test("requireUser rejects a token whose session has expired", async () => {
@@ -100,7 +100,7 @@ test("requireUser rejects a token whose session has expired", async () => {
 
   await expect(
     asUser(t, userId).run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toThrow("Not authenticated");
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
 });
 
 test("requireUser rejects a token whose session belongs to another user", async () => {
@@ -118,7 +118,7 @@ test("requireUser rejects a token whose session belongs to another user", async 
     t
       .withIdentity({ subject: `${userId}|${otherSessionId}`, issuer: "test" })
       .run(async (ctx) => await requireUser(ctx)),
-  ).rejects.toThrow("Not authenticated");
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
 });
 
 test("guest token cannot write once expiry cleanup has started", async () => {
@@ -146,12 +146,12 @@ test("guest token cannot write once expiry cleanup has started", async () => {
     });
     expect(midCleanup.sessions).not.toEqual([]);
 
-    await expect(guestSession.mutation(api.rooms.create, {})).rejects.toThrow(
-      "Not authenticated",
-    );
+    await expect(
+      guestSession.mutation(api.rooms.create, {}),
+    ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
     await expect(
       guestSession.mutation(api.users.setTimeZone, { timeZone: "UTC" }),
-    ).rejects.toThrow("Not authenticated");
+    ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
     await expect(
       guestSession.query(api.users.getByUsername, { username: "guest1" }),
     ).resolves.toMatchObject({ isCurrentUser: false });
@@ -179,10 +179,10 @@ test("old guest token cannot act as the Former Guest after cleanup", async () =>
       name: "Revived",
       username: "revived",
     }),
-  ).rejects.toThrow("Not authenticated");
-  await expect(guestSession.mutation(api.rooms.create, {})).rejects.toThrow(
-    "Not authenticated",
-  );
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
+  await expect(
+    guestSession.mutation(api.rooms.create, {}),
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
   await expect(guestSession.query(api.users.getUser, {})).resolves.toBeNull();
   await expect(
     guestSession.query(api.games.listMyHistory, {}),

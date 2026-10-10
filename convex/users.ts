@@ -8,6 +8,7 @@ import {
   ensureUserHasUsername,
   normalizeUsernameInput,
 } from "./lib/usernames";
+import { appError } from "./lib/errors";
 import { canonicalTimeZone } from "./lib/localTime";
 import { playerFromUser } from "./lib/player";
 
@@ -198,12 +199,10 @@ export const updateProfile = mutation({
         throw new ConvexError("Uploaded profile image was not found.");
       }
       if (storedFile.size > MAX_AVATAR_BYTES) {
-        throw new ConvexError("Profile image must be 1 MB or smaller.");
+        throw appError("profileImageTooLarge");
       }
       if (!AVATAR_CONTENT_TYPES.has(storedFile.contentType ?? "")) {
-        throw new ConvexError(
-          "Profile image must be a PNG, JPEG, WebP or GIF.",
-        );
+        throw appError("profileImageType");
       }
       if (previousAvatarId !== undefined) {
         // Users could share a file before the check above existed.

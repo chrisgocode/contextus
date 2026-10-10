@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserId, requireHostByRoom, tryMemberByRoom } from "./access";
+import { appError } from "./lib/errors";
 import { touchRoomActivity } from "./lib/roomMembership";
 import { track } from "./analytics";
 
@@ -11,7 +12,7 @@ export const start = mutation({
   handler: async (ctx, { roomId, contextoGameId }) => {
     const { userId, room } = await requireHostByRoom(ctx, { roomId });
     if (room.status !== "active") {
-      throw new ConvexError("Room not found");
+      throw appError("roomNotFound");
     }
     if (!Number.isInteger(contextoGameId) || contextoGameId < 1) {
       throw new ConvexError("Invalid game id");
@@ -23,7 +24,7 @@ export const start = mutation({
       )
       .first();
     if (existing !== null) {
-      throw new ConvexError("A game is already in progress");
+      throw appError("gameInProgress");
     }
     const previous = await ctx.db
       .query("games")

@@ -209,7 +209,7 @@ test("apply rejects a hint turn from a non-host member", async () => {
       gameId,
       turn: { kind: "hint", lemma: "pomelo", distance: 299 },
     }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   expect(await snapshot(t, gameId)).toEqual(before);
 });
 
@@ -222,7 +222,7 @@ test("apply rejects a give-up turn from a non-host member", async () => {
       gameId,
       turn: { kind: "giveup", answerLemma: "persimmon" },
     }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   expect(await snapshot(t, gameId)).toEqual(before);
 });
 
@@ -238,14 +238,14 @@ test("apply rejects approving a request from a non-host member", async () => {
       turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId: hintRequestId,
     }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   await expect(
     asUser(t, other).mutation(internal.turns._apply, {
       gameId,
       turn: { kind: "giveup", answerLemma: "persimmon" },
       requestId: giveupRequestId,
     }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   expect(await snapshot(t, gameId)).toEqual(before);
 });
 
@@ -258,7 +258,7 @@ test("apply rejects a guess turn from a non-member", async () => {
       gameId,
       turn: { kind: "guess", lemma: "hello", distance: 42 },
     }),
-  ).rejects.toThrow("Not a member of this room");
+  ).rejects.toMatchObject({ data: { code: "notMember" } });
 });
 
 test("apply rejects an unauthenticated caller", async () => {
@@ -269,7 +269,7 @@ test("apply rejects an unauthenticated caller", async () => {
       gameId,
       turn: { kind: "giveup", answerLemma: "persimmon" },
     }),
-  ).rejects.toThrow("Not authenticated");
+  ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
 });
 
 test("apply attributes a guess turn to the caller", async () => {
@@ -297,14 +297,14 @@ test("apply rejects a request whose type does not match the turn", async () => {
       turn: { kind: "giveup", answerLemma: "persimmon" },
       requestId: hintRequestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   await expect(
     asUser(t, host).mutation(internal.turns._apply, {
       gameId,
       turn: { kind: "guess", lemma: "hello", distance: 42 },
       requestId: hintRequestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   expect(await snapshot(t, gameId)).toEqual(before);
 });
 
@@ -314,7 +314,7 @@ test("an empty Guess is rejected without asking Contexto", async () => {
   const { host, gameId } = await startedGame(t);
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "   " }),
-  ).rejects.toThrow("Empty word");
+  ).rejects.toMatchObject({ data: { code: "emptyWord" } });
   expect(oracle.distance).not.toHaveBeenCalled();
 });
 
@@ -331,7 +331,7 @@ test("a Guess is rejected when the Game ends while Contexto is scoring it", asyn
 
   await expect(
     asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
-  ).rejects.toThrow("Game is no longer in progress");
+  ).rejects.toMatchObject({ data: { code: "gameEnded" } });
   const { game, guesses } = await snapshot(t, gameId);
   expect(game?.status).toBe("given_up");
   expect(guesses).toEqual([]);
@@ -351,7 +351,7 @@ test("a give-up is rejected when the Game is won while Contexto is answering", a
 
   await expect(
     asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
-  ).rejects.toThrow("Game is no longer in progress");
+  ).rejects.toMatchObject({ data: { code: "gameEnded" } });
   const { game } = await snapshot(t, gameId);
   expect(game).toMatchObject({ status: "won", winnerUserId: other });
 });
@@ -390,19 +390,19 @@ test("turns and Pending requests are rejected after the Room ends", async () => 
 
   await expect(
     asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "giveup" }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
   await expect(
     asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
 
   expect(oracle.distance).not.toHaveBeenCalled();
   expect(oracle.tip).not.toHaveBeenCalled();
@@ -425,7 +425,7 @@ test("a Guess is rejected when the Room ends while Contexto is scoring it", asyn
 
   await expect(
     asUser(t, other).action(api.guesses.submit, { gameId, word: "apple" }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
   const { guesses } = await snapshot(t, gameId);
   expect(guesses).toEqual([]);
 });

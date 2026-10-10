@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import { MAX_WALK_ITERATIONS } from "../lib/hint";
-import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { rateLimits } from "../lib/rateLimits";
 import {
   asUser,
   fakeWordOracle,
@@ -110,7 +110,7 @@ test("a hint is rejected when its tip is guessed while Contexto is fetching it",
 
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
-  ).rejects.toThrow("Hint lemma already guessed");
+  ).rejects.toMatchObject({ data: { code: "hintDuplicate" } });
   expect(oracle.tip).toHaveBeenCalledTimes(1);
 });
 
@@ -142,7 +142,7 @@ test("a walking hint gives up once every nearby tip is already guessed", async (
 
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
-  ).rejects.toThrow("Could not find an unguessed hint");
+  ).rejects.toMatchObject({ data: { code: "hintExhausted" } });
   expect(oracle.tip).toHaveBeenCalledTimes(MAX_WALK_ITERATIONS);
 });
 
@@ -207,6 +207,6 @@ test("hostHint: spends a rate limit token per tip it asks for", async () => {
   await asUser(t, host).action(api.hints.hostHint, { gameId });
   await expect(
     asUser(t, host).action(api.hints.hostHint, { gameId }),
-  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  ).rejects.toMatchObject({ data: { code: "rateLimited" } });
   expect(oracle.tip).toHaveBeenCalledTimes(rateLimits.hint.capacity);
 });

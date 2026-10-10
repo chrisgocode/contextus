@@ -6,7 +6,7 @@
 // transaction that changes the Game, so no caller can skip them.
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -17,15 +17,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import {
-  GAME_NOT_FOUND_MESSAGE,
-  HOST_ONLY_MESSAGE,
-  NOT_AUTHENTICATED_MESSAGE,
-  NOT_MEMBER_MESSAGE,
-  requireLiveHostByGame,
-  requireLiveMemberByGame,
-  ROOM_NOT_FOUND_MESSAGE,
-} from "./access";
+import { requireLiveHostByGame, requireLiveMemberByGame } from "./access";
 import { recordAcceptedGuessForAchievements } from "./achievements";
 import {
   analyticsEnabled,
@@ -33,14 +25,14 @@ import {
   type EventProperties,
   track,
 } from "./analytics";
-import { UNAVAILABLE_MESSAGE, UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
 import { upsertHistory } from "./games";
 import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
+import { type AppErrorCode, appError, appErrorData } from "./lib/errors";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
 import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
 import { isLive } from "./lib/pendingRequests";
-import { enforceRateLimit, RATE_LIMITED_MESSAGE } from "./lib/rateLimits";
+import { enforceRateLimit } from "./lib/rateLimits";
 import { touchRoomActivity } from "./lib/roomMembership";
 import {
   type ContextoRequest,
@@ -49,14 +41,8 @@ import {
 } from "./wordOracle";
 
 const ALREADY_GUESSED_MESSAGE = "The word was already guessed.";
-const REQUEST_HANDLED_MESSAGE = "Request not found or already handled";
-const NOT_IN_PROGRESS_MESSAGE = "Game is no longer in progress";
-const EMPTY_WORD_MESSAGE = "Empty word";
-const WORD_TOO_LONG_MESSAGE = "Word is too long";
 // Well past any word Contexto knows, so longer input never reaches it.
 export const MAX_WORD_LENGTH = 32;
-const HINT_DUPLICATE_MESSAGE = "Hint lemma already guessed";
-const HINT_EXHAUSTED_MESSAGE = "Could not find an unguessed hint";
 // Ranks 2 and up read to find where a walking hint starts. Past this, the walk
 // starts after the last one read.
 const MAX_TAKEN_RANKS = 500;
@@ -111,7 +97,7 @@ async function requirePendingRequest(
     req.gameId !== gameId ||
     req.type !== kind
   ) {
-    throw new ConvexError(REQUEST_HANDLED_MESSAGE);
+    throw appError("requestHandled");
   }
   return req;
 }
@@ -126,7 +112,7 @@ export const _prepare = internalQuery({
     const { game, userId } = await authorize(ctx, gameId, kind);
     await requirePendingRequest(ctx, gameId, kind, requestId);
     if (game.status !== "in_progress") {
-      throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
+      throw appError("gameEnded");
     }
     let best: number | null = null;
     let walkFrom = 2;
@@ -242,7 +228,7 @@ async function applyScoredLemma(
   const decision = decideGuess({ game, existingGuess, now: Date.now() }, event);
   if (decision.kind === "reject") {
     if (decision.reason === "not_in_progress") {
-      throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
+      throw appError("gameEnded");
     }
     await track(ctx, event.userId, {
       name: "guess_recorded",
@@ -309,7 +295,7 @@ async function applyGiveup(
 ): Promise<ApplyResult> {
   const decision = decideGiveup({ game, now: Date.now() }, { answerLemma });
   if (decision.kind === "reject") {
-    throw new ConvexError(NOT_IN_PROGRESS_MESSAGE);
+    throw appError("gameEnded");
   }
   await ctx.db.patch("games", game._id, decision.gamePatch);
   await touchRoomActivity(ctx, game.roomId, decision.lastActivityAt);
@@ -550,42 +536,31 @@ export async function performTurn(
   }
 }
 
+// Codes without an entry here, and errors without a code, are "unexpected".
+const turnErrorCategories: Partial<
+  Record<AppErrorCode, EventProperties<"turn_failed">["error_category"]>
+> = {
+  contextoUnavailable: "contexto_unavailable",
+  contextoUnexpectedPayload: "contexto_unexpected_payload",
+  emptyWord: "empty_word",
+  wordTooLong: "word_too_long",
+  rateLimited: "rate_limited",
+  requestHandled: "request_handled",
+  gameEnded: "game_ended",
+  notAuthenticated: "not_authenticated",
+  notMember: "not_member",
+  gameNotFound: "game_not_found",
+  roomNotFound: "room_not_found",
+  hostOnly: "not_host",
+  hintDuplicate: "hint_duplicate",
+  hintExhausted: "hint_exhausted",
+};
+
 function turnErrorCategory(
   error: unknown,
 ): EventProperties<"turn_failed">["error_category"] {
-  const message = error instanceof ConvexError ? error.data : null;
-  switch (message) {
-    case UNAVAILABLE_MESSAGE:
-      return "contexto_unavailable";
-    case UNEXPECTED_PAYLOAD_MESSAGE:
-      return "contexto_unexpected_payload";
-    case EMPTY_WORD_MESSAGE:
-      return "empty_word";
-    case WORD_TOO_LONG_MESSAGE:
-      return "word_too_long";
-    case RATE_LIMITED_MESSAGE:
-      return "rate_limited";
-    case REQUEST_HANDLED_MESSAGE:
-      return "request_handled";
-    case NOT_IN_PROGRESS_MESSAGE:
-      return "game_ended";
-    case NOT_AUTHENTICATED_MESSAGE:
-      return "not_authenticated";
-    case NOT_MEMBER_MESSAGE:
-      return "not_member";
-    case GAME_NOT_FOUND_MESSAGE:
-      return "game_not_found";
-    case ROOM_NOT_FOUND_MESSAGE:
-      return "room_not_found";
-    case HOST_ONLY_MESSAGE:
-      return "not_host";
-    case HINT_DUPLICATE_MESSAGE:
-      return "hint_duplicate";
-    case HINT_EXHAUSTED_MESSAGE:
-      return "hint_exhausted";
-    default:
-      return "unexpected";
-  }
+  const code = appErrorData(error)?.code;
+  return (code && turnErrorCategories[code]) ?? "unexpected";
 }
 
 type PuzzleWordOracle = ReturnType<typeof puzzleWordOracle>;
@@ -597,9 +572,9 @@ async function performGuess(
   word: string,
 ): Promise<GuessResult> {
   const input = word.trim().toLowerCase();
-  if (input.length === 0) throw new ConvexError(EMPTY_WORD_MESSAGE);
+  if (input.length === 0) throw appError("emptyWord");
   if (input.length > MAX_WORD_LENGTH) {
-    throw new ConvexError(WORD_TOO_LONG_MESSAGE);
+    throw appError("wordTooLong");
   }
   const scored = await oracle.distance(input);
   if (!scored.ok) {
@@ -651,8 +626,8 @@ async function performHint(
       requestId,
     });
     if (result.status === "recorded") return tip;
-    if (!walking) throw new ConvexError(HINT_DUPLICATE_MESSAGE);
+    if (!walking) throw appError("hintDuplicate");
     target += 1;
   }
-  throw new ConvexError(HINT_EXHAUSTED_MESSAGE);
+  throw appError("hintExhausted");
 }

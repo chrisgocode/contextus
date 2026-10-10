@@ -5,11 +5,8 @@ import {
   type ActionCtx,
   type MutationCtx,
 } from "@convex-dev/rate-limiter";
-import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
-
-export const RATE_LIMITED_MESSAGE =
-  "Too many requests. Wait a moment and try again.";
+import { appError } from "./errors";
 
 // Every uncached guess and every hint reaches Contexto from this deployment,
 // so one script could get it throttled for everyone. These keep any one user
@@ -34,5 +31,5 @@ export async function enforceRateLimit(
   key?: string,
 ) {
   const { ok } = await rateLimiter.limit(ctx, name, { key });
-  if (!ok) throw new ConvexError(RATE_LIMITED_MESSAGE);
+  if (!ok) throw appError("rateLimited");
 }

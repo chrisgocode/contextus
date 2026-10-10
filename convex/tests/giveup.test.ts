@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
-import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { rateLimits } from "../lib/rateLimits";
 import {
   asUser,
   fakeWordOracle,
@@ -67,7 +67,7 @@ test("hostGiveup rejects a game that has already ended", async () => {
 
   await expect(
     asUser(t, host).action(api.giveup.hostGiveup, { gameId }),
-  ).rejects.toThrow("Game is no longer in progress");
+  ).rejects.toMatchObject({ data: { code: "gameEnded" } });
 });
 
 test("given-up games count toward guest account prompts after a real guess", async () => {
@@ -157,7 +157,10 @@ test("hostGiveup: rate limits each host", async () => {
       gameId: next.gameId,
     });
     if (i < rateLimits.giveup.capacity) await giveup;
-    else await expect(giveup).rejects.toThrow(RATE_LIMITED_MESSAGE);
+    else
+      await expect(giveup).rejects.toMatchObject({
+        data: { code: "rateLimited" },
+      });
   }
   expect(oracle.answer).toHaveBeenCalledTimes(rateLimits.giveup.capacity);
 });

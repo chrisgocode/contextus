@@ -178,7 +178,7 @@ test("a turn by a non-member reports a rejected turn", async () => {
   const stranger = await seedUser(t);
   await expect(
     asUser(t, stranger).action(api.guesses.submit, { gameId, word: "orange" }),
-  ).rejects.toThrow("Not a member of this room");
+  ).rejects.toMatchObject({ data: { code: "notMember" } });
   expect(
     capture.mock.calls.find(([, event]) => event.event === "turn_failed")?.[1],
   ).toMatchObject({

@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { appError } from "./errors";
 import { OBJECTS, PREDICATES } from "./words";
 
 const MIN_USERNAME_LENGTH = 3;
@@ -61,12 +62,13 @@ export function normalizeUsernameInput(input: string): NormalizedUsername {
     displayUsername.length < MIN_USERNAME_LENGTH ||
     displayUsername.length > MAX_USERNAME_LENGTH
   ) {
-    throw new ConvexError(
+    throw appError(
+      "usernameLength",
       `Username must be ${MIN_USERNAME_LENGTH}-${MAX_USERNAME_LENGTH} characters.`,
     );
   }
   if (!USERNAME_PATTERN.test(displayUsername)) {
-    throw new ConvexError("Username can only contain letters and numbers.");
+    throw appError("usernameCharacters");
   }
   return {
     username: displayUsername.toLowerCase(),
@@ -84,7 +86,7 @@ export async function assertUsernameAvailable(
     .withIndex("by_username", (q) => q.eq("username", username))
     .take(2);
   if (matches.some((user) => user._id !== currentUserId)) {
-    throw new ConvexError("Username is already taken.");
+    throw appError("usernameTaken");
   }
 }
 

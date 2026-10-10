@@ -6,6 +6,7 @@ import {
   type RequesterView,
   usePendingRequests,
 } from "@/app/(app)/r/[code]/_components/PendingRequests";
+import { appError } from "@/convex/lib/errors";
 import { fakeRequests, RequestsProvider } from "./fake-requests";
 import { act, renderHook, waitFor } from "./test-utils";
 
@@ -120,9 +121,7 @@ describe("usePendingRequests for the Host", () => {
 
   it("drops the reveal and says why when no hint can be found", async () => {
     const fake = fakeRequests(convex, { listPending: [hint] });
-    fake.approve.mockRejectedValue({
-      data: "Could not find an unguessed hint",
-    });
+    fake.approve.mockRejectedValue(appError("hintExhausted"));
     const { result } = renderRequests(true);
 
     await act(() => asHost(result.current).approve(hint as never));
@@ -188,7 +187,7 @@ describe("usePendingRequests for the Host", () => {
     expect(result.current.asking).toBe("hint");
     expect(result.current.canAsk).toEqual({ hint: false, giveup: false });
 
-    await act(async () => reject({ data: "Could not find an unguessed hint" }));
+    await act(async () => reject(appError("hintExhausted")));
     expect(await landed).toBe(false);
     expect(result.current.askError).toBe("No unguessed hints remain.");
     expect(result.current.canAsk).toEqual({ hint: true, giveup: true });
@@ -312,9 +311,7 @@ describe("usePendingRequests for a requester", () => {
     const fake = fakeRequests(convex, {
       latestMine: { hint: pendingHint, giveup: null },
     });
-    fake.cancel.mockRejectedValue({
-      data: "Request not found or already handled",
-    });
+    fake.cancel.mockRejectedValue(appError("requestHandled"));
     const { result } = renderRequests(false);
 
     await act(() =>

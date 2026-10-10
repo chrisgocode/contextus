@@ -62,7 +62,7 @@ describe("requireMemberByGame", () => {
     const s = await seedRoomWithGame();
     await expect(
       s.t.run((ctx) => requireMemberByGame(ctx, { gameId: s.gameId })),
-    ).rejects.toThrow("Not authenticated");
+    ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
   });
 
   test("throws when not a member", async () => {
@@ -71,7 +71,7 @@ describe("requireMemberByGame", () => {
       asUser(s.t, s.outsider).run((ctx) =>
         requireMemberByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toThrow("Not a member of this room");
+    ).rejects.toMatchObject({ data: { code: "notMember" } });
   });
 
   test("throws when game does not exist", async () => {
@@ -81,7 +81,7 @@ describe("requireMemberByGame", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireMemberByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toThrow("Game not found");
+    ).rejects.toMatchObject({ data: { code: "gameNotFound" } });
   });
 });
 
@@ -151,7 +151,7 @@ describe("requireHostByGame", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toThrow("Host only");
+    ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   });
 
   test("throws for outsider", async () => {
@@ -160,7 +160,7 @@ describe("requireHostByGame", () => {
       asUser(s.t, s.outsider).run((ctx) =>
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toThrow("Host only");
+    ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   });
 });
 
@@ -179,7 +179,7 @@ describe("requireHostByRoom", () => {
       asUser(s.t, s.member).run((ctx) =>
         requireHostByRoom(ctx, { roomId: s.roomId }),
       ),
-    ).rejects.toThrow("Host only");
+    ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   });
 });
 
@@ -203,11 +203,11 @@ describe("host checks require a current membership", () => {
       asUser(s.t, s.host).run((ctx) =>
         requireHostByRoom(ctx, { roomId: s.roomId }),
       ),
-    ).rejects.toThrow("Host only");
+    ).rejects.toMatchObject({ data: { code: "hostOnly" } });
     await expect(
       asUser(s.t, s.host).run((ctx) =>
         requireHostByGame(ctx, { gameId: s.gameId }),
       ),
-    ).rejects.toThrow("Host only");
+    ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   });
 });

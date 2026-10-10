@@ -193,14 +193,26 @@ test("updateProfile rejects invalid and duplicate usernames", async () => {
       name: "Test User",
       username: "bad-name",
     }),
-  ).rejects.toThrow("Username can only contain letters and numbers.");
+  ).rejects.toMatchObject({ data: { code: "usernameCharacters" } });
+
+  await expect(
+    asUser(t, user).mutation(api.users.updateProfile, {
+      name: "Test User",
+      username: "ab",
+    }),
+  ).rejects.toMatchObject({
+    data: {
+      code: "usernameLength",
+      message: "Username must be 3-20 characters.",
+    },
+  });
 
   await expect(
     asUser(t, user).mutation(api.users.updateProfile, {
       name: "Test User",
       username: "TakenUser1",
     }),
-  ).rejects.toThrow("Username is already taken.");
+  ).rejects.toMatchObject({ data: { code: "usernameTaken" } });
 });
 
 test("updateProfile rejects blank names and missing avatar uploads", async () => {
@@ -281,7 +293,7 @@ test("updateProfile rejects oversized and non-raster avatar uploads", async () =
       username: "AvatarLimits",
       avatarStorageId: oversized,
     }),
-  ).rejects.toThrow("Profile image must be 1 MB or smaller.");
+  ).rejects.toMatchObject({ data: { code: "profileImageTooLarge" } });
   for (const avatarStorageId of [svg, untyped]) {
     await expect(
       asUser(t, user).mutation(api.users.updateProfile, {
@@ -289,7 +301,7 @@ test("updateProfile rejects oversized and non-raster avatar uploads", async () =
         username: "AvatarLimits",
         avatarStorageId,
       }),
-    ).rejects.toThrow("Profile image must be a PNG, JPEG, WebP or GIF.");
+    ).rejects.toMatchObject({ data: { code: "profileImageType" } });
   }
 });
 

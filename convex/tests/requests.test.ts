@@ -106,7 +106,7 @@ test("creating and denying a Pending request records both outcomes", async () =>
   });
   await expect(
     asUser(t, host).mutation(api.requests.deny, { requestId: request!._id }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 
   expect(capture.mock.calls.map(([, event]) => event)).toEqual([
     expect.objectContaining({
@@ -147,7 +147,7 @@ test("create rejects non-member", async () => {
       gameId,
       type: "giveup",
     }),
-  ).rejects.toThrow("Not a member of this room");
+  ).rejects.toMatchObject({ data: { code: "notMember" } });
 });
 
 test("create rejects duplicate pending of same type", async () => {
@@ -159,7 +159,7 @@ test("create rejects duplicate pending of same type", async () => {
   });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow("hint request already pending");
+  ).rejects.toMatchObject({ data: { code: "requestAlreadyPending" } });
 });
 
 test("create allows different types from same requester", async () => {
@@ -191,7 +191,7 @@ test("create rejects when game not in_progress", async () => {
   await asUser(t, host).action(api.giveup.hostGiveup, { gameId });
   await expect(
     asUser(t, other).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow("Game is no longer in progress");
+  ).rejects.toMatchObject({ data: { code: "gameEnded" } });
 });
 
 test("deny requires host", async () => {
@@ -206,7 +206,7 @@ test("deny requires host", async () => {
   );
   await expect(
     asUser(t, other).mutation(api.requests.deny, { requestId: req!._id }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
 });
 
 test("deny patches status to denied", async () => {
@@ -239,7 +239,7 @@ test("approve requires host", async () => {
   );
   await expect(
     asUser(t, other).action(api.requests.approve, { requestId: req!._id }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
 });
 
 test("approve rejects non-pending request", async () => {
@@ -255,7 +255,7 @@ test("approve rejects non-pending request", async () => {
   await asUser(t, host).mutation(api.requests.deny, { requestId: req!._id });
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId: req!._id }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 });
 
 async function createRequest(
@@ -314,7 +314,7 @@ test("approve rejects a hint request denied while Contexto is fetching and write
   });
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   expect(oracle.tip).toHaveBeenCalledTimes(1);
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
@@ -336,7 +336,7 @@ test("approve rejects a give-up request denied while Contexto is fetching and le
   });
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   expect(oracle.answer).toHaveBeenCalledTimes(1);
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
@@ -359,7 +359,7 @@ test("second apply of the same hint request is rejected", async () => {
       turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   const { guesses } = await snapshot(t, gameId);
   expect(guesses.filter((g) => g.source === "hint")).toHaveLength(1);
 });
@@ -383,7 +383,7 @@ test("second apply of the same hint request is rejected while the hint walk is a
       turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   const { guesses } = await snapshot(t, gameId);
   expect(guesses.filter((g) => g.source === "hint")).toHaveLength(1);
 });
@@ -426,14 +426,14 @@ test("closeRequestId from a different game is rejected and neither game changes"
       turn: { kind: "hint", lemma: "pomelo", distance: 299 },
       requestId: hintRequestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   await expect(
     asUser(t, b.host).mutation(internal.turns._apply, {
       gameId: b.gameId,
       turn: { kind: "giveup", answerLemma: "answer" },
       requestId: giveupRequestId,
     }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   expect(await snapshot(t, a.gameId)).toEqual(beforeA);
   expect(await snapshot(t, b.gameId)).toEqual(beforeB);
   const rows = await t.run(async (ctx) =>
@@ -491,7 +491,7 @@ test("cancel rejects anyone but the requester", async () => {
   for (const userId of [host, third]) {
     await expect(
       asUser(t, userId).mutation(api.requests.cancel, { requestId }),
-    ).rejects.toThrow("Request not found or already handled");
+    ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   }
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
@@ -506,7 +506,7 @@ test("cancel rejects a request the Host already handled", async () => {
   await asUser(t, host).mutation(api.requests.deny, { requestId });
   await expect(
     asUser(t, other).mutation(api.requests.cancel, { requestId }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   const row = await t.run(async (ctx) =>
     ctx.db.get("pendingRequests", requestId),
   );
@@ -525,7 +525,7 @@ test("approve rejects a request cancelled while Contexto is fetching and writes 
   });
   await expect(
     asUser(t, host).action(api.requests.approve, { requestId }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
   expect(await snapshot(t, gameId)).toEqual(before);
 });
 
@@ -626,7 +626,7 @@ test("create allows one Pending request of each type per Game", async () => {
 
   await expect(
     asUser(t, third).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow("Another hint request is already pending");
+  ).rejects.toMatchObject({ data: { code: "requestPendingByOther" } });
   await asUser(t, third).mutation(api.requests.create, {
     gameId,
     type: "giveup",
@@ -636,7 +636,7 @@ test("create allows one Pending request of each type per Game", async () => {
       gameId,
       type: "giveup",
     }),
-  ).rejects.toThrow("Another giveup request is already pending");
+  ).rejects.toMatchObject({ data: { code: "requestPendingByOther" } });
 });
 
 test("a Pending request expires after a minute without an answer", async () => {
@@ -864,7 +864,7 @@ test("approve rejects a request that is past its deadline", async () => {
 
     await expect(
       asUser(t, host).action(api.requests.approve, { requestId: staleId }),
-    ).rejects.toThrow("Request not found or already handled");
+    ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 
     expect(oracle.tip).not.toHaveBeenCalled();
     const stale = await t.run(async (ctx) =>
@@ -955,7 +955,7 @@ test("approve rejects a request that stops being live while Contexto is fetching
 
     await expect(
       asUser(t, host).action(api.requests.approve, { requestId }),
-    ).rejects.toThrow("Request not found or already handled");
+    ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 
     expect(await snapshot(t, gameId)).toEqual(before);
     const row = await t.run(async (ctx) =>
@@ -982,5 +982,5 @@ test("a member who becomes Host has their pending requests withdrawn", async () 
   ).toEqual([]);
   await expect(
     asUser(t, other).action(api.requests.approve, { requestId }),
-  ).rejects.toThrow("Request not found or already handled");
+  ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 });

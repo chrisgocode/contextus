@@ -63,7 +63,7 @@ test("start: only host can start", async () => {
       roomId,
       contextoGameId: 1336,
     }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
 });
 
 test("start: refuses second active game in same room", async () => {
@@ -78,7 +78,7 @@ test("start: refuses second active game in same room", async () => {
       roomId,
       contextoGameId: 1337,
     }),
-  ).rejects.toThrow("A game is already in progress");
+  ).rejects.toMatchObject({ data: { code: "gameInProgress" } });
 });
 
 test("start: refuses a Room that has ended", async () => {
@@ -88,7 +88,7 @@ test("start: refuses a Room that has ended", async () => {
 
   await expect(
     asUser(t, host).mutation(api.games.start, { roomId, contextoGameId: 1336 }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
 });
 
 test("start: rejects invalid Contexto game ids", async () => {

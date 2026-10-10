@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
-import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { rateLimits } from "../lib/rateLimits";
 import { MAX_WORD_LENGTH } from "../turns";
 import {
   asUser,
@@ -56,7 +56,7 @@ test("submit: rejects overlong words without asking Contexto", async () => {
       gameId,
       word: "a".repeat(MAX_WORD_LENGTH + 1),
     }),
-  ).rejects.toThrow("Word is too long");
+  ).rejects.toMatchObject({ data: { code: "wordTooLong" } });
   expect(oracle.distance).not.toHaveBeenCalled();
 });
 
@@ -72,7 +72,7 @@ test("submit: rate limits each player's guesses", async () => {
   }
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "another" }),
-  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  ).rejects.toMatchObject({ data: { code: "rateLimited" } });
   expect(oracle.distance).toHaveBeenCalledTimes(rateLimits.guess.capacity);
   await expect(
     asUser(t, other).action(api.guesses.submit, { gameId, word: "another" }),
@@ -271,7 +271,7 @@ test("submit: rejected on ended game", async () => {
   });
   await expect(
     asUser(t, host).action(api.guesses.submit, { gameId, word: "apple" }),
-  ).rejects.toThrow("Game is no longer in progress");
+  ).rejects.toMatchObject({ data: { code: "gameEnded" } });
 });
 
 test("listForGame returns empty for ex-member after leaving room", async () => {
