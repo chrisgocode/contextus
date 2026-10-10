@@ -8,11 +8,35 @@ import Google from "@auth/core/providers/google";
 // tests/previewGoogle.test.ts runs them through the library, so an upgrade
 // that changes one fails CI.
 
+/** The Google provider for this deployment's environment. */
+export function googleProvider(env: {
+  E2E_TEST?: string;
+  E2E_GOOGLE_ISSUER?: string;
+  PREVIEW_OAUTH_CALLBACK_URL?: string;
+  PREVIEW_OAUTH_STATE?: string;
+}) {
+  // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
+  if (env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined) {
+    return Google({ issuer: env.E2E_GOOGLE_ISSUER });
+  }
+  // PR previews sign in through production's forwarder. CI sets both.
+  if (
+    env.PREVIEW_OAUTH_CALLBACK_URL !== undefined &&
+    env.PREVIEW_OAUTH_STATE !== undefined
+  ) {
+    return previewGoogle(
+      env.PREVIEW_OAUTH_CALLBACK_URL,
+      env.PREVIEW_OAUTH_STATE,
+    );
+  }
+  return Google;
+}
+
 /**
  * The Google provider for a preview deployment: Google redirects to
  * production's forwarder, carrying the state that names this preview.
  */
-export function previewGoogle(forwardUrl: string, state: string) {
+function previewGoogle(forwardUrl: string, state: string) {
   return {
     ...Google({
       authorization: { params: { redirect_uri: forwardUrl, state } },

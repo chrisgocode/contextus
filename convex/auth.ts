@@ -1,4 +1,3 @@
-import Google from "@auth/core/providers/google";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth, getAuthSessionId } from "@convex-dev/auth/server";
@@ -10,27 +9,9 @@ import {
   GUEST_LIFETIME_MS,
 } from "./lib/guestEngagement";
 import { startGuestMerge } from "./lib/guestMerge";
-import { callbackSignature, previewGoogle } from "./lib/previewGoogle";
+import { callbackSignature, googleProvider } from "./lib/previewGoogle";
 import { enforceRateLimit } from "./lib/rateLimits";
 import { ensureUserHasUsername } from "./lib/usernames";
-
-function googleProvider() {
-  // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
-  if (env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined) {
-    return Google({ issuer: env.E2E_GOOGLE_ISSUER });
-  }
-  // PR previews sign in through production's forwarder. CI sets both.
-  if (
-    env.PREVIEW_OAUTH_CALLBACK_URL !== undefined &&
-    env.PREVIEW_OAUTH_STATE !== undefined
-  ) {
-    return previewGoogle(
-      env.PREVIEW_OAUTH_CALLBACK_URL,
-      env.PREVIEW_OAUTH_STATE,
-    );
-  }
-  return Google;
-}
 
 const {
   auth,
@@ -40,7 +21,7 @@ const {
   isAuthenticated,
 } = convexAuth({
   providers: [
-    googleProvider(),
+    googleProvider(env),
     Anonymous({
       profile: () => ({
         isAnonymous: true,

@@ -11,7 +11,8 @@ import {
 // @ts-expect-error Marked internal, so it is missing from the library's types.
 import { configDefaults } from "../../node_modules/@convex-dev/auth/dist/server/provider_utils.js";
 import { internal } from "../_generated/api";
-import { callbackSignature, previewGoogle } from "../lib/previewGoogle";
+import Google from "@auth/core/providers/google";
+import { callbackSignature, googleProvider } from "../lib/previewGoogle";
 import { seedUser, sessionOf, setupTest } from "../testHelpers.test";
 
 const PREVIEW_SITE = "https://happy-animal-123.convex.site";
@@ -74,9 +75,14 @@ function stubGoogle() {
 }
 
 // The provider as Convex Auth's HTTP routes build it on every request.
+const PREVIEW_ENV = {
+  PREVIEW_OAUTH_CALLBACK_URL: FORWARDER,
+  PREVIEW_OAUTH_STATE: STATE,
+};
+
 async function previewProvider() {
   const [provider] = configDefaults({
-    providers: [previewGoogle(FORWARDER, STATE)],
+    providers: [googleProvider(PREVIEW_ENV)],
   }).providers;
   return {
     provider: await oAuthConfigToInternalProvider(provider),
@@ -160,6 +166,26 @@ test("a Guest signing in with Google on a preview merges into the Google account
   expect(merges).toMatchObject([
     { guestUserId: guest, targetUserId: account?.userId },
   ]);
+});
+
+test("a deployment with only one preview variable signs in with plain Google", () => {
+  expect(googleProvider({})).toBe(Google);
+  expect(googleProvider({ PREVIEW_OAUTH_CALLBACK_URL: FORWARDER })).toBe(
+    Google,
+  );
+  expect(googleProvider({ PREVIEW_OAUTH_STATE: STATE })).toBe(Google);
+});
+
+test("the E2E issuer wins over the preview variables", () => {
+  const e2e = { E2E_GOOGLE_ISSUER: "http://localhost:8765", ...PREVIEW_ENV };
+
+  expect(googleProvider({ E2E_TEST: "1", ...e2e })).toMatchObject({
+    options: { issuer: "http://localhost:8765" },
+  });
+  // The issuer alone does nothing, so a stray one can't redirect sign-ins.
+  expect(googleProvider(e2e)).toMatchObject({
+    options: { authorization: { params: { redirect_uri: FORWARDER } } },
+  });
 });
 
 test("the verifier signature is stored unchanged outside a preview", async () => {

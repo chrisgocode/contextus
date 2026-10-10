@@ -13,10 +13,6 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   preview:
     # Adding any other label to a labelled PR doesn't redeploy.
@@ -26,6 +22,11 @@ jobs:
       (github.event.action != 'labeled' || github.event.label.name == 'preview')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # On the job, not the workflow, so an event the `if` skips (another label)
+    # can't cancel a deploy that is running.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
