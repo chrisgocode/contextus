@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.3](https://github.com/chrisgocode/contextus/compare/v0.3.2...v0.3.3) (2026-10-10)
+
+
+### Dependencies
+
+* bump the minor-and-patch group across 1 directory with 12 updates ([#226](https://github.com/chrisgocode/contextus/issues/226)) ([c6f0165](https://github.com/chrisgocode/contextus/commit/c6f0165bff49f9e0cf645ed4ea1788fc0bcf9335))
+
+
+### Build System
+
+* deploy labelled PRs to Convex and Vercel previews with Google sign-in ([#232](https://github.com/chrisgocode/contextus/issues/232)) ([7aec747](https://github.com/chrisgocode/contextus/commit/7aec74737df6d275bea7c7ea3f86723dd3b24501))
+
 ## [0.3.2](https://github.com/chrisgocode/contextus/compare/v0.3.1...v0.3.2) (2026-10-10)
 
 
