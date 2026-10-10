@@ -2,22 +2,32 @@ name: Preview
 
 # Deploys a pull request to its own Convex preview backend and a Vercel preview,
 # only while the PR carries the `preview` label: when the label is added, and
-# on every push after that. Google sign-in on the preview goes through
-# production's forwarder (docs/adr/0004-label-gated-previews.md).
+# on every push after that. Removing the label, or closing or merging the PR,
+# deletes both again. Google sign-in on the preview goes through production's
+# forwarder (docs/adr/0004-label-gated-previews.md).
 #
-# `pull_request`, never `pull_request_target`: this job runs the PR's code with
-# deploy secrets, so it must only ever run for branches in this repo.
+# `pull_request`, never `pull_request_target`: the deploy job runs the PR's
+# code with deploy secrets, so it must only ever run for branches in this repo.
 on:
   pull_request:
-    types: [labeled, synchronize, reopened]
+    types: [labeled, synchronize, reopened, unlabeled, closed]
+  # Removes a preview by hand, for a PR whose close didn't run the workflow.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request whose preview to remove
+        type: number
+        required: true
 
 permissions: {}
 
 jobs:
   preview:
-    # Adding any other label to a labelled PR doesn't redeploy, and neither
-    # does labelling a PR that is already merged or closed.
+    # Adding or removing any other label on a labelled PR doesn't redeploy,
+    # and neither does labelling a PR that is already merged or closed.
     if: >-
+      github.event_name == 'pull_request' &&
+      contains(fromJSON('["labeled", "synchronize", "reopened"]'), github.event.action) &&
       github.event.pull_request.state == 'open' &&
       contains(github.event.pull_request.labels.*.name, 'preview') &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -25,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # On the job, not the workflow, so an event the `if` skips (another label)
-    # can't cancel a deploy that is running.
+    # can't cancel a deploy that is running. Shared with the cleanup job.
     concurrency:
       group: preview-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -61,11 +71,14 @@ jobs:
         id: vercel
         run: |
           url=$(bunx vercel@60.1.3 deploy --yes --token "$VERCEL_TOKEN" \
+            --meta pr="$PR_NUMBER" \
             --build-env NEXT_PUBLIC_CONVEX_URL="$CONVEX_URL" \
             --env NEXT_PUBLIC_CONVEX_URL="$CONVEX_URL")
           echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           CONVEX_URL: ${{ steps.convex.outputs.url }}
+          # Tags the deployment, which is how the cleanup job finds it.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
@@ -93,7 +106,7 @@ jobs:
             body="$marker
           Preview of \`${HEAD_SHA:0:7}\`: $VERCEL_URL
 
-          It has its own Convex backend, kept across pushes while the \`preview\` label is on."
+          It has its own Convex backend, kept across pushes. Removing the \`preview\` label, or closing the PR, deletes both."
           else
             body="$marker
           Preview deploy of \`${HEAD_SHA:0:7}\` failed: $RUN_URL"
@@ -111,4 +124,117 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           VERCEL_URL: ${{ steps.vercel.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Deletes the PR's Convex backend and Vercel deployments. Convex allows a
+  # team 40 deployments, so previews left to expire would block new ones.
+  cleanup:
+    # A PR that closes without the label has nothing to remove.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')) ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'preview')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Cancels a deploy still running for this PR, and waits for it to stop.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+    # No checkout and no install: nothing from the PR runs with these secrets.
+    steps:
+      - name: Check the pull request number
+        run: |
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Not a pull request number: $PR_NUMBER"
+            exit 1
+          fi
+
+      # The delete endpoint takes the backend's generated name, so look it up
+      # by preview name first, with the request the Convex CLI makes for
+      # `--preview-name`. A preview deploy key can only delete previews in its
+      # own project.
+      - name: Delete the Convex preview
+        shell: bash
+        run: |
+          key_id=${CONVEX_DEPLOY_KEY%%|*}
+          IFS=: read -r kind team project <<< "$key_id"
+          if [ "$kind" != preview ] || [ -z "$team" ] || [ -z "$project" ]; then
+            echo "::error::CONVEX_PREVIEW_DEPLOY_KEY is not a preview deploy key"
+            exit 1
+          fi
+          # The lookup answers with an admin key, so it is never printed.
+          lookup=$(mktemp)
+          trap 'rm -f "$lookup"' EXIT
+          status=$(jq -n --arg name "pr-$PR_NUMBER" --arg team "$team" --arg project "$project" \
+            '{previewName: $name, projectSelection: {kind: "teamAndProjectSlugs", teamSlug: $team, projectSlug: $project}}' |
+            curl --silent --show-error --max-time 30 --output "$lookup" --write-out '%{http_code}' \
+              --header "Authorization: Bearer $CONVEX_DEPLOY_KEY" --header 'Content-Type: application/json' \
+              --data @- https://api.convex.dev/api/deployment/authorize_preview)
+          if [ "$status" = 404 ]; then
+            echo "No Convex preview named pr-$PR_NUMBER. Nothing to delete."
+            exit 0
+          fi
+          if [ "$status" != 200 ]; then
+            echo "::error::Looking up the Convex preview failed (HTTP $status)"
+            exit 1
+          fi
+          name=$(jq -r --arg reference "preview/pr-$PR_NUMBER" \
+            'select(.deploymentType == "preview" and .reference == $reference) | .deploymentName // empty' "$lookup")
+          if [[ ! "$name" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::The lookup didn't return the preview for pr-$PR_NUMBER. Nothing was deleted."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' \
+            --request POST --header "Authorization: Bearer $CONVEX_DEPLOY_KEY" \
+            "https://api.convex.dev/v1/deployments/$name/delete")
+          if [ "$status" != 200 ] && [ "$status" != 404 ]; then
+            echo "::error::Deleting Convex preview $name failed (HTTP $status)"
+            exit 1
+          fi
+          echo "Deleted Convex preview $name"
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+
+      # Every push made a new Vercel deployment, each tagged with the PR.
+      - name: Remove the Vercel previews
+        if: ${{ !cancelled() }}
+        run: |
+          list=$(bunx vercel@60.1.3 list --yes --token "$VERCEL_TOKEN" \
+            --meta pr="$PR_NUMBER" --limit 100 --format json)
+          mapfile -t urls < <(jq -r '.deployments[].url' <<< "$list")
+          if [ "${#urls[@]}" -eq 0 ]; then
+            echo "No Vercel deployments for PR $PR_NUMBER. Nothing to remove."
+            exit 0
+          fi
+          bunx vercel@60.1.3 remove "${urls[@]}" --yes --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+      # Only edits the comment a deploy left. A PR never deployed gets none.
+      - name: Update the preview comment
+        if: ${{ !cancelled() }}
+        run: |
+          marker='<!-- preview-deployment -->'
+          if [ "$JOB_STATUS" = success ]; then
+            body="$marker
+          Preview removed. Add the \`preview\` label to an open PR to deploy it again, on a new backend."
+          else
+            body="$marker
+          Removing the preview failed: $RUN_URL"
+          fi
+          comment=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty" | head -n 1)
+          if [ -n "$comment" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$body" > /dev/null
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

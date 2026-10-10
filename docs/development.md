@@ -119,7 +119,9 @@ The job runs the PR's code with deploy secrets, so read the diff before labellin
 
 Google sign-in works on a preview, with a separate Google OAuth client. Google can only redirect to a registered URI, so the preview sends it to production's `/api/preview-oauth/callback/google` (`convex/http.ts`), which redirects on to the preview backend named in the signed OAuth `state`. CI signs that state with `scripts/sign-preview-state.mjs`. The preview-side overrides are in `convex/lib/previewGoogle.ts`. See [ADR 0004](adr/0004-label-gated-previews.md).
 
-Previews are real deployments: Contexto scores words, Guests last 30 days, and both the browser and Convex report to PostHog tagged `preview`. Convex deletes a preview backend 5 days after its last deploy; push or re-add the label to get it back. Nothing removes a preview when its PR closes.
+Previews are real deployments: Contexto scores words, Guests last 30 days, and both the browser and Convex report to PostHog tagged `preview`.
+
+Removing the `preview` label, or closing or merging the PR, deletes the Convex backend with its data and every Vercel deployment made for the PR. Adding the label again deploys to a new, empty backend. If a close didn't run the workflow, run **Preview** by hand from the Actions tab with the PR number. Convex also deletes a preview backend 5 days after it is created, even on an open PR; the next push creates a new one.
 
 Configuration, all set once by hand:
 
