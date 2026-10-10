@@ -1,0 +1,111 @@
+name: Preview
+
+# Deploys a pull request to its own Convex preview backend and a Vercel preview,
+# only while the PR carries the `preview` label: when the label is added, and
+# on every push after that. Google sign-in on the preview goes through
+# production's forwarder (docs/adr/0004-label-gated-previews.md).
+#
+# `pull_request`, never `pull_request_target`: this job runs the PR's code with
+# deploy secrets, so it must only ever run for branches in this repo.
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    # Adding any other label to a labelled PR doesn't redeploy.
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # Reused across pushes, so test accounts survive a push.
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+
+      # `--cmd` runs with the deployment's URLs set, which is the only place
+      # the CLI reports them.
+      - name: Deploy Convex preview
+        id: convex
+        run: |
+          bunx convex deploy --preview-name "$PREVIEW_NAME" --typecheck enable \
+            --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL \
+            --cmd 'echo "url=$NEXT_PUBLIC_CONVEX_URL" >> "$GITHUB_OUTPUT"; echo "site_url=$NEXT_PUBLIC_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+
+      # Builds on Vercel, like production. The client inlines the Convex URL at
+      # build time and proxy.ts reads it at runtime, so it is passed as both.
+      # Vercel has no Preview value for it, so a preview can't fall back to the
+      # production backend.
+      - name: Deploy Vercel preview
+        id: vercel
+        run: |
+          url=$(bunx vercel@60.1.3 deploy --yes --token "$VERCEL_TOKEN" \
+            --build-env NEXT_PUBLIC_CONVEX_URL="$CONVEX_URL" \
+            --env NEXT_PUBLIC_CONVEX_URL="$CONVEX_URL")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          CONVEX_URL: ${{ steps.convex.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+      # Where sign-in returns to, and the signed state that names this backend
+      # to production's forwarder. The signing secret stays in CI: the preview
+      # only ever holds its own state.
+      - name: Point the Convex preview at the Vercel preview
+        run: |
+          state=$(bun scripts/sign-preview-state.mjs "$CONVEX_SITE_URL")
+          bunx convex env set --preview-name "$PREVIEW_NAME" SITE_URL "$VERCEL_URL"
+          bunx convex env set --preview-name "$PREVIEW_NAME" PREVIEW_OAUTH_STATE "$state"
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+          PREVIEW_OAUTH_STATE_SECRET: ${{ secrets.PREVIEW_OAUTH_STATE_SECRET }}
+          CONVEX_SITE_URL: ${{ steps.convex.outputs.site_url }}
+          VERCEL_URL: ${{ steps.vercel.outputs.url }}
+
+      # One comment per PR, edited on every run.
+      - name: Comment the preview URL
+        if: ${{ !cancelled() }}
+        run: |
+          marker='<!-- preview-deployment -->'
+          if [ "$JOB_STATUS" = success ]; then
+            body="$marker
+          Preview of \`${HEAD_SHA:0:7}\`: $VERCEL_URL
+
+          It has its own Convex backend, kept across pushes while the \`preview\` label is on."
+          else
+            body="$marker
+          Preview deploy of \`${HEAD_SHA:0:7}\` failed: $RUN_URL"
+          fi
+          comment=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty" | head -n 1)
+          if [ -n "$comment" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$body" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" > /dev/null
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VERCEL_URL: ${{ steps.vercel.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

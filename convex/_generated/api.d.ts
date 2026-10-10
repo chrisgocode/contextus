@@ -36,6 +36,7 @@ import type * as lib_hint from "../lib/hint.js";
 import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_pendingRequests from "../lib/pendingRequests.js";
 import type * as lib_player from "../lib/player.js";
+import type * as lib_previewGoogle from "../lib/previewGoogle.js";
 import type * as lib_previewOAuth from "../lib/previewOAuth.js";
 import type * as lib_rateLimits from "../lib/rateLimits.js";
 import type * as lib_roomMembership from "../lib/roomMembership.js";
@@ -84,6 +85,7 @@ declare const fullApi: ApiFromModules<{
   "lib/localTime": typeof lib_localTime;
   "lib/pendingRequests": typeof lib_pendingRequests;
   "lib/player": typeof lib_player;
+  "lib/previewGoogle": typeof lib_previewGoogle;
   "lib/previewOAuth": typeof lib_previewOAuth;
   "lib/rateLimits": typeof lib_rateLimits;
   "lib/roomMembership": typeof lib_roomMembership;

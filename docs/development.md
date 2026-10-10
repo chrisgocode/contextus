@@ -100,11 +100,40 @@ Repository secrets: `CONVEX_DEPLOY_KEY` (production deploy key), `VERCEL_TOKEN`,
 
 **Convex:** set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and the Convex Auth keys on the production deployment in the Convex dashboard.
 
-**Frontend:** Vercel. `vercel.json` turns off Git deployments for every branch, so the Deploy workflow is the only way anything reaches Vercel. There are no PR preview deployments: a preview skipped by Vercel's Ignored Build Step still counts toward the Hobby plan's 100 deployments a day. Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
+**Frontend:** Vercel. `vercel.json` turns off Git deployments for every branch, so the Deploy workflow is the only way anything reaches Vercel. A preview skipped by Vercel's Ignored Build Step would still count toward the Hobby plan's 100 deployments a day, so PR previews are deployed from Actions too (see below). Set `NEXT_PUBLIC_CONVEX_URL` to the production Convex URL in Vercel's environment variables, for Production only. Each Vercel deployment ID becomes the app version, and open tabs are prompted to refresh when a new one goes live.
 
 **Sentry:** source maps upload during `next build` when a Sentry auth token is available in the build environment.
 
 **PostHog:** set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` in Vercel's environment variables for production and preview. On the production Convex deployment, set `POSTHOG_PROJECT_TOKEN` to the project token and `POSTHOG_ENVIRONMENT` to `production`; `convex deploy` fails without `POSTHOG_PROJECT_TOKEN`, so dev and e2e deployments use the value `disabled`.
+
+### PR previews
+
+Add the `preview` label to a pull request to deploy it. `.github/workflows/preview.yml` runs when the label is added and on every push while it is on, and does nothing for unlabelled PRs, other labels, or PRs from forks. It:
+
+1. Deploys the PR's functions to a Convex preview backend named `pr-<number>`. The backend is reused across pushes, so test accounts survive a push.
+2. Deploys a Vercel preview built against that backend.
+3. Sets `SITE_URL` (the Vercel preview) and `PREVIEW_OAUTH_STATE` on the Convex preview.
+4. Posts the preview URL in one PR comment, which it edits on later runs.
+
+The job runs the PR's code with deploy secrets, so read the diff before labelling.
+
+Google sign-in works on a preview, with a separate Google OAuth client. Google can only redirect to a registered URI, so the preview sends it to production's `/api/preview-oauth/callback/google` (`convex/http.ts`), which redirects on to the preview backend named in the signed OAuth `state`. CI signs that state with `scripts/sign-preview-state.mjs`. The preview-side overrides are in `convex/lib/previewGoogle.ts`. See [ADR 0004](adr/0004-label-gated-previews.md).
+
+Previews are real deployments: Contexto scores words, Guests last 30 days, and both the browser and Convex report to PostHog tagged `preview`. Convex deletes a preview backend 5 days after its last deploy; push or re-add the label to get it back. Nothing removes a preview when its PR closes.
+
+Configuration, all set once by hand:
+
+| Where                                 | Name                                                     | Notes                                                                                |
+| ------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| GitHub secrets                        | `CONVEX_PREVIEW_DEPLOY_KEY`                              | A Convex preview deploy key                                                          |
+| GitHub secrets, production Convex env | `PREVIEW_OAUTH_STATE_SECRET`                             | The same value in both. Never in the preview defaults                                |
+| Convex default env vars (Preview)     | `PREVIEW_OAUTH_CALLBACK_URL`                             | `https://<production>.convex.site/api/preview-oauth/callback/google`                 |
+| Convex default env vars (Preview)     | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`                   | The preview OAuth client, whose only redirect URI is the URL above                   |
+| Convex default env vars (Preview)     | `JWT_PRIVATE_KEY`, `JWKS`                                | A pair generated for previews, not production's                                      |
+| Convex default env vars (Preview)     | `POSTHOG_PROJECT_TOKEN`, `POSTHOG_ENVIRONMENT`           | The project token and `preview`                                                      |
+| Vercel env vars (Preview)             | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `SENTRY_AUTH_TOKEN` | `NEXT_PUBLIC_CONVEX_URL` has no Preview value, so a preview can't reach production's |
+
+`PREVIEW_OAUTH_CALLBACK_URL` and `PREVIEW_OAUTH_STATE` must never be set on the production deployment: real sign-ins would be sent through the forwarder.
 
 ## Contributing
 

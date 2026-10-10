@@ -10,8 +10,27 @@ import {
   GUEST_LIFETIME_MS,
 } from "./lib/guestEngagement";
 import { startGuestMerge } from "./lib/guestMerge";
+import { callbackSignature, previewGoogle } from "./lib/previewGoogle";
 import { enforceRateLimit } from "./lib/rateLimits";
 import { ensureUserHasUsername } from "./lib/usernames";
+
+function googleProvider() {
+  // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
+  if (env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined) {
+    return Google({ issuer: env.E2E_GOOGLE_ISSUER });
+  }
+  // PR previews sign in through production's forwarder. CI sets both.
+  if (
+    env.PREVIEW_OAUTH_CALLBACK_URL !== undefined &&
+    env.PREVIEW_OAUTH_STATE !== undefined
+  ) {
+    return previewGoogle(
+      env.PREVIEW_OAUTH_CALLBACK_URL,
+      env.PREVIEW_OAUTH_STATE,
+    );
+  }
+  return Google;
+}
 
 const {
   auth,
@@ -21,10 +40,7 @@ const {
   isAuthenticated,
 } = convexAuth({
   providers: [
-    // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
-    env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined
-      ? Google({ issuer: env.E2E_GOOGLE_ISSUER })
-      : Google,
+    googleProvider(),
     Anonymous({
       profile: () => ({
         isAnonymous: true,
@@ -61,6 +77,7 @@ type StoreArgs =
       signature: string;
     }
   | { type: "createAccountFromCredentials"; provider: string }
+  | { type: "verifierSignature"; signature: string }
   | { type: "other" }; // Any other call, passed through untouched.
 
 // Convex Auth's own handler. `_handler` is private Convex API, so keep
@@ -96,6 +113,17 @@ export const store = internalMutation({
       args.provider === "anonymous"
     ) {
       await enforceRateLimit(ctx, "createGuest");
+    }
+    // On a preview, save the signature the Google callback will look up.
+    if (
+      args.type === "verifierSignature" &&
+      env.PREVIEW_OAUTH_STATE !== undefined
+    ) {
+      const signature = callbackSignature(
+        args.signature,
+        env.PREVIEW_OAUTH_STATE,
+      );
+      return await convexAuthHandler(ctx, { args: { ...args, signature } });
     }
     if (args.type !== "userOAuth") return await convexAuthHandler(ctx, fnArgs);
 
