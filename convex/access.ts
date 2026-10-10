@@ -2,6 +2,7 @@ import { getAuthSessionId, getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { findMembership, isLiveMember } from "./lib/roomMembership";
 
 export const NOT_AUTHENTICATED_MESSAGE = "Not authenticated";
 export const NOT_MEMBER_MESSAGE = "Not a member of this room";
@@ -95,19 +96,6 @@ async function loadByRoom(
   return { userId, room };
 }
 
-async function findMembership(
-  ctx: DbCtx,
-  roomId: Id<"rooms">,
-  userId: Id<"users">,
-): Promise<Doc<"roomMembers"> | null> {
-  return await ctx.db
-    .query("roomMembers")
-    .withIndex("by_room_user", (q) =>
-      q.eq("roomId", roomId).eq("userId", userId),
-    )
-    .unique();
-}
-
 async function isMember(
   ctx: DbCtx,
   roomId: Id<"rooms">,
@@ -184,17 +172,14 @@ export async function requireHostByRoom(
   return { userId, room };
 }
 
-// Turns and Pending requests need a live Room. An ended Room keeps its
+// Turns and Pending requests need a live member. An ended Room keeps its
 // in_progress Game so playAgain can resume it, and this freezes the Game
-// until then. A membership is live unless marked inactive, since legacy rows
-// have no `active` flag (#172).
+// until then.
 async function requireLive(
   ctx: DbCtx,
   { userId, room }: RoomAccess,
 ): Promise<void> {
-  if (room.status !== "active") throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
-  const membership = await findMembership(ctx, room._id, userId);
-  if (membership?.active === false) {
+  if (!(await isLiveMember(ctx, room, userId))) {
     throw new ConvexError(ROOM_NOT_FOUND_MESSAGE);
   }
 }

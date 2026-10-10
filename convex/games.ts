@@ -3,7 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserId, requireHostByRoom, tryMemberByRoom } from "./access";
-import { upsertRoomActivity } from "./lib/roomActivity";
+import { touchRoomActivity } from "./lib/roomMembership";
 import { track } from "./analytics";
 
 export const start = mutation({
@@ -39,7 +39,7 @@ export const start = mutation({
       startedAt: now,
     });
     await upsertHistory(ctx, userId, contextoGameId);
-    await upsertRoomActivity(ctx, roomId, now);
+    await touchRoomActivity(ctx, roomId, now);
     await track(ctx, userId, {
       name: "game_started",
       properties: {

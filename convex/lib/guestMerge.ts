@@ -15,7 +15,7 @@ import { addDays } from "./localTime";
 import { applyCounterAchievements } from "../achievements";
 import { mergeGuestIdentity, track } from "../analytics";
 
-type MergeCtx = Pick<MutationCtx, "db">;
+type MergeCtx = Pick<MutationCtx, "db" | "runQuery">;
 
 // Rows moved per transaction. Each moved row is patched off the guest's
 // index or deleted, so re-querying the guest index resumes where the last

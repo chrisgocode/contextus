@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { closeRoom, openRoom } from "../lib/roomMembership";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 import { posthog } from "../posthog";
 
@@ -367,38 +368,37 @@ test("listMine returns active rooms for user, newest activity first", async () =
 test("listMine includes active rooms whose membership predates the active flag", async () => {
   const t = setupTest();
   const userId = await seedUser(t);
+  const { code, roomId } = await asUser(t, userId).mutation(
+    api.rooms.create,
+    {},
+  );
+  // No mutation writes a membership without the flag any more.
   await t.run(async (ctx) => {
-    const roomId = await ctx.db.insert("rooms", {
-      code: "LEGACY",
-      hostUserId: userId,
-      status: "active",
-    });
-    await ctx.db.insert("roomMembers", { roomId, userId, joinedAt: 0 });
+    const membership = await ctx.db
+      .query("roomMembers")
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+      .unique();
+    await ctx.db.patch("roomMembers", membership!._id, { active: undefined });
   });
 
   const rooms = await asUser(t, userId).query(api.rooms.listMine, {});
 
-  expect(rooms.map((r) => r.code)).toEqual(["LEGACY"]);
+  expect(rooms.map((r) => r.code)).toEqual([code]);
 });
 
 test("listMine reads a bounded amount for a user with many ended rooms", async () => {
   const t = setupTest({ transactionLimits: { documentsRead: 200 } });
   const userId = await seedUser(t);
-  await t.run(async (ctx) => {
-    for (let i = 0; i < 300; i++) {
-      const roomId = await ctx.db.insert("rooms", {
-        code: `ENDED${i}`,
-        hostUserId: userId,
-        status: "ended",
-      });
-      await ctx.db.insert("roomMembers", {
-        roomId,
-        userId,
-        joinedAt: i,
-        active: false,
-      });
-    }
-  });
+  for (let i = 0; i < 300; i++) {
+    await t.run(async (ctx) => {
+      const roomId = await openRoom(
+        ctx,
+        { code: `ENDED${i}`, hostUserId: userId },
+        i,
+      );
+      await closeRoom(ctx, roomId);
+    });
+  }
   const u = asUser(t, userId);
   const { code } = await u.mutation(api.rooms.create, {});
 

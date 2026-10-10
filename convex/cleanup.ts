@@ -7,10 +7,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { expireGuest } from "./lib/accountLifecycle";
-import { decideRoomCleanup } from "./lib/cleanup";
-import { withdrawAllFor } from "./lib/pendingRequests";
-import { closeRoom } from "./lib/roomLifecycle";
-import { onlineUserIdsForRoom } from "./presence";
+import { depart } from "./lib/roomMembership";
 
 export const GUEST_CLEANUP_ROW_BUDGET = 100;
 
@@ -36,39 +33,13 @@ export const _listActiveRoomIds = internalQuery({
 export const _cleanupRoom = internalMutation({
   args: { roomId: v.id("rooms") },
   handler: async (ctx, { roomId }) => {
-    const room = await ctx.db.get("rooms", roomId);
-    if (room === null || room.status !== "active") return { kind: "noop" };
-    const [members, activity, online] = await Promise.all([
-      ctx.db
-        .query("roomMembers")
-        .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
-        .collect(),
-      ctx.db
-        .query("roomActivity")
-        .withIndex("by_room", (q) => q.eq("roomId", roomId))
-        .unique(),
-      onlineUserIdsForRoom(ctx, roomId),
-    ]);
-    const decision = decideRoomCleanup({
-      room: {
-        hostUserId: room.hostUserId,
-        lastActivityAt: activity?.lastActivityAt ?? 0,
-      },
-      members: members
-        .filter((m) => m.active !== false)
-        .map((m) => ({ userId: m.userId, joinedAt: m.joinedAt })),
-      onlineUserIds: online,
-      now: Date.now(),
-    });
-    if (decision.kind === "migrateHost") {
-      await ctx.db.patch("rooms", roomId, {
-        hostUserId: decision.newHostUserId,
-      });
-      await withdrawAllFor(ctx, { roomId, userId: decision.newHostUserId });
-    } else if (decision.kind === "endRoom") {
-      await closeRoom(ctx, roomId);
-    }
-    return decision;
+    const { hostMoved, roomEnded } = await depart(
+      ctx,
+      roomId,
+      { reason: "idle" },
+      Date.now(),
+    );
+    return { hostMoved, roomEnded };
   },
 });
 
