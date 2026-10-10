@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { barColor, barWidthPct } from "./GuessList";
+import type { RequestKind } from "./PendingRequests";
 
 // The scramble a requested hint shows while it waits, and the reveal that
 // settles it into the word. Shared by the requester's and the Host's rows so
@@ -85,6 +86,78 @@ export function RevealRow({
           {done ? distance + 1 : "?"}
         </span>
       </div>
+    </div>
+  );
+}
+
+// Holds the place of a waiting request's result: shuffling letters for a
+// hint, a hidden answer for a give-up. `label` is read in place of the
+// letters.
+export function WaitingRow({
+  type,
+  request,
+  player,
+  label,
+}: {
+  type: RequestKind;
+  request: { createdAt: number; expiresAt?: number };
+  player: Player;
+  label: string;
+}) {
+  if (type === "giveup") {
+    return (
+      <div className="relative overflow-hidden rounded-md border border-dashed border-destructive/60 bg-neutral-900/60">
+        <div className="flex items-center gap-2 px-3 py-2.5 text-white">
+          <span className="sr-only">{label}</span>
+          <span className="flex flex-1 items-center gap-1" aria-hidden>
+            {Array.from({ length: 7 }, (_, i) => (
+              <span
+                key={i}
+                className="inline-block h-4 w-3 bg-white/25 motion-safe:animate-pulse"
+                style={{ animationDelay: `${i * 120}ms` }}
+              />
+            ))}
+          </span>
+          <TimeLeft request={request} />
+          <PlayerAvatar player={player} />
+          <span className="min-w-[3ch] text-right font-mono text-sm">1</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="relative overflow-hidden rounded-md border border-dashed border-white/30 bg-neutral-900/60">
+      <div className="absolute inset-y-0 w-1/3 bg-linear-to-r from-transparent via-emerald-400/25 to-transparent motion-safe:animate-request-shimmer motion-reduce:hidden" />
+      <div className="relative flex items-center gap-2 px-3 py-2.5 text-white">
+        <span className="flex-1 truncate font-semibold tracking-wide text-white/45">
+          <span className="sr-only">{label}</span>
+          <Scramble />
+        </span>
+        <TimeLeft request={request} />
+        <HintTag />
+        <PlayerAvatar player={player} />
+        <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
+          ?
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// The line above a request's row: what it is, and what can be done about it.
+export function RowLabel({
+  label,
+  action,
+}: {
+  label: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div className="mb-1 flex min-h-6 items-center justify-between gap-2">
+      <p className="truncate text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      {action}
     </div>
   );
 }

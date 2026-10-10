@@ -72,20 +72,23 @@ test("two registered players complete a cooperative game", async ({
     await expect(
       host.page.getByRole("button", { name: "Need help? 1 request waiting" }),
     ).toBeVisible();
-    await openAssist(host.page);
-    await expect(host.page.getByText("wants a hint")).toBeVisible();
-    await host.page.getByRole("button", { name: "Deny" }).click();
+    // The request shows above the Host's guess list, answerable in place.
+    const inline = host.page.getByRole("status", { name: "Requests" });
+    await expect(inline.getByText(/wants a hint$/)).toBeVisible();
+    await inline.getByRole("button", { name: /^Deny/ }).click();
     await expect(partner.page.getByText("Hint declined")).toBeVisible();
-    await host.page.keyboard.press("Escape");
+    await expect(inline.getByText(/wants a hint$/)).toHaveCount(0);
 
     await openAssist(partner.page);
     await expect(
       partner.page.getByRole("button", { name: "Request hint" }),
     ).toBeEnabled();
     await partner.page.getByRole("button", { name: "Request hint" }).click();
+    // The Assist sheet lists it too.
     await openAssist(host.page);
-    await expect(host.page.getByText("wants a hint")).toBeVisible();
-    await host.page.getByRole("button", { name: "Give hint" }).click();
+    const waiting = host.page.getByRole("region", { name: "Waiting requests" });
+    await expect(waiting.getByText("wants a hint")).toBeVisible();
+    await waiting.getByRole("button", { name: "Give hint" }).click();
     await expect(partner.page.getByText("Hint approved")).toBeVisible();
     await expect(
       host.page
@@ -97,11 +100,8 @@ test("two registered players complete a cooperative game", async ({
     await openAssist(partner.page);
     await partner.page.getByRole("button", { name: "Request give up" }).click();
     await openAssist(host.page);
-    await expect(host.page.getByText("wants to give up")).toBeVisible();
-    await host.page
-      .getByRole("region", { name: "Waiting requests" })
-      .getByRole("button", { name: "Give up" })
-      .click();
+    await expect(waiting.getByText("wants to give up")).toBeVisible();
+    await waiting.getByRole("button", { name: "Give up" }).click();
     await expect(
       host.page.getByRole("heading", { name: "Game given up" }),
     ).toBeVisible();

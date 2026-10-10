@@ -6,14 +6,7 @@ import {
   type RequestKind,
   usePendingRequests,
 } from "./PendingRequests";
-import {
-  HintTag,
-  type Player,
-  PlayerAvatar,
-  RevealRow,
-  Scramble,
-  TimeLeft,
-} from "./RequestReveal";
+import { type Player, RevealRow, RowLabel, WaitingRow } from "./RequestReveal";
 
 // A non-Host's hint and give-up requests, shown above the guess list where
 // their result will land: a pending hint as a placeholder row of shuffling
@@ -46,25 +39,12 @@ export function RequestRows({
               label="Answer · if host agrees"
               action={<TakeBack request={giveup} type="giveup" />}
             />
-            <div className="relative overflow-hidden rounded-md border border-dashed border-destructive/60 bg-neutral-900/60">
-              <div className="flex items-center gap-2 px-3 py-2.5 text-white">
-                <span className="sr-only">Give-up requested</span>
-                <span className="flex flex-1 items-center gap-1" aria-hidden>
-                  {Array.from({ length: 7 }, (_, i) => (
-                    <span
-                      key={i}
-                      className="inline-block h-4 w-3 bg-white/25 motion-safe:animate-pulse"
-                      style={{ animationDelay: `${i * 120}ms` }}
-                    />
-                  ))}
-                </span>
-                <TimeLeft request={giveup} />
-                <PlayerAvatar player={host} />
-                <span className="min-w-[3ch] text-right font-mono text-sm">
-                  1
-                </span>
-              </div>
-            </div>
+            <WaitingRow
+              type="giveup"
+              request={giveup}
+              player={host}
+              label="Give-up requested"
+            />
           </section>
         ) : (
           <Outcome
@@ -80,21 +60,12 @@ export function RequestRows({
               label="Incoming hint"
               action={<TakeBack request={hint} type="hint" />}
             />
-            <div className="relative overflow-hidden rounded-md border border-dashed border-white/30 bg-neutral-900/60">
-              <div className="absolute inset-y-0 w-1/3 bg-linear-to-r from-transparent via-emerald-400/25 to-transparent motion-safe:animate-request-shimmer motion-reduce:hidden" />
-              <div className="relative flex items-center gap-2 px-3 py-2.5 text-white">
-                <span className="flex-1 truncate font-semibold tracking-wide text-white/45">
-                  <span className="sr-only">Hint requested</span>
-                  <Scramble />
-                </span>
-                <TimeLeft request={hint} />
-                <HintTag />
-                <PlayerAvatar player={viewer} />
-                <span className="min-w-[3ch] text-right font-mono text-sm text-white/60">
-                  ?
-                </span>
-              </div>
-            </div>
+            <WaitingRow
+              type="hint"
+              request={hint}
+              player={viewer}
+              label="Hint requested"
+            />
           </section>
         ) : hint.status === "approved" && hint.hint !== undefined ? (
           <section>
@@ -115,23 +86,6 @@ export function RequestRows({
             onDismiss={() => dismiss(hint._id)}
           />
         ))}
-    </div>
-  );
-}
-
-function RowLabel({
-  label,
-  action,
-}: {
-  label: string;
-  action: React.ReactNode;
-}) {
-  return (
-    <div className="mb-1 flex items-center justify-between gap-2">
-      <p className="truncate text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      {action}
     </div>
   );
 }
