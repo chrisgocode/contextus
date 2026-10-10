@@ -2,7 +2,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { startGuestMerge } from "../lib/guestMerge";
-import { IDLE_TIMEOUT_MS } from "../lib/roomMembership";
+import {
+  IDLE_TIMEOUT_MS,
+  admit,
+  closeRoom,
+  openRoom,
+} from "../lib/roomMembership";
 import {
   asUser,
   finishScheduledFunctions,
@@ -250,6 +255,82 @@ test("a Guest who is not the Host expires without moving the Host", async () => 
   const room = await asUser(t, host).query(api.rooms.getByCode, { code });
   expect(room?.room).toMatchObject({ _id: roomId, hostUserId: host });
   expect(room?.members.map((m) => m.userId)).toEqual([host]);
+});
+
+test("an expired Guest's pending request is withdrawn and a handled one is kept", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true, guestExpiresAt: 1 });
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, guest).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, guest).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  const [denied] = await asUser(t, host).query(api.requests.listPending, {
+    gameId,
+  });
+  await asUser(t, host).mutation(api.requests.deny, {
+    requestId: denied._id,
+  });
+  await asUser(t, guest).mutation(api.requests.create, {
+    gameId,
+    type: "giveup",
+  });
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+
+  const requests = await t.run((ctx) =>
+    ctx.db.query("pendingRequests").collect(),
+  );
+  expect(requests).toEqual([
+    expect.objectContaining({
+      requesterUserId: guest,
+      type: "hint",
+      status: "denied",
+    }),
+  ]);
+});
+
+test("expiring a Guest who hosted many ended Rooms counts the members it reads", async () => {
+  const t = setupTest({ transactionLimits: { documentsRead: 200 } });
+  const guest = await seedUser(t, { isAnonymous: true, guestExpiresAt: 1 });
+  const members = await Promise.all(
+    Array.from({ length: 20 }, () => seedUser(t)),
+  );
+  for (let i = 0; i < 12; i++) {
+    await t.run(async (ctx) => {
+      const roomId = await openRoom(
+        ctx,
+        { code: `ENDED${i}`, hostUserId: guest },
+        i,
+      );
+      for (const member of members) await admit(ctx, roomId, member, i);
+      await closeRoom(ctx, roomId);
+    });
+  }
+
+  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+  await finishScheduledFunctions(t);
+
+  const result = await t.run(async (ctx) => ({
+    user: await ctx.db.get("users", guest),
+    memberships: await ctx.db
+      .query("roomMembers")
+      .withIndex("by_user", (q) => q.eq("userId", guest))
+      .collect(),
+    hosted: await ctx.db
+      .query("rooms")
+      .withIndex("by_host_user", (q) => q.eq("hostUserId", guest))
+      .collect(),
+  }));
+  expect(result.user).toMatchObject({ name: "Former Guest" });
+  expect(result.memberships).toEqual([]);
+  expect(result.hosted).toEqual([]);
 });
 
 test("an ended Room's Host moves to a remaining member when the Host leaves", async () => {

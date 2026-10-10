@@ -173,6 +173,9 @@ export type DepartureOutcome = {
   hostMoved: boolean;
   // An active Room ended.
   roomEnded: boolean;
+  // Memberships read to pick a successor, for callers that batch departures
+  // within transaction limits. Zero when the Host did not need replacing.
+  membersScanned: number;
 };
 
 export async function depart(
@@ -183,8 +186,15 @@ export async function depart(
 ): Promise<DepartureOutcome> {
   const wasMember = await vacate(ctx, roomId, departure);
   const room = await ctx.db.get("rooms", roomId);
-  if (room === null) return { wasMember, hostMoved: false, roomEnded: false };
-  const settled = await settleHost(ctx, room, departure, now);
+  if (room === null) {
+    return { wasMember, hostMoved: false, roomEnded: false, membersScanned: 0 };
+  }
+  const { settled, membersScanned } = await settleHost(
+    ctx,
+    room,
+    departure,
+    now,
+  );
   const wasActive = room.status === "active";
   const stillActive = wasActive && settled !== "ended";
   // Only a member acting in the Room counts as activity.
@@ -195,6 +205,7 @@ export async function depart(
     wasMember,
     hostMoved: stillActive && settled === "moved",
     roomEnded: wasActive && !stillActive,
+    membersScanned,
   };
 }
 
@@ -240,28 +251,35 @@ async function settleHost(
   room: Doc<"rooms">,
   departure: Departure,
   now: number,
-): Promise<"kept" | "moved" | "ended"> {
+): Promise<{ settled: "kept" | "moved" | "ended"; membersScanned: number }> {
   const active = room.status === "active";
   const idle = departure.reason === "idle";
-  if (idle ? !active : room.hostUserId !== departure.userId) return "kept";
+  if (idle ? !active : room.hostUserId !== departure.userId) {
+    return { settled: "kept", membersScanned: 0 };
+  }
 
   let hostUserId = room.hostUserId;
   if (departure.reason === "merged") {
     hostUserId = departure.into;
     await seatHost(ctx, room._id, hostUserId);
   }
+  // An ended Room has no live members, so its Host is whoever stayed longest.
+  const canHost = (m: Doc<"roomMembers">) => !active || m.active !== false;
+  const hostMembership = await findMembership(ctx, room._id, hostUserId);
+  const seated = hostMembership !== null && canHost(hostMembership);
+  if (seated && !idle) {
+    const moved = hostUserId !== room.hostUserId;
+    return { settled: moved ? "moved" : "kept", membersScanned: 0 };
+  }
+
   const memberships = await ctx.db
     .query("roomMembers")
     .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
     .collect();
-  // An ended Room has no live members, so its Host is whoever stayed longest.
-  const candidates = (
-    active ? memberships.filter((m) => m.active !== false) : memberships
-  ).sort((a, b) => a.joinedAt - b.joinedAt);
-  const seated = candidates.some((m) => m.userId === hostUserId);
-  const moved = hostUserId !== room.hostUserId;
-  if (seated && !idle) return moved ? "moved" : "kept";
-
+  const membersScanned = memberships.length;
+  const candidates = memberships
+    .filter(canHost)
+    .sort((a, b) => a.joinedAt - b.joinedAt);
   const online = active
     ? await onlineUserIds(ctx, room._id)
     : new Set<Id<"users">>();
@@ -273,20 +291,20 @@ async function settleHost(
       .unique();
     if (now - (activity?.lastActivityAt ?? 0) > IDLE_TIMEOUT_MS) {
       await closeRoom(ctx, room._id);
-      return "ended";
+      return { settled: "ended", membersScanned };
     }
   }
   if (seated && (online.has(hostUserId) || onlineCandidates.length === 0)) {
-    return "kept";
+    return { settled: "kept", membersScanned };
   }
 
   const successor = onlineCandidates[0] ?? candidates[0];
   if (successor === undefined) {
     if (active) await closeRoom(ctx, room._id);
-    return active ? "ended" : "kept";
+    return { settled: active ? "ended" : "kept", membersScanned };
   }
   await seatHost(ctx, room._id, successor.userId);
-  return "moved";
+  return { settled: "moved", membersScanned };
 }
 
 // A Host answers Pending requests instead of asking, so the new Host's own

@@ -221,6 +221,7 @@ export const USER_KEYED_TABLES = [
         .query("roomMembers")
         .withIndex("by_user", (q) => q.eq("userId", userId)),
     remove: removeMembership,
+    expireRemove: expireMembership,
     merge: { phase: "memberships", row: mergeRoomMembership },
     expire: "delete",
     purge: "delete",
@@ -457,12 +458,23 @@ async function deleteAuthSessionBatch(
 // An expired Guest leaves each Room the way any member does, so a Room they
 // hosted gets a new Host or ends right away. E2E purge takes the same path.
 async function removeMembership(ctx: LifecycleCtx, row: Doc<"roomMembers">) {
-  await depart(
+  await expireMembership(ctx, row, 1);
+}
+
+// Replacing the Host reads every membership of the Room, so those count
+// against the cleanup budget too. A Guest can have hosted many ended Rooms.
+async function expireMembership(
+  ctx: LifecycleCtx,
+  row: Doc<"roomMembers">,
+  limit: number,
+) {
+  const { membersScanned } = await depart(
     ctx,
     row.roomId,
     { reason: "expired", userId: row.userId },
     Date.now(),
   );
+  return Math.min(limit, 1 + membersScanned);
 }
 
 async function deleteRoom(ctx: LifecycleCtx, room: Doc<"rooms">) {
