@@ -102,6 +102,7 @@ const seeds: Record<
       type: "hint",
       status: "pending",
       createdAt: 1,
+      expiresAt: 2,
     }),
   "userGameHistory.userId": (ctx, userId, { gameId }) =>
     ctx.db.insert("userGameHistory", {

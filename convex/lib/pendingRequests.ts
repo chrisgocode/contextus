@@ -18,11 +18,10 @@ export const REQUEST_TTL_MS = 60_000;
 // finishes still lets the request expire.
 export const APPROVAL_GRACE_MS = 30_000;
 
-// Requests made before requests expired have no expiresAt and no scheduled
-// expiry, so they count as due a minute after they were made.
-// _migrateLegacyRequests backfills them; drop the fallback once it has run.
+// Rows from before requests expired have no expiresAt. Every one of them was
+// handled or went overdue long ago, so a missing deadline is one already past.
 export function deadlineOf(req: Doc<"pendingRequests">) {
-  return req.expiresAt ?? req.createdAt + REQUEST_TTL_MS;
+  return req.expiresAt ?? 0;
 }
 
 // Whether a pending request still holds its type.
@@ -55,8 +54,8 @@ export function pendingOfType(
     );
 }
 
-// The pending request holding this type. Requests made before the limit can
-// leave overdue rows ahead of it, so skip past those.
+// The pending request holding this type. An overdue request stays pending
+// until its expiry runs, so skip past those.
 export async function livePendingOfType(
   ctx: QueryCtx,
   gameId: Id<"games">,

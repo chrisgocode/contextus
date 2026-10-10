@@ -280,6 +280,17 @@ async function createRequest(
   return req!._id;
 }
 
+// Seeded sessions last a minute; keep everyone signed in past that.
+async function extendSessions(t: ReturnType<typeof setupTest>) {
+  await t.run(async (ctx) => {
+    for (const session of await ctx.db.query("authSessions").collect()) {
+      await ctx.db.patch("authSessions", session._id, {
+        expirationTime: Date.now() + 10 * 60_000,
+      });
+    }
+  });
+}
+
 async function snapshot(t: ReturnType<typeof setupTest>, gameId: Id<"games">) {
   return await t.run(async (ctx) => ({
     game: await ctx.db.get("games", gameId),
@@ -582,6 +593,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
       type: "hint",
       status: "pending",
       createdAt,
+      expiresAt: createdAt + 60_000,
     });
     await ctx.db.insert("pendingRequests", {
       roomId,
@@ -600,6 +612,7 @@ test("latestMine prefers a Pending request over a newer handled one", async () =
     _id: pendingId,
     status: "pending",
     createdAt,
+    expiresAt: createdAt + 60_000,
   });
 });
 
@@ -808,127 +821,100 @@ test("leaving the Room withdraws the member's pending requests", async () => {
 });
 
 test("an overdue request doesn't block a new one", async () => {
-  const t = setupTest();
-  const { other, roomId, gameId } = await startedGame(t);
-  const third = await seedUser(t, { name: "Third" });
-  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
-  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
-  // Made before requests expired: no expiresAt and no scheduled expiry.
-  const staleId = await t.run(async (ctx) =>
-    ctx.db.insert("pendingRequests", {
-      roomId,
-      gameId,
-      requesterUserId: other,
-      type: "hint",
-      status: "pending",
-      createdAt: Date.now() - 2 * 60_000,
-    }),
-  );
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { other, roomId, gameId } = await startedGame(t);
+    const third = await seedUser(t, { name: "Third" });
+    const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
+    await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
+    await extendSessions(t);
+    const staleId = await createRequest(t, other, gameId, "hint");
 
-  expect(
-    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
-  ).toEqual({ hint: null, giveup: null });
-  await asUser(t, third).mutation(api.requests.create, {
-    gameId,
-    type: "hint",
-  });
-  const stale = await t.run(async (ctx) =>
-    ctx.db.get("pendingRequests", staleId),
-  );
-  expect(stale?.status).toBe("expired");
+    // Moves the clock without running the scheduled expiry.
+    vi.setSystemTime(Date.now() + 60_000);
+
+    expect(
+      await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
+    ).toEqual({ hint: null, giveup: null });
+    await asUser(t, third).mutation(api.requests.create, {
+      gameId,
+      type: "hint",
+    });
+    const stale = await t.run(async (ctx) =>
+      ctx.db.get("pendingRequests", staleId),
+    );
+    expect(stale?.status).toBe("expired");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("approve rejects a request that is past its deadline", async () => {
-  const t = setupTest();
-  const oracle = fakeWordOracle({});
-  const { host, other, roomId, gameId } = await startedGame(t);
-  // Made before requests expired, so nothing is scheduled to expire it.
-  const staleId = await t.run(async (ctx) =>
-    ctx.db.insert("pendingRequests", {
-      roomId,
-      gameId,
-      requesterUserId: other,
-      type: "hint",
-      status: "pending",
-      createdAt: Date.now() - 2 * 60_000,
-    }),
-  );
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const oracle = fakeWordOracle({});
+    const { host, other, gameId } = await startedGame(t);
+    await extendSessions(t);
+    const staleId = await createRequest(t, other, gameId, "hint");
 
-  await expect(
-    asUser(t, host).action(api.requests.approve, { requestId: staleId }),
-  ).rejects.toThrow("Request not found or already handled");
+    // Moves the clock without running the scheduled expiry.
+    vi.setSystemTime(Date.now() + 60_000);
 
-  expect(oracle.tip).not.toHaveBeenCalled();
-  const stale = await t.run(async (ctx) =>
-    ctx.db.get("pendingRequests", staleId),
-  );
-  expect(stale?.status).toBe("expired");
-});
+    await expect(
+      asUser(t, host).action(api.requests.approve, { requestId: staleId }),
+    ).rejects.toThrow("Request not found or already handled");
 
-test("create still sees a live request behind an overdue one", async () => {
-  const t = setupTest();
-  const { host, other, roomId, gameId } = await startedGame(t);
-  const third = await seedUser(t, { name: "Third" });
-  const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
-  await asUser(t, third).mutation(api.rooms.join, { code: room!.code });
-  // Before the limit, two members could each have a hint request pending.
-  await t.run(async (ctx) => {
-    await ctx.db.insert("pendingRequests", {
-      roomId,
-      gameId,
-      requesterUserId: other,
-      type: "hint",
-      status: "pending",
-      createdAt: Date.now() - 2 * 60_000,
-    });
-    await ctx.db.insert("pendingRequests", {
-      roomId,
-      gameId,
-      requesterUserId: host,
-      type: "hint",
-      status: "pending",
-      createdAt: Date.now() - 10_000,
-    });
-  });
-
-  expect(
-    await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
-  ).toEqual({ hint: { name: "Host" }, giveup: null });
-  await expect(
-    asUser(t, third).mutation(api.requests.create, { gameId, type: "hint" }),
-  ).rejects.toThrow("Another hint request is already pending");
+    expect(oracle.tip).not.toHaveBeenCalled();
+    const stale = await t.run(async (ctx) =>
+      ctx.db.get("pendingRequests", staleId),
+    );
+    expect(stale?.status).toBe("expired");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("latestMine reports an overdue request as expired", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { other, gameId } = await startedGame(t);
+    await extendSessions(t);
+    const staleId = await createRequest(t, other, gameId, "hint");
+
+    // Moves the clock without running the scheduled expiry.
+    vi.setSystemTime(Date.now() + 60_000);
+
+    const latest = await asUser(t, other).query(api.requests.latestMine, {
+      gameId,
+    });
+    expect(latest.hint).toMatchObject({ _id: staleId, status: "expired" });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a request with no deadline counts as overdue", async () => {
   const t = setupTest();
-  const { other, roomId, gameId } = await startedGame(t);
-  const staleId = await t.run(async (ctx) =>
+  const { host, other, roomId, gameId } = await startedGame(t);
+  // Only rows from before requests expired look like this.
+  await t.run(async (ctx) =>
     ctx.db.insert("pendingRequests", {
       roomId,
       gameId,
       requesterUserId: other,
       type: "hint",
       status: "pending",
-      createdAt: Date.now() - 2 * 60_000,
+      createdAt: Date.now(),
     }),
   );
 
-  const latest = await asUser(t, other).query(api.requests.latestMine, {
-    gameId,
-  });
-  expect(latest.hint).toMatchObject({ _id: staleId, status: "expired" });
+  expect(
+    await asUser(t, host).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
 });
-
-// Seeded sessions last a minute; keep everyone signed in past that.
-async function extendSessions(t: ReturnType<typeof setupTest>) {
-  await t.run(async (ctx) => {
-    for (const session of await ctx.db.query("authSessions").collect()) {
-      await ctx.db.patch("authSessions", session._id, {
-        expirationTime: Date.now() + 10 * 60_000,
-      });
-    }
-  });
-}
 
 test("listPending hides a request past its deadline before its expiry runs", async () => {
   vi.useFakeTimers();
@@ -997,45 +983,4 @@ test("a member who becomes Host has their pending requests withdrawn", async () 
   await expect(
     asUser(t, other).action(api.requests.approve, { requestId }),
   ).rejects.toThrow("Request not found or already handled");
-});
-
-test("the legacy request migration expires overdue rows and gives the rest a deadline", async () => {
-  vi.useFakeTimers();
-  try {
-    const t = setupTest();
-    const { other, roomId, gameId } = await startedGame(t);
-    const now = Date.now();
-    // Made before requests expired: no expiresAt and no scheduled expiry.
-    const legacy = (type: "hint" | "giveup", createdAt: number) =>
-      t.run(async (ctx) =>
-        ctx.db.insert("pendingRequests", {
-          roomId,
-          gameId,
-          requesterUserId: other,
-          type,
-          status: "pending",
-          createdAt,
-        }),
-      );
-    const overdueId = await legacy("hint", now - 2 * 60_000);
-    const freshId = await legacy("giveup", now - 10_000);
-
-    await t.mutation(internal.requests._migrateLegacyRequests, {
-      cursor: null,
-    });
-
-    const read = (id: Id<"pendingRequests">) =>
-      t.run(async (ctx) => ctx.db.get("pendingRequests", id));
-    expect(await read(overdueId)).toMatchObject({ status: "expired" });
-    expect(await read(freshId)).toMatchObject({
-      status: "pending",
-      expiresAt: now + 50_000,
-    });
-
-    vi.advanceTimersByTime(50_000);
-    await t.finishInProgressScheduledFunctions();
-    expect(await read(freshId)).toMatchObject({ status: "expired" });
-  } finally {
-    vi.useRealTimers();
-  }
 });
