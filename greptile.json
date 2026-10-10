@@ -1,0 +1,4 @@
+{
+  "disabledLabels": ["autorelease:*"],
+  "ignoreKeywords": "chore(main): release"
+}
