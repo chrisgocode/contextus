@@ -15,8 +15,10 @@ permissions: {}
 
 jobs:
   preview:
-    # Adding any other label to a labelled PR doesn't redeploy.
+    # Adding any other label to a labelled PR doesn't redeploy, and neither
+    # does labelling a PR that is already merged or closed.
     if: >-
+      github.event.pull_request.state == 'open' &&
       contains(github.event.pull_request.labels.*.name, 'preview') &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event.action != 'labeled' || github.event.label.name == 'preview')

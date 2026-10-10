@@ -108,7 +108,7 @@ Repository secrets: `CONVEX_DEPLOY_KEY` (production deploy key), `VERCEL_TOKEN`,
 
 ### PR previews
 
-Add the `preview` label to a pull request to deploy it. `.github/workflows/preview.yml` runs when the label is added and on every push while it is on, and does nothing for unlabelled PRs, other labels, or PRs from forks. It:
+Add the `preview` label to a pull request to deploy it. `.github/workflows/preview.yml` runs when the label is added and on every push while it is on, and does nothing for unlabelled PRs, other labels, closed or merged PRs, or PRs from forks. It:
 
 1. Deploys the PR's functions to a Convex preview backend named `pr-<number>`. The backend is reused across pushes, so test accounts survive a push.
 2. Deploys a Vercel preview built against that backend.
