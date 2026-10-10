@@ -1,9 +1,14 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 reviews:
+  # Don't post a "Review skipped" comment on PRs that aren't opted in.
+  review_status: false
   auto_review:
     base_branches:
       - ".*"
     # Only review PRs carrying this label. Add it to opt a PR in.
     labels:
       - "coderabbit-review"
+    # Never review release-please's release PRs, labelled or not.
+    ignore_title_keywords:
+      - "chore(main): release"
