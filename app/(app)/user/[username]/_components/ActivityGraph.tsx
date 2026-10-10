@@ -1,6 +1,7 @@
 "use client";
 
 import { eachDayOfInterval, endOfYear, formatISO, startOfYear } from "date-fns";
+import { useState } from "react";
 import {
   type Activity,
   ContributionGraph,
@@ -22,7 +23,7 @@ import { cn } from "@/lib/utils";
 const maxLevel = 4;
 
 export function ActivityGraph({ days }: { days: Activity[] }) {
-  const now = new Date();
+  const [now] = useState(() => new Date());
   const activityByDate = new Map(days.map((day) => [day.date, day]));
   const graphDays = eachDayOfInterval({
     start: startOfYear(now),

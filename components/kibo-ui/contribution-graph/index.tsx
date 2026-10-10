@@ -258,10 +258,11 @@ export const ContributionGraph = ({
   const labels = { ...DEFAULT_LABELS, ...labelsProp };
   const labelHeight = fontSize + LABEL_MARGIN;
 
-  const year =
-    data.length > 0
-      ? getYear(parseISO(data[0].date))
-      : new Date().getFullYear();
+  if (data.length === 0) {
+    return null;
+  }
+
+  const year = getYear(parseISO(data[0].date));
 
   const totalCount =
     typeof totalCountProp === "number"
@@ -270,10 +271,6 @@ export const ContributionGraph = ({
 
   const width = weeks.length * (blockSize + blockMargin) - blockMargin;
   const height = labelHeight + (blockSize + blockMargin) * 7 - blockMargin;
-
-  if (data.length === 0) {
-    return null;
-  }
 
   return (
     <ContributionGraphContext.Provider
