@@ -283,45 +283,6 @@ export const _startApproval = internalMutation({
   },
 });
 
-// One-off: requests made before requests expired have no expiresAt and
-// nothing scheduled to expire them. Expires the overdue ones and gives the
-// rest a deadline and an expiry, a page at a time. Once it has run in prod,
-// deadlineOf can drop its createdAt fallback.
-export const _migrateLegacyRequests = internalMutation({
-  args: { cursor: v.union(v.string(), v.null()) },
-  handler: async (ctx, { cursor }) => {
-    const page = await ctx.db
-      .query("pendingRequests")
-      .paginate({ cursor, numItems: 100 });
-    const now = Date.now();
-    for (const req of page.page) {
-      if (req.status !== "pending" || req.expiresAt !== undefined) continue;
-      if (!isLive(req, now)) {
-        await markExpired(ctx, req);
-        continue;
-      }
-      await ctx.db.patch("pendingRequests", req._id, {
-        expiresAt: deadlineOf(req),
-      });
-      await ctx.scheduler.runAfter(
-        liveUntil(req) - now,
-        internal.requests._expire,
-        { requestId: req._id },
-      );
-    }
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.requests._migrateLegacyRequests,
-        {
-          cursor: page.continueCursor,
-        },
-      );
-    }
-    return null;
-  },
-});
-
 export const _read = internalQuery({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {

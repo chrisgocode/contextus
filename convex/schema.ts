@@ -207,7 +207,7 @@ export default defineSchema({
       v.literal("expired"),
     ),
     createdAt: v.number(),
-    // Optional only for requests made before requests expired.
+    // Optional only for requests handled before requests expired.
     expiresAt: v.optional(v.number()),
     // When the Host last started approving it. Expiry waits for that.
     approvalStartedAt: v.optional(v.number()),
