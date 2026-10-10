@@ -35,10 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # On the job, not the workflow, so an event the `if` skips (another label)
-    # can't cancel a deploy that is running. Shared with the cleanup job.
+    # can't cancel a deploy that is running. Shared with the cleanup job: a
+    # push cancels the deploy it makes stale, but a deploy from re-adding the
+    # label or reopening waits for a cleanup that is still running.
     concurrency:
       group: preview-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event.action == 'synchronize' }}
     permissions:
       contents: read
       pull-requests: write
