@@ -10,6 +10,7 @@ import {
   useCreateRoom,
   useRoomEntry,
 } from "@/app/(app)/r/[code]/_components/room-entry";
+import { appError } from "@/convex/lib/errors";
 import { captureException } from "@/lib/sentry-client";
 import { act, renderHook, waitFor } from "./test-utils";
 
@@ -166,7 +167,7 @@ describe("useRoomEntry", () => {
   });
 
   it("is at the Guest limit when joining hits it", async () => {
-    mocks.join.mockRejectedValue({ data: "Guest room limit reached" });
+    mocks.join.mockRejectedValue(appError("guestRoomLimit"));
     queries.getByCode = () => ({ ...room, viewerUserId: "other" });
     const { result } = renderEntry();
 
@@ -401,7 +402,7 @@ describe("useCreateRoom", () => {
   });
 
   it("is at the Guest limit when creating hits it", async () => {
-    mocks.create.mockRejectedValue({ data: "Guest room limit reached" });
+    mocks.create.mockRejectedValue(appError("guestRoomLimit"));
     const { result } = renderCreate();
 
     expect(await result.current()).toEqual({ kind: "guestLimit" });
@@ -409,9 +410,7 @@ describe("useCreateRoom", () => {
   });
 
   it("tells a user who creates rooms too fast to wait", async () => {
-    mocks.create.mockRejectedValue({
-      data: "Too many requests. Wait a moment and try again.",
-    });
+    mocks.create.mockRejectedValue(appError("rateLimited"));
     const { result } = renderCreate();
 
     expect(await result.current()).toEqual({

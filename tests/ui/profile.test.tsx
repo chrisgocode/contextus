@@ -1,5 +1,6 @@
 import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { appError } from "@/convex/lib/errors";
 import { ProfileClient } from "@/app/(app)/user/[username]/_components/ProfileClient";
 import UserProfilePage from "@/app/(app)/user/[username]/page";
 import { render, screen, userEvent, waitFor } from "./test-utils";
@@ -159,9 +160,7 @@ describe("ProfileClient", () => {
   });
 
   it("shows a username conflict inline", async () => {
-    mocks.updateProfile.mockRejectedValue({
-      data: "Username is already taken.",
-    });
+    mocks.updateProfile.mockRejectedValue(appError("usernameTaken"));
     const user = userEvent.setup();
     render(<ProfileClient username="alex" />);
     await user.click(screen.getByRole("button", { name: "Edit Profile" }));

@@ -109,9 +109,7 @@ describe.each(endpoints)("$name", ({ malformed, call }) => {
       stubFetch(respond);
       const error = await call(t, game).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ConvexError);
-      expect((error as ConvexError<string>).data).toBe(
-        "Contexto is unavailable, please try again",
-      );
+      expect(error).toMatchObject({ data: { code: "contextoUnavailable" } });
     },
   );
 
@@ -121,9 +119,9 @@ describe.each(endpoints)("$name", ({ malformed, call }) => {
       const t = setupTest();
       const game = await startedGame(t);
       stubFetch(json(body));
-      await expect(call(t, game)).rejects.toThrow(
-        "Contexto returned an unexpected response",
-      );
+      await expect(call(t, game)).rejects.toMatchObject({
+        data: { code: "contextoUnexpectedPayload" },
+      });
     },
   );
 });
@@ -178,9 +176,7 @@ test.each(
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await result;
     expect(error).toBeInstanceOf(ConvexError);
-    expect((error as ConvexError<string>).data).toBe(
-      "Contexto is unavailable, please try again",
-    );
+    expect(error).toMatchObject({ data: { code: "contextoUnavailable" } });
   } finally {
     vi.useRealTimers();
   }
@@ -194,7 +190,7 @@ test("give-up with a malformed answer payload leaves the Game in_progress", asyn
     asUser(t, game.host).action(api.giveup.hostGiveup, {
       gameId: game.gameId,
     }),
-  ).rejects.toThrow("Contexto returned an unexpected response");
+  ).rejects.toMatchObject({ data: { code: "contextoUnexpectedPayload" } });
   const row = await t.run(async (ctx) => ctx.db.get("games", game.gameId));
   expect(row?.status).toBe("in_progress");
   expect(row?.answerLemma).toBeUndefined();

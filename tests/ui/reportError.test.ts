@@ -1,5 +1,7 @@
+import { ConvexError, type Value } from "convex/values";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { appError } from "../../convex/lib/errors";
 import type { ErrorContext } from "../../lib/client-errors";
 import { reportClientError, runMutation } from "../../lib/report-error";
 import { captureException } from "../../lib/sentry-client";
@@ -42,168 +44,152 @@ describe("reportClientError", () => {
 
   // Every expected server error, by the context that expects it. Server
   // errors not listed for a context are reported to Sentry.
-  it.each<[ErrorContext, string, string | null]>([
-    [
-      "guess.submit",
-      "Game is no longer in progress",
-      "This game has already ended.",
-    ],
-    ["guess.submit", "Word is too long", "That word is too long."],
-    ["guess.submit", "Not authenticated", null],
-    [
-      "host.hint",
-      "Game is no longer in progress",
-      "This game has already ended.",
-    ],
-    [
-      "host.hint",
-      "Hint lemma already guessed",
-      "That hint was already guessed.",
-    ],
-    [
-      "host.hint",
-      "Could not find an unguessed hint",
-      "No unguessed hints remain.",
-    ],
-    ["host.hint", "Host only", null],
-    ["host.hint", "Contexto is unavailable, please try again", null],
-    ["host.hint", "Contexto returned an unexpected response", null],
-    [
-      "host.giveup",
-      "Game is no longer in progress",
-      "This game has already ended.",
-    ],
-    ["host.giveup", "Could not find an unguessed hint", null],
+  it.each<[ErrorContext, ConvexError<Value>, string | null]>([
+    ["guess.submit", appError("gameEnded"), "This game has already ended."],
+    ["guess.submit", appError("wordTooLong"), "That word is too long."],
+    ["guess.submit", appError("notAuthenticated"), null],
+    ["host.hint", appError("gameEnded"), "This game has already ended."],
+    ["host.hint", appError("hintDuplicate"), "That hint was already guessed."],
+    ["host.hint", appError("hintExhausted"), "No unguessed hints remain."],
+    ["host.hint", appError("hostOnly"), null],
+    ["host.hint", appError("contextoUnavailable"), null],
+    ["host.hint", appError("contextoUnexpectedPayload"), null],
+    ["host.giveup", appError("gameEnded"), "This game has already ended."],
+    ["host.giveup", appError("hintExhausted"), null],
+    ["request.hint", appError("gameEnded"), "This game has already ended."],
     [
       "request.hint",
-      "Game is no longer in progress",
-      "This game has already ended.",
-    ],
-    [
-      "request.hint",
-      "hint request already pending",
+      appError("requestAlreadyPending", "hint request already pending"),
       "Hint request already pending.",
     ],
     [
       "request.hint",
-      "Another hint request is already pending",
+      appError(
+        "requestPendingByOther",
+        "Another hint request is already pending",
+      ),
       "Someone already asked for a hint.",
     ],
-    ["request.hint", "Another giveup request is already pending", null],
+    ["request.hint", appError("requestNotFound"), null],
+    ["request.giveup", appError("gameEnded"), "This game has already ended."],
     [
       "request.giveup",
-      "Game is no longer in progress",
-      "This game has already ended.",
-    ],
-    [
-      "request.giveup",
-      "giveup request already pending",
+      appError("requestAlreadyPending", "giveup request already pending"),
       "Give-up request already pending.",
     ],
     [
       "request.giveup",
-      "Another giveup request is already pending",
+      appError(
+        "requestPendingByOther",
+        "Another giveup request is already pending",
+      ),
       "Someone already asked to give up.",
     ],
     [
       "request.approve.hint",
-      "Game is no longer in progress",
+      appError("gameEnded"),
       "This game has already ended.",
     ],
     [
       "request.approve.hint",
-      "Hint lemma already guessed",
+      appError("hintDuplicate"),
       "That hint was already guessed.",
     ],
     [
       "request.approve.hint",
-      "Could not find an unguessed hint",
+      appError("hintExhausted"),
       "No unguessed hints remain.",
     ],
     [
       "request.approve.hint",
-      "Request not found or already handled",
+      appError("requestHandled"),
       "This request was already handled.",
     ],
     [
       "request.approve.giveup",
-      "Request not found or already handled",
+      appError("requestHandled"),
       "This request was already handled.",
     ],
-    ["request.approve.giveup", "Hint lemma already guessed", null],
+    ["request.approve.giveup", appError("hintDuplicate"), null],
     [
       "request.cancel.hint",
-      "Request not found or already handled",
+      appError("requestHandled"),
       "The host already answered this request.",
     ],
     [
       "request.cancel.giveup",
-      "Request not found or already handled",
+      appError("requestHandled"),
       "The host already answered this request.",
     ],
-    ["request.cancel.hint", "Game is no longer in progress", null],
+    ["request.cancel.hint", appError("gameEnded"), null],
     [
       "request.deny.hint",
-      "Request not found",
+      appError("requestNotFound"),
       "This request is no longer available.",
     ],
     [
       "request.deny.giveup",
-      "Request not found",
+      appError("requestNotFound"),
       "This request is no longer available.",
     ],
-    ["request.deny.hint", "Request not found or already handled", null],
-    ["game.start", "Room not found", "Room not found."],
+    [
+      "request.deny.hint",
+      appError("requestHandled"),
+      "This request was already handled.",
+    ],
+    ["game.start", appError("roomNotFound"), "Room not found."],
     [
       "game.start",
-      "A game is already in progress",
+      appError("gameInProgress"),
       "A game is already in progress.",
     ],
-    ["game.start", "Invalid game id", null],
-    ["room.create", "Guest room limit reached", "Guest room limit reached"],
-    ["room.autojoin", "Guest room limit reached", "Guest room limit reached"],
-    ["room.autojoin", "Room not found", "Room not found."],
-    ["room.autojoin", "Not a member of this room", null],
-    ["room.leave", "Room not found", null],
-    ["room.playAgain", "Group not found", null],
+    ["game.start", new ConvexError("Invalid game id"), null],
+    ["room.create", appError("guestRoomLimit"), "Guest room limit reached"],
+    ["room.autojoin", appError("guestRoomLimit"), "Guest room limit reached"],
+    ["room.autojoin", appError("roomNotFound"), "Room not found."],
+    ["room.autojoin", appError("notMember"), null],
+    ["room.leave", appError("roomNotFound"), null],
+    ["room.playAgain", new ConvexError("Group not found"), null],
     [
       "profile.update",
+      appError("usernameLength", "Username must be 3-20 characters."),
       "Username must be 3-20 characters.",
-      "Username must be 3-20 characters.",
     ],
     [
       "profile.update",
+      appError("usernameCharacters"),
       "Username can only contain letters and numbers.",
-      "Username can only contain letters and numbers.",
     ],
+    ["profile.update", appError("usernameTaken"), "Username is already taken."],
     [
       "profile.update",
-      "Username is already taken.",
-      "Username is already taken.",
-    ],
-    [
-      "profile.update",
-      "Profile image must be 1 MB or smaller.",
+      appError("profileImageTooLarge"),
       "Profile image must be 1 MB or smaller.",
     ],
     [
       "profile.update",
-      "Profile image must be a PNG, JPEG, WebP or GIF.",
+      appError("profileImageType"),
       "Profile image must be a PNG, JPEG, WebP or GIF.",
     ],
-    ["profile.update", "Uploaded profile image was not found.", null],
+    [
+      "profile.update",
+      new ConvexError("Uploaded profile image was not found."),
+      null,
+    ],
     [
       "room.create",
-      "Too many requests. Wait a moment and try again.",
+      appError("rateLimited"),
       "Too many requests. Wait a moment and try again.",
     ],
     [
       "guess.submit",
-      "Too many requests. Wait a moment and try again.",
+      appError("rateLimited"),
       "Too many requests. Wait a moment and try again.",
     ],
-  ])("%s: %s → %s", (context, data, expected) => {
-    const error = { data, message: "Server Error stack trace" };
+    // Only codes are matched: the same wording without one is unexpected.
+    ["guess.submit", new ConvexError("Word is too long"), null],
+    ["guess.submit", new ConvexError({ code: "notACode", message: "?" }), null],
+  ])("%s: %s → %s", (context, error, expected) => {
     const message = reportClientError(error, {
       context,
       userMessage: "Fallback",
@@ -242,7 +228,7 @@ describe("runMutation", () => {
     expect(toast.error).not.toHaveBeenCalled();
 
     await expect(
-      runMutation(() => Promise.reject({ data: "Word is too long" }), {
+      runMutation(() => Promise.reject(appError("wordTooLong")), {
         context: "guess.submit",
         fallback: "Could not submit guess.",
       }),

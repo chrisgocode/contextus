@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
-import { RATE_LIMITED_MESSAGE, rateLimits } from "../lib/rateLimits";
+import { rateLimits } from "../lib/rateLimits";
 import { closeRoom, openRoom } from "../lib/roomMembership";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 import { posthog } from "../posthog";
@@ -11,9 +11,9 @@ afterEach(() => {
 
 test("create requires auth", async () => {
   const t = setupTest();
-  await expect(t.mutation(api.rooms.create, {})).rejects.toThrow(
-    "Not authenticated",
-  );
+  await expect(t.mutation(api.rooms.create, {})).rejects.toMatchObject({
+    data: { code: "notAuthenticated" },
+  });
 });
 
 test("creating a Room records one analytics event", async () => {
@@ -121,9 +121,9 @@ test("anonymous users are limited to three active rooms", async () => {
     await asUser(t, guest).mutation(api.rooms.create, {});
   }
 
-  await expect(asUser(t, guest).mutation(api.rooms.create, {})).rejects.toThrow(
-    "Guest room limit reached",
-  );
+  await expect(
+    asUser(t, guest).mutation(api.rooms.create, {}),
+  ).rejects.toMatchObject({ data: { code: "guestRoomLimit" } });
 });
 
 test("anonymous users cannot join a fourth active room", async () => {
@@ -140,7 +140,7 @@ test("anonymous users cannot join a fourth active room", async () => {
 
   await expect(
     asUser(t, guest).mutation(api.rooms.join, { code: codes[3] }),
-  ).rejects.toThrow("Guest room limit reached");
+  ).rejects.toMatchObject({ data: { code: "guestRoomLimit" } });
 });
 
 test("ending a room frees a guest room slot", async () => {
@@ -256,7 +256,7 @@ test("join unknown code throws", async () => {
   const userId = await seedUser(t);
   await expect(
     asUser(t, userId).mutation(api.rooms.join, { code: "ZZZZZZ" }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
 });
 
 test("join is case-insensitive", async () => {
@@ -286,7 +286,7 @@ test("endRoom: only host can end", async () => {
   await asUser(t, other).mutation(api.rooms.join, { code });
   await expect(
     asUser(t, other).mutation(api.rooms.endRoom, { roomId }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
   const room = await t.run(async (ctx) => ctx.db.get("rooms", roomId));
   expect(room?.status).toBe("ended");
@@ -300,7 +300,7 @@ test("join refused for ended room", async () => {
   await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
   await expect(
     asUser(t, other).mutation(api.rooms.join, { code }),
-  ).rejects.toThrow("Room not found");
+  ).rejects.toMatchObject({ data: { code: "roomNotFound" } });
 });
 
 test("leave removes membership", async () => {
@@ -634,7 +634,7 @@ test("a leaving host hands the room to the earliest remaining member", async () 
   expect(room).toMatchObject({ hostUserId: first, status: "active" });
   await expect(
     asUser(t, host).mutation(api.rooms.endRoom, { roomId }),
-  ).rejects.toThrow("Host only");
+  ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   await asUser(t, first).mutation(api.rooms.endRoom, { roomId });
 });
 
@@ -658,7 +658,7 @@ test("create rate limits each user", async () => {
   }
   await expect(
     asUser(t, userId).mutation(api.rooms.create, {}),
-  ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  ).rejects.toMatchObject({ data: { code: "rateLimited" } });
   await expect(
     asUser(t, other).mutation(api.rooms.create, {}),
   ).resolves.toMatchObject({ code: expect.any(String) });

@@ -5,10 +5,10 @@
 // The Host invariant holds after every function here: the Host is a live
 // member, or the Room is ended.
 import { Presence } from "@convex-dev/presence";
-import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { appError } from "./errors";
 import { withdrawAllFor } from "./pendingRequests";
 
 type ReadCtx = Pick<QueryCtx, "db">;
@@ -78,7 +78,7 @@ async function requireGuestRoomSlot(ctx: ReadCtx, userId: Id<"users">) {
     )
     .take(MAX_GUEST_ACTIVE_ROOMS);
   if (activeMemberships.length >= MAX_GUEST_ACTIVE_ROOMS) {
-    throw new ConvexError("Guest room limit reached");
+    throw appError("guestRoomLimit");
   }
 }
 

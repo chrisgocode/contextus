@@ -12,16 +12,15 @@ import {
   useState,
 } from "react";
 import { api } from "@/convex/_generated/api";
-import { getErrorData, type ErrorContext } from "@/lib/client-errors";
+import { appErrorData } from "@/convex/lib/errors";
+import type { ErrorContext } from "@/lib/client-errors";
 import { reportClientError, runMutation } from "@/lib/report-error";
 import { clearCreatedRoom, isCreatedRoom } from "./created-room";
 
 // Room entry: the auth ordering behind creating and joining a Room, and what
 // the Room page should show while it happens. Pages call these hooks and
 // render; they don't coordinate auth readiness, pending membership work or
-// server error strings themselves.
-
-const GUEST_ROOM_LIMIT = "Guest room limit reached";
+// server error codes themselves.
 
 /** Why creating or joining a Room failed. */
 export type EntryFailure =
@@ -34,7 +33,8 @@ function toFailure(
   err: unknown,
   opts: { context: ErrorContext; fallback: string },
 ): EntryFailure {
-  if (getErrorData(err) === GUEST_ROOM_LIMIT) return { kind: "guestLimit" };
+  if (appErrorData(err)?.code === "guestRoomLimit")
+    return { kind: "guestLimit" };
   const message = reportClientError(err, {
     userMessage: opts.fallback,
     context: opts.context,

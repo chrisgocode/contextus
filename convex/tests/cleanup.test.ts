@@ -470,7 +470,7 @@ describe("E2E guest expiry", () => {
     const user = await seedUser(t);
     await expect(
       t.mutation(api.e2eCleanup.expireCurrentGuest, {}),
-    ).rejects.toThrow("Not authenticated");
+    ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
     await expect(
       asUser(t, user).mutation(api.e2eCleanup.expireCurrentGuest, {}),
     ).rejects.toThrow("E2E cleanup is unavailable");
@@ -510,7 +510,7 @@ describe("E2E guest expiry", () => {
     expect(result.history).toEqual([]);
     await expect(
       asUser(t, guest).mutation(api.rooms.create, {}),
-    ).rejects.toThrow("Not authenticated");
+    ).rejects.toMatchObject({ data: { code: "notAuthenticated" } });
     await expect(
       asUser(t, other).mutation(api.rooms.create, {}),
     ).resolves.toMatchObject({ code: expect.any(String) });

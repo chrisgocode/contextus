@@ -1,10 +1,7 @@
-import { ConvexError } from "convex/values";
+import { appError } from "./lib/errors";
 import type { WordOracle } from "./wordOracle";
 
 const BASE = "https://api.contexto.me/machado/en";
-export const UNAVAILABLE_MESSAGE = "Contexto is unavailable, please try again";
-export const UNEXPECTED_PAYLOAD_MESSAGE =
-  "Contexto returned an unexpected response";
 // A hung Contexto would otherwise hold the Game turn until the action times out.
 const TIMEOUT_MS = 8_000;
 
@@ -29,11 +26,11 @@ async function request(
     res = await fetch(url, { signal: controller.signal });
     body = (await res.json()) as ContextoBody;
   } catch {
-    throw new ConvexError(UNAVAILABLE_MESSAGE);
+    throw appError("contextoUnavailable");
   } finally {
     clearTimeout(timer);
   }
-  if (res.status >= 500) throw new ConvexError(UNAVAILABLE_MESSAGE);
+  if (res.status >= 500) throw appError("contextoUnavailable");
   return { ok: res.ok, status: res.status, body };
 }
 
@@ -42,7 +39,7 @@ function parseScoredLemma(body: ContextoBody): {
   distance: number;
 } {
   if (typeof body?.lemma !== "string" || typeof body.distance !== "number") {
-    throw new ConvexError(UNEXPECTED_PAYLOAD_MESSAGE);
+    throw appError("contextoUnexpectedPayload");
   }
   return { lemma: body.lemma, distance: body.distance };
 }
@@ -57,23 +54,23 @@ export const contextoOracle: WordOracle = {
     // errors, like a 429, may clear up, so they must not be cached as unknown.
     if (status === 404 && typeof body?.error === "string")
       return { ok: false, error: body.error };
-    if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
+    if (!ok) throw appError("contextoUnavailable");
     return { ok: true, ...parseScoredLemma(body) };
   },
 
   async tip(contextoGameId, distance) {
     const url = `${BASE}/tip/${contextoGameId}/${distance}`;
     const { ok, body } = await request(url);
-    if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
+    if (!ok) throw appError("contextoUnavailable");
     return parseScoredLemma(body);
   },
 
   async answer(contextoGameId) {
     const url = `${BASE}/giveup/${contextoGameId}`;
     const { ok, body } = await request(url);
-    if (!ok) throw new ConvexError(UNAVAILABLE_MESSAGE);
+    if (!ok) throw appError("contextoUnavailable");
     if (typeof body?.lemma !== "string") {
-      throw new ConvexError(UNEXPECTED_PAYLOAD_MESSAGE);
+      throw appError("contextoUnexpectedPayload");
     }
     return { lemma: body.lemma };
   },

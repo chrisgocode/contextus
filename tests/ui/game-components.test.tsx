@@ -1,5 +1,6 @@
 import { getFunctionName } from "convex/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { appError } from "@/convex/lib/errors";
 import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
 import { GuessList } from "@/app/(app)/r/[code]/_components/GuessList";
 import { loadCalendar } from "@/app/(app)/r/[code]/_components/calendar-loader";
@@ -151,7 +152,7 @@ describe("GuessInput", () => {
 
   it("shows a game-ended race inline", async () => {
     convex.useAction.mockReturnValue(
-      vi.fn().mockRejectedValue({ data: "Game is no longer in progress" }),
+      vi.fn().mockRejectedValue(appError("gameEnded")),
     );
     const user = userEvent.setup();
     render(
@@ -222,9 +223,7 @@ describe("HintGiveupBar", () => {
 
   it("shows an exhausted hint pool inline", async () => {
     const fake = fakeRequests(convex);
-    fake.hostHint.mockRejectedValue({
-      data: "Could not find an unguessed hint",
-    });
+    fake.hostHint.mockRejectedValue(appError("hintExhausted"));
     const user = userEvent.setup();
     renderBar(true);
     await user.click(screen.getByRole("button", { name: "Get hint" }));
@@ -867,7 +866,7 @@ describe("GameSetupCalendar", () => {
 
   it("shows an already-started game inline", async () => {
     convex.useMutation.mockReturnValue(
-      vi.fn().mockRejectedValue({ data: "A game is already in progress" }),
+      vi.fn().mockRejectedValue(appError("gameInProgress")),
     );
     convex.useQuery.mockReturnValue([]);
     const user = userEvent.setup();

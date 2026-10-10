@@ -27,7 +27,7 @@ test("rejects a guest's token after expiry cleanup and signs the page out", asyn
   await client.mutation(api.e2eCleanup.expireCurrentGuest, {});
 
   await expect(client.mutation(api.rooms.create, {})).rejects.toMatchObject({
-    data: "Not authenticated",
+    data: { code: "notAuthenticated" },
   });
 
   await page.goto("/");

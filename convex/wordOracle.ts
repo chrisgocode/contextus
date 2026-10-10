@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
   env,
@@ -7,8 +7,9 @@ import {
   type ActionCtx,
 } from "./_generated/server";
 import type { EventProperties } from "./analytics";
-import { contextoOracle, UNEXPECTED_PAYLOAD_MESSAGE } from "./contexto";
+import { contextoOracle } from "./contexto";
 import { e2eWordOracle } from "./e2eWordOracle";
+import { appErrorData } from "./lib/errors";
 
 export type ScoredLemma = { lemma: string; distance: number };
 
@@ -51,10 +52,7 @@ export function puzzleWordOracle(
       outcome = classify(result);
       return result;
     } catch (error) {
-      if (
-        error instanceof ConvexError &&
-        error.data === UNEXPECTED_PAYLOAD_MESSAGE
-      ) {
+      if (appErrorData(error)?.code === "contextoUnexpectedPayload") {
         outcome = "unexpected_payload";
       }
       throw error;
