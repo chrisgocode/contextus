@@ -40,6 +40,10 @@ bun run dev
 | `E2E_PASSWORD`                      | `.env.local`                                 | E2E tests          | Password for the generated test accounts                                                      |
 | `CONVEX_DEPLOY_KEY`                 | GitHub secrets                               | Production deploys | See [development guide](docs/development.md#deployment)                                       |
 | `VERCEL_TOKEN`                      | GitHub secrets                               | Production deploys | Plus `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` as GitHub variables                              |
+| `CONVEX_PREVIEW_DEPLOY_KEY`         | GitHub secrets                               | PR previews        | Convex preview deploy key. See [PR previews](docs/development.md#pr-previews)                 |
+| `PREVIEW_OAUTH_STATE_SECRET`        | GitHub secrets, production Convex env        | PR previews        | Signs the state that routes Google sign-in back to a preview. Never set on previews           |
+| `PREVIEW_OAUTH_CALLBACK_URL`        | Convex default env vars (Preview)            | PR previews        | Production's forwarder URL. Never set in production                                           |
+| `PREVIEW_OAUTH_STATE`               | Set by the Preview workflow                  | PR previews        | Signed per preview by CI. Never set by hand                                                   |
 | `RELEASE_PLEASE_TOKEN`              | GitHub secrets                               | Release PRs        | Fine-grained PAT: contents and pull requests read/write                                       |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Vercel env vars                              | Browser analytics  | PostHog project token. Analytics loads only on production and preview deployments             |
 | `POSTHOG_PROJECT_TOKEN`             | Convex env                                   | All deployments    | Use `disabled` in dev and e2e; set the PostHog project token in production and preview        |

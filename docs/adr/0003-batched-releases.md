@@ -8,4 +8,4 @@ Every merge to `main` used to deploy Convex and Vercel, which ran into Vercel's 
 
 ## Consequences
 
-Merged work waits in `main` until someone merges the release PR, so production can lag `main`. A hotfix ships by merging the release PR too, along with everything merged before it. The release PR is opened with a personal access token, which expires and has to be rotated. There are no PR preview deployments. Vercel's Git deployments are off for every branch, because a preview skipped by the Ignored Build Step still counts toward the daily deployment limit.
+Merged work waits in `main` until someone merges the release PR, so production can lag `main`. A hotfix ships by merging the release PR too, along with everything merged before it. The release PR is opened with a personal access token, which expires and has to be rotated. Vercel's Git deployments are off for every branch, because a preview skipped by the Ignored Build Step still counts toward the daily deployment limit. This first meant no PR preview deployments; [ADR 0004](0004-label-gated-previews.md) adds them back for labelled PRs, deployed from Actions.

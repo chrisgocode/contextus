@@ -1,4 +1,3 @@
-import Google from "@auth/core/providers/google";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth, getAuthSessionId } from "@convex-dev/auth/server";
@@ -10,6 +9,7 @@ import {
   GUEST_LIFETIME_MS,
 } from "./lib/guestEngagement";
 import { startGuestMerge } from "./lib/guestMerge";
+import { callbackSignature, googleProvider } from "./lib/previewGoogle";
 import { enforceRateLimit } from "./lib/rateLimits";
 import { ensureUserHasUsername } from "./lib/usernames";
 
@@ -21,10 +21,7 @@ const {
   isAuthenticated,
 } = convexAuth({
   providers: [
-    // E2E runs sign in with Google against `e2e/oidc-mock.mjs`.
-    env.E2E_TEST === "1" && env.E2E_GOOGLE_ISSUER !== undefined
-      ? Google({ issuer: env.E2E_GOOGLE_ISSUER })
-      : Google,
+    googleProvider(env),
     Anonymous({
       profile: () => ({
         isAnonymous: true,
@@ -61,6 +58,7 @@ type StoreArgs =
       signature: string;
     }
   | { type: "createAccountFromCredentials"; provider: string }
+  | { type: "verifierSignature"; signature: string }
   | { type: "other" }; // Any other call, passed through untouched.
 
 // Convex Auth's own handler. `_handler` is private Convex API, so keep
@@ -96,6 +94,17 @@ export const store = internalMutation({
       args.provider === "anonymous"
     ) {
       await enforceRateLimit(ctx, "createGuest");
+    }
+    // On a preview, save the signature the Google callback will look up.
+    if (
+      args.type === "verifierSignature" &&
+      env.PREVIEW_OAUTH_STATE !== undefined
+    ) {
+      const signature = callbackSignature(
+        args.signature,
+        env.PREVIEW_OAUTH_STATE,
+      );
+      return await convexAuthHandler(ctx, { args: { ...args, signature } });
     }
     if (args.type !== "userOAuth") return await convexAuthHandler(ctx, fnArgs);
 
