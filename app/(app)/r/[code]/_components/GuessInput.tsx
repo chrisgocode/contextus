@@ -52,11 +52,20 @@ export function GuessInput({
   const [word, setWord] = useState(() => loadDraft(gameId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Never disable the field while busy: a disabled input loses focus, which
+  // closes the on-screen keyboard, and mobile browsers won't reopen it for a
+  // focus() call made after the request settles.
   const inputRef = useRef<HTMLInputElement>(null);
 
   function updateWord(next: string) {
     setWord(next);
     saveDraft(gameId, next);
+  }
+
+  // The field stays editable while a guess is in flight, so only clear it if
+  // the player hasn't already started typing the next one.
+  function clearSubmitted(submitted: string) {
+    if (inputRef.current?.value === submitted) updateWord("");
   }
 
   return (
@@ -65,16 +74,20 @@ export function GuessInput({
         className="flex flex-col gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!word.trim()) return;
+          if (busy || !word.trim()) return;
+          const submitted = word;
           setError(null);
           onDuplicate(null);
           setBusy(true);
           try {
-            const result = await runMutation(() => submit({ gameId, word }), {
-              context: "guess.submit",
-              fallback: "Could not submit guess. Try again.",
-              showToast: false,
-            });
+            const result = await runMutation(
+              () => submit({ gameId, word: submitted }),
+              {
+                context: "guess.submit",
+                fallback: "Could not submit guess. Try again.",
+                showToast: false,
+              },
+            );
             if (!result.ok) {
               setError(result.message);
               return;
@@ -82,14 +95,14 @@ export function GuessInput({
             const res = result.value;
             if (res.alreadyGuessed && res.lemma) {
               onDuplicate(res.lemma);
-              updateWord("");
+              clearSubmitted(submitted);
               return;
             }
             if (res.message) {
               setError(res.message);
               return;
             }
-            updateWord("");
+            clearSubmitted(submitted);
             if (res.unlockedAchievementIds.length > 0) {
               onAchievementsUnlocked(res.unlockedAchievementIds);
             }
@@ -112,7 +125,6 @@ export function GuessInput({
                 updateWord(e.target.value);
                 setError(null);
               }}
-              disabled={busy}
               aria-invalid={error !== null}
               aria-describedby={error ? "guess-error" : undefined}
               autoFocus
@@ -122,6 +134,9 @@ export function GuessInput({
               size="icon"
               aria-label="Guess"
               disabled={busy || !word.trim()}
+              // Keep focus in the field so tapping Guess doesn't close the
+              // on-screen keyboard.
+              onMouseDown={(e) => e.preventDefault()}
               className="absolute top-1/2 right-1.5 -translate-y-1/2"
             >
               {busy ? (

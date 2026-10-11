@@ -60,6 +60,43 @@ describe("GuessInput", () => {
     expect(input).toHaveValue("");
   });
 
+  it("keeps the field focused and editable while a guess is in flight", async () => {
+    let resolve!: (value: unknown) => void;
+    const submit = vi.fn().mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    convex.useAction.mockReturnValue(submit);
+    const user = userEvent.setup();
+
+    render(
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    const input = screen.getByPlaceholderText("Type a word…");
+    await user.type(input, "apple");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+
+    // Enter while busy must not send the guess again.
+    await user.keyboard("{Enter}");
+    expect(submit).toHaveBeenCalledTimes(1);
+
+    await user.type(input, "s");
+    await act(async () => {
+      resolve({ lemma: "apple", unlockedAchievementIds: [], won: false });
+    });
+    expect(input).toHaveValue("apples");
+    expect(input).toHaveFocus();
+  });
+
   it("keeps an unsent guess across reloads until it is submitted", async () => {
     const submit = vi.fn().mockResolvedValue({
       lemma: "apple",
