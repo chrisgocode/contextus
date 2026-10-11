@@ -52,9 +52,6 @@ export function GuessInput({
   const [word, setWord] = useState(() => loadDraft(gameId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Never disable the field while busy: a disabled input loses focus, which
-  // closes the on-screen keyboard, and mobile browsers won't reopen it for a
-  // focus() call made after the request settles.
   const inputRef = useRef<HTMLInputElement>(null);
 
   function updateWord(next: string) {
@@ -62,10 +59,12 @@ export function GuessInput({
     saveDraft(gameId, next);
   }
 
-  // The field stays editable while a guess is in flight, so only clear it if
-  // the player hasn't already started typing the next one.
-  function clearSubmitted(submitted: string) {
+  function clearUnlessEdited(submitted: string) {
     if (inputRef.current?.value === submitted) updateWord("");
+  }
+
+  function keepFieldFocused(e: React.MouseEvent) {
+    e.preventDefault();
   }
 
   return (
@@ -95,14 +94,14 @@ export function GuessInput({
             const res = result.value;
             if (res.alreadyGuessed && res.lemma) {
               onDuplicate(res.lemma);
-              clearSubmitted(submitted);
+              clearUnlessEdited(submitted);
               return;
             }
             if (res.message) {
               setError(res.message);
               return;
             }
-            clearSubmitted(submitted);
+            clearUnlessEdited(submitted);
             if (res.unlockedAchievementIds.length > 0) {
               onAchievementsUnlocked(res.unlockedAchievementIds);
             }
@@ -134,9 +133,7 @@ export function GuessInput({
               size="icon"
               aria-label="Guess"
               disabled={busy || !word.trim()}
-              // Keep focus in the field so tapping Guess doesn't close the
-              // on-screen keyboard.
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={keepFieldFocused}
               className="absolute top-1/2 right-1.5 -translate-y-1/2"
             >
               {busy ? (

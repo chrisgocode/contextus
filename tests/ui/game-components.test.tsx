@@ -85,7 +85,6 @@ describe("GuessInput", () => {
     expect(input).toBeEnabled();
     expect(input).toHaveFocus();
 
-    // Enter while busy must not send the guess again.
     await user.keyboard("{Enter}");
     expect(submit).toHaveBeenCalledTimes(1);
 
