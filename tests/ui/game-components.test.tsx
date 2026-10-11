@@ -166,6 +166,37 @@ describe("GuessInput", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Unknown word.");
   });
 
+  it("drops the error for a guess the player has already replaced", async () => {
+    let resolve!: (value: unknown) => void;
+    convex.useAction.mockReturnValue(
+      vi.fn().mockReturnValue(
+        new Promise((r) => {
+          resolve = r;
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <GuessInput
+        gameId={"game" as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    const input = screen.getByPlaceholderText("Type a word…");
+    await user.type(input, "pearx");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+    await user.clear(input);
+    await user.type(input, "apple");
+    await act(async () => {
+      resolve({ message: "Unknown word." });
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).toHaveValue("apple");
+  });
+
   it("shows unexpected submission failures inline", async () => {
     const error = new Error("offline");
     convex.useAction.mockReturnValue(vi.fn().mockRejectedValue(error));

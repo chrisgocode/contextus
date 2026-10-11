@@ -59,10 +59,6 @@ export function GuessInput({
     saveDraft(gameId, next);
   }
 
-  function clearUnlessEdited(submitted: string) {
-    if (inputRef.current?.value === submitted) updateWord("");
-  }
-
   function keepFieldFocused(e: React.MouseEvent) {
     e.preventDefault();
   }
@@ -87,21 +83,22 @@ export function GuessInput({
                 showToast: false,
               },
             );
+            const editedSinceSubmit = inputRef.current?.value !== submitted;
             if (!result.ok) {
-              setError(result.message);
+              if (!editedSinceSubmit) setError(result.message);
               return;
             }
             const res = result.value;
             if (res.alreadyGuessed && res.lemma) {
               onDuplicate(res.lemma);
-              clearUnlessEdited(submitted);
+              if (!editedSinceSubmit) updateWord("");
               return;
             }
             if (res.message) {
-              setError(res.message);
+              if (!editedSinceSubmit) setError(res.message);
               return;
             }
-            clearUnlessEdited(submitted);
+            if (!editedSinceSubmit) updateWord("");
             if (res.unlockedAchievementIds.length > 0) {
               onAchievementsUnlocked(res.unlockedAchievementIds);
             }
