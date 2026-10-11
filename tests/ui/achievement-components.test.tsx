@@ -117,6 +117,22 @@ describe("AchievementUnlockQueue", () => {
     expect(onItemDone).toHaveBeenCalledOnce();
   });
 
+  it("sits above the on-screen keyboard", () => {
+    vi.stubGlobal("visualViewport", {
+      offsetTop: 0,
+      height: window.innerHeight - 300,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    const { container } = render(
+      <AchievementUnlockQueue items={[]} onItemDone={vi.fn()} />,
+    );
+
+    expect(container.querySelector("[aria-live]")).toHaveStyle({
+      bottom: "318px",
+    });
+  });
+
   it("keeps the same live region mounted while the queue fills", () => {
     const bronze = achievementGroups[0];
     const { container, rerender } = render(

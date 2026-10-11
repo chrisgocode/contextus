@@ -3,6 +3,7 @@
 import { BulbIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
+import { useKeyboardInset } from "@/app/_components/useKeyboardInset";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -16,7 +17,6 @@ import { HintGiveupBar } from "./HintGiveupBar";
 import { HostRequestList } from "./HostRequestRows";
 import { usePendingRequests } from "./PendingRequests";
 import { useElementInViewport } from "./useElementInViewport";
-import { useKeyboardInset } from "./useKeyboardInset";
 
 // One button beside the guess input for everything that isn't guessing:
 // getting or asking for a hint, giving up, and, for the Host, answering

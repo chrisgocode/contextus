@@ -4,6 +4,7 @@ import type { StaticImageData } from "next/image";
 import { useEffect } from "react";
 import { AchievementUnlockWidget } from "./AchievementUnlockWidget";
 import type { AchievementCategory } from "./achievement-metadata";
+import { useKeyboardInset } from "./useKeyboardInset";
 
 export const ACHIEVEMENT_UNLOCK_DISPLAY_MS = 4200;
 
@@ -24,6 +25,7 @@ export function AchievementUnlockQueue({
   onItemDone: () => void;
 }) {
   const current = items[0] ?? null;
+  const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
     if (current === null) return;
@@ -37,7 +39,15 @@ export function AchievementUnlockQueue({
   // The live region stays mounted so screen readers pick up each unlock
   // inserted into it.
   return (
-    <div className="achievement-unlock-queue" aria-live="polite">
+    <div
+      className="achievement-unlock-queue"
+      aria-live="polite"
+      style={
+        keyboardInset > 0
+          ? { bottom: `calc(${keyboardInset}px + 18px)` }
+          : undefined
+      }
+    >
       {current !== null && (
         <AchievementUnlockWidget
           key={current.key}
