@@ -34,6 +34,7 @@ flowchart LR
 | `hints.ts`           | Host hint action and hint execution                                                              |
 | `giveup.ts`          | Host give-up action and give-up execution                                                        |
 | `requests.ts`        | Non-host hint and give-up requests: create, deny, approve                                        |
+| `friends.ts`         | Friend requests and the friends panel overview                                                   |
 | `presence.ts`        | Wraps `@convex-dev/presence` for "who's online in this room"                                     |
 | `achievements.ts`    | Profile achievement listing                                                                      |
 | `users.ts`           | Profiles, usernames, avatar upload, activity graph, guest account prompt                         |
@@ -47,7 +48,7 @@ Pure logic lives in `convex/lib/` so it can be unit tested without a database. T
 
 | Route              | Purpose                                                            |
 | ------------------ | ------------------------------------------------------------------ |
-| `/`                | Home: create or join a room, your rooms, recent groups             |
+| `/`                | Home: create or join a room, your rooms, recent groups, friends    |
 | `/r/[code]`        | Room. State machine: lobby → in-progress → ended                   |
 | `/user/[username]` | Public profile: activity graph and achievements                    |
 | `/how-to-play`     | Static rules page                                                  |
@@ -70,6 +71,7 @@ Pure logic lives in `convex/lib/` so it can be unit tested without a database. T
 | `userGameHistory`                                                     | Per-user first play, first attempt, and first solve for each Contexto puzzle   |
 | `gamePlayerStats`                                                     | Per-user, per-game stats used by achievements                                  |
 | `userAchievements`, `userAchievementProgress`, `userAchievementStats` | Unlocked achievements, progress counters, and lifetime guess color totals      |
+| `friendships`                                                         | One row per pair of users: a pending Friend request or a friendship            |
 | `userSolveDays`                                                       | Local calendar days on which each user was credited with a solve (streaks)     |
 
 ## Guess pipeline

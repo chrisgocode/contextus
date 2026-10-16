@@ -177,6 +177,16 @@ describe("reportClientError", () => {
       null,
     ],
     [
+      "friends.sendRequest",
+      appError("friendLimitOther"),
+      "They have reached the maximum number of friends.",
+    ],
+    [
+      "friends.answerRequest",
+      appError("friendRequestNotFound"),
+      "This friend request is no longer available.",
+    ],
+    [
       "room.create",
       appError("rateLimited"),
       "Too many requests. Wait a moment and try again.",

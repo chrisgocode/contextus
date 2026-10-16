@@ -148,6 +148,30 @@ const seeds: Record<
       noBacktrackingSoFar: true,
       updatedAt: 1,
     }),
+  "friendships.firstUserId": (ctx, userId, { owner }) =>
+    ctx.db.insert("friendships", {
+      firstUserId: userId,
+      secondUserId: owner,
+      requesterUserId: owner,
+      status: "friends",
+      declined: false,
+    }),
+  "friendships.secondUserId": (ctx, userId, { owner }) =>
+    ctx.db.insert("friendships", {
+      firstUserId: owner,
+      secondUserId: userId,
+      requesterUserId: owner,
+      status: "pending",
+      declined: false,
+    }),
+  "friendships.requesterUserId": (ctx, userId, { owner }) =>
+    ctx.db.insert("friendships", {
+      firstUserId: owner,
+      secondUserId: userId,
+      requesterUserId: userId,
+      status: "pending",
+      declined: true,
+    }),
 };
 
 afterEach(() => {

@@ -336,6 +336,44 @@ export const USER_KEYED_TABLES = [
     expire: "delete",
     purge: "delete",
   }),
+  // Guests can't have Friends, so they own no friendship rows to move.
+  policy({
+    table: "friendships",
+    field: "firstUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("friendships")
+        .withIndex("by_first_and_second", (q) => q.eq("firstUserId", userId)),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
+  policy({
+    table: "friendships",
+    field: "secondUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("friendships")
+        .withIndex("by_second_and_status_and_declined", (q) =>
+          q.eq("secondUserId", userId),
+        ),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
+  policy({
+    table: "friendships",
+    field: "requesterUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("friendships")
+        .withIndex("by_requester_and_status", (q) =>
+          q.eq("requesterUserId", userId),
+        ),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
 ];
 
 // Deletes what a finished merge leaves on the guest, then the guest itself.
