@@ -253,7 +253,7 @@ export const listRecentGroups = query({
     const rooms = await Promise.all(
       memberships.map(async ({ roomId }) => {
         const room = await ctx.db.get("rooms", roomId);
-        if (room?.status !== "ended") return null;
+        if (room === null) return null;
         const [activity, rows] = await Promise.all([
           ctx.db
             .query("roomActivity")
