@@ -264,8 +264,8 @@ function FriendRow({
               className={cn(
                 "size-2 rounded-full",
                 status.kind === "offline"
-                  ? "bg-muted-foreground/40"
-                  : "bg-primary",
+                  ? "border border-muted-foreground"
+                  : "bg-emerald-400",
               )}
             />
             {STATUS_LABELS[status.kind]}
