@@ -257,6 +257,7 @@ test("the friends overview is empty for a new user and null for a Guest", async 
   expect(await asUser(t, alice).query(api.friends.overview, {})).toEqual({
     friends: [],
     incoming: [],
+    moreIncoming: false,
     outgoing: [],
   });
   expect(await asUser(t, guest).query(api.friends.overview, {})).toBeNull();
@@ -415,6 +416,7 @@ test("the friends overview lists Friends and pending requests both ways, hiding 
       expect.objectContaining({ id: bob, name: "Bob", username: "bob" }),
     ],
     incoming: [expect.objectContaining({ id: carol, name: "Carol" })],
+    moreIncoming: false,
     outgoing: [],
   });
   expect(await asUser(t, dave).query(api.friends.overview, {})).toMatchObject({
@@ -437,3 +439,22 @@ test("sends that change nothing don't spend the rate limit", async () => {
     asUser(t, alice).mutation(api.friends.sendRequest, { userId: guest }),
   ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
 });
+
+test("the friends overview lists 100 incoming requests and says when more are waiting", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const sendToAlice = async () =>
+    asUser(t, await seedUser(t)).mutation(api.friends.sendRequest, {
+      userId: alice,
+    });
+  for (let i = 0; i < 100; i++) await sendToAlice();
+
+  const atLimit = await asUser(t, alice).query(api.friends.overview, {});
+  expect(atLimit?.incoming).toHaveLength(100);
+  expect(atLimit?.moreIncoming).toBe(false);
+
+  await sendToAlice();
+  const overLimit = await asUser(t, alice).query(api.friends.overview, {});
+  expect(overLimit?.incoming).toHaveLength(100);
+  expect(overLimit?.moreIncoming).toBe(true);
+}, 30_000);

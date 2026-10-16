@@ -28,7 +28,8 @@ type FriendPlayer = Overview["friends"][number];
 export function FriendsPanel() {
   const overview = useQuery(api.friends.overview, {});
   const incoming = overview?.incoming.length ?? 0;
-  const incomingLabel = `${incoming} friend request${incoming === 1 ? "" : "s"}`;
+  const incomingCount = `${incoming}${overview?.moreIncoming ? "+" : ""}`;
+  const incomingLabel = `${incomingCount} friend request${incomingCount === "1" ? "" : "s"}`;
 
   return (
     <Sheet>
@@ -47,9 +48,9 @@ export function FriendsPanel() {
           {incoming > 0 && (
             <span
               aria-hidden="true"
-              className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground"
+              className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center px-1 justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground"
             >
-              {incoming}
+              {incomingCount}
             </span>
           )}
         </Button>

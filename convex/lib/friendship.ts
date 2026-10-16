@@ -215,16 +215,18 @@ export async function listFriends(
 export async function listIncoming(
   ctx: ReadCtx,
   userId: UserId,
-): Promise<UserId[]> {
+): Promise<{ senders: UserId[]; more: boolean }> {
   const senders: UserId[] = [];
   for (const which of ["first", "second"] as const) {
     for await (const row of side(ctx, userId, which, "pending", false)) {
       if (row.requesterUserId === userId) continue;
+      if (senders.length === MAX_INCOMING_LISTED) {
+        return { senders, more: true };
+      }
       senders.push(row.requesterUserId);
-      if (senders.length === MAX_INCOMING_LISTED) return senders;
     }
   }
-  return senders;
+  return { senders, more: false };
 }
 
 export async function listOutgoing(

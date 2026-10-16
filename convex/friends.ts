@@ -73,12 +73,17 @@ export const overview = query({
     if (userId === null) return null;
     const user = await ctx.db.get("users", userId);
     if (user === null || user.isAnonymous === true) return null;
+    const [friendIds, { senders, more }, recipientIds] = await Promise.all([
+      listFriends(ctx, userId),
+      listIncoming(ctx, userId),
+      listOutgoing(ctx, userId),
+    ]);
     const [friends, incoming, outgoing] = await Promise.all(
-      [listFriends, listIncoming, listOutgoing].map(async (list) =>
-        loadFriendPlayers(ctx, await list(ctx, userId)),
+      [friendIds, senders, recipientIds].map((ids) =>
+        loadFriendPlayers(ctx, ids),
       ),
     );
     friends.sort((a, b) => a.name.localeCompare(b.name));
-    return { friends, incoming, outgoing };
+    return { friends, incoming, moreIncoming: more, outgoing };
   },
 });
