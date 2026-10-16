@@ -52,6 +52,17 @@ export async function isLiveMember(
   return membership !== null && membership.active !== false;
 }
 
+export async function lastRoomActivityAt(
+  ctx: ReadCtx,
+  roomId: Id<"rooms">,
+): Promise<number> {
+  const activity = await ctx.db
+    .query("roomActivity")
+    .withIndex("by_room", (q) => q.eq("roomId", roomId))
+    .unique();
+  return activity?.lastActivityAt ?? 0;
+}
+
 export async function touchRoomActivity(
   ctx: WriteCtx,
   roomId: Id<"rooms">,
@@ -285,11 +296,7 @@ async function settleHost(
     : new Set<Id<"users">>();
   const onlineCandidates = candidates.filter((m) => online.has(m.userId));
   if (idle && onlineCandidates.length === 0) {
-    const activity = await ctx.db
-      .query("roomActivity")
-      .withIndex("by_room", (q) => q.eq("roomId", room._id))
-      .unique();
-    if (now - (activity?.lastActivityAt ?? 0) > IDLE_TIMEOUT_MS) {
+    if (now - (await lastRoomActivityAt(ctx, room._id)) > IDLE_TIMEOUT_MS) {
       await closeRoom(ctx, room._id);
       return { settled: "ended", membersScanned };
     }

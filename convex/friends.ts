@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { statusOf } from "./lib/friendStatus";
+import { onlineFirst, statusOf } from "./lib/friendStatus";
 import { playerFromUser } from "./lib/player";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -91,9 +91,7 @@ export const overview = query({
       })),
     );
     friendsWithStatus.sort(
-      (a, b) =>
-        Number(a.status.kind === "offline") -
-          Number(b.status.kind === "offline") || a.name.localeCompare(b.name),
+      (a, b) => onlineFirst(a.status, b.status) || a.name.localeCompare(b.name),
     );
     return {
       friends: friendsWithStatus,

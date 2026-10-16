@@ -23,8 +23,8 @@ import { runMutation } from "@/lib/report-error";
 import { cn } from "@/lib/utils";
 
 type Overview = NonNullable<FunctionReturnType<typeof api.friends.overview>>;
-type FriendPlayer = Overview["incoming"][number];
 type FriendStatus = Overview["friends"][number]["status"];
+type FriendPlayer = Overview["incoming"][number] & { status?: FriendStatus };
 
 const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
   online: "Online",
@@ -149,7 +149,7 @@ function FriendLists({ overview }: { overview: Overview }) {
           <li className="text-sm text-muted-foreground">No friends yet.</li>
         ) : (
           overview.friends.map((player) => (
-            <FriendRow key={player.id} player={player} status={player.status}>
+            <FriendRow key={player.id} player={player}>
               {player.status.kind === "inRoom" && (
                 <Button asChild size="sm">
                   <Link href={roomPath(player.status.code)}>Join</Link>
@@ -231,13 +231,12 @@ function FriendSection({
 
 function FriendRow({
   player,
-  status,
   children,
 }: {
   player: FriendPlayer;
-  status?: FriendStatus;
   children?: ReactNode;
 }) {
+  const { status } = player;
   const name = (
     <span className="truncate text-sm font-medium">{player.name}</span>
   );
@@ -266,7 +265,7 @@ function FriendRow({
                 "size-2 rounded-full",
                 status.kind === "offline"
                   ? "bg-muted-foreground/40"
-                  : "bg-green-500",
+                  : "bg-primary",
               )}
             />
             {STATUS_LABELS[status.kind]}

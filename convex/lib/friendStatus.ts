@@ -1,12 +1,11 @@
-// Friend status module: whether each of a viewer's Friends is Online, In a
-// Room, or Offline. It reads the presence component, where the app heartbeat
-// records every open tab under APP_PRESENCE_ROOM and the Room heartbeat
-// records presence per Room.
+// Friend status module. It reads the presence component, where the app
+// heartbeat records every open tab under APP_PRESENCE_ROOM and the Room
+// heartbeat records presence per Room.
 import { Presence } from "@convex-dev/presence";
 import { components } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { isLiveMember } from "./roomMembership";
+import { isLiveMember, lastRoomActivityAt } from "./roomMembership";
 
 // Never a Room id, so it can't collide with a Room's presence.
 export const APP_PRESENCE_ROOM = "app";
@@ -19,6 +18,10 @@ export type FriendStatus =
 type StatusCtx = Pick<QueryCtx, "db" | "runQuery">;
 
 const presence = new Presence(components.presence);
+
+export function onlineFirst(a: FriendStatus, b: FriendStatus): number {
+  return Number(a.kind === "offline") - Number(b.kind === "offline");
+}
 
 export async function statusOf(
   ctx: StatusCtx,
@@ -53,11 +56,7 @@ async function mostRecentlyActiveRoom(
       if (room === null || !(await isLiveMember(ctx, room, userId))) {
         return null;
       }
-      const activity = await ctx.db
-        .query("roomActivity")
-        .withIndex("by_room", (q) => q.eq("roomId", roomId))
-        .unique();
-      return { room, lastActivityAt: activity?.lastActivityAt ?? 0 };
+      return { room, lastActivityAt: await lastRoomActivityAt(ctx, roomId) };
     }),
   );
   let best: (typeof candidates)[number] = null;
