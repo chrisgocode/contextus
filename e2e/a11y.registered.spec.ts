@@ -10,7 +10,8 @@ const KNOWN_VIOLATIONS: { id: string; target: RegExp }[] = [
   // bar, which is below 4.5:1 for green.
   {
     id: "color-contrast",
-    target: /bg-neutral-900\\\/60.*\.font-semibold(\.[\w-]+)*\.truncate$/,
+    target:
+      /bg-neutral-900\\\/60.*\.font-semibold(\.[\w-]+)*\.truncate(\.[\w-]+)*$/,
   },
   // The profile's contribution graph scrolls sideways on narrow screens but
   // can't take keyboard focus.
