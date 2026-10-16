@@ -24,7 +24,7 @@ import {
   invitedAmong,
   listOpenFor,
 } from "./lib/invites";
-import { findMembership } from "./lib/roomMembership";
+import { isLiveMember } from "./lib/roomMembership";
 
 export const sendRequest = mutation({
   args: { userId: v.id("users") },
@@ -90,7 +90,6 @@ export const invite = mutation({
   },
 });
 
-// Returns the Room's code after a join, so the client can go there.
 export const answerInvite = mutation({
   args: {
     inviteId: v.id("invites"),
@@ -269,15 +268,11 @@ async function friendsInRoom(
   now: number,
 ) {
   const room = await ctx.db.get("rooms", roomId);
-  if (room === null || room.status !== "active") return null;
-  if ((await findMembership(ctx, roomId, viewer)) === null) return null;
-  const memberships = await Promise.all(
-    friendIds.map((id) => findMembership(ctx, roomId, id)),
+  if (room === null || !(await isLiveMember(ctx, room, viewer))) return null;
+  const live = await Promise.all(
+    friendIds.map((id) => isLiveMember(ctx, room, id)),
   );
-  const members = friendIds.filter((_, i) => {
-    const membership = memberships[i];
-    return membership != null && membership.active !== false;
-  });
+  const members = friendIds.filter((_, i) => live[i]);
   const invited = await invitedAmong(ctx, roomId, friendIds, now);
   return { invited, members };
 }

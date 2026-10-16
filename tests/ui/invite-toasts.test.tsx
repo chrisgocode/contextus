@@ -23,7 +23,7 @@ vi.mock("sonner", () => ({
 }));
 vi.mock("@/lib/sentry-client", () => ({ captureException: vi.fn() }));
 
-function invite(expiresAt = 1) {
+function invite(expiresAt = Date.now() + 60_000) {
   return {
     _id: "i1",
     roomCode: "ABCDEF",
@@ -50,18 +50,19 @@ beforeEach(() => {
 });
 
 describe("InviteToasts", () => {
-  it("shows one toast per open Invite, again only when it is re-sent", async () => {
-    mocks.useQuery.mockReturnValue([invite()]);
+  it("shows one toast per open Invite until it expires, again only when it is re-sent", async () => {
+    const expiresAt = Date.now() + 60_000;
+    mocks.useQuery.mockReturnValue([invite(expiresAt)]);
     const { rerender } = render(<InviteToasts />);
     await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(toast.custom).mock.lastCall![1]).toMatchObject({
-      id: "invite-i1",
-      duration: Infinity,
-    });
+    const options = vi.mocked(toast.custom).mock.lastCall![1];
+    expect(options?.id).toBe("invite-i1");
+    expect(options?.duration).toBeGreaterThan(55_000);
+    expect(options?.duration).toBeLessThanOrEqual(60_000);
 
-    mocks.useQuery.mockReturnValue([invite()]);
+    mocks.useQuery.mockReturnValue([invite(expiresAt)]);
     rerender(<InviteToasts />);
-    mocks.useQuery.mockReturnValue([invite(2)]);
+    mocks.useQuery.mockReturnValue([invite(expiresAt + 1)]);
     rerender(<InviteToasts />);
 
     await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(2));

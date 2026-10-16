@@ -295,7 +295,6 @@ export default defineSchema({
     ])
     .index("by_requester_and_status", ["requesterUserId", "status"]),
 
-  // One row per open Invite: a row exists only while its Invite is open.
   invites: defineTable({
     roomId: v.id("rooms"),
     recipientUserId: v.id("users"),

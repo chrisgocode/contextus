@@ -16,7 +16,8 @@ const toastId = (invite: Pick<Invite, "_id">) => `invite-${invite._id}`;
 
 // A corner toast for each open Invite, on every page. Dismissing one only
 // hides it; the Invite stays in the friends panel. Re-sending an Invite shows
-// it again, and an Invite that ends takes its toast with it.
+// it again. The toast times out with the Invite, since the query won't rerun
+// at the deadline if the scheduled expiry is late.
 export function InviteToasts() {
   const { isAuthenticated } = useConvexAuth();
   const invites = useQuery(
@@ -50,7 +51,11 @@ export function InviteToasts() {
               onDismiss={() => toast.dismiss(id)}
             />
           ),
-          { id, duration: Infinity, position: "bottom-right" },
+          {
+            id,
+            duration: Math.max(invite.expiresAt - Date.now(), 0),
+            position: "bottom-right",
+          },
         ),
       );
     }

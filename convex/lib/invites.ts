@@ -18,7 +18,6 @@ type UserId = Id<"users">;
 
 export const INVITE_TTL_MS = 5 * 60 * 1000;
 
-// Open Invites listed for one recipient at most.
 const MAX_INVITES_LISTED = 50;
 
 export function isOpen(invite: Doc<"invites">, now: number) {
@@ -105,11 +104,12 @@ export async function answer(
   }
   const room = await ctx.db.get("rooms", row.roomId);
   if (room === null || room.status !== "active") throw appError("roomNotFound");
-  await admit(ctx, room._id, recipient, now);
-  await track(ctx, recipient, {
-    name: "invite_joined",
-    properties: { room_id: room._id, sender_user_id: row.senderUserId },
-  });
+  if (await admit(ctx, room._id, recipient, now)) {
+    await track(ctx, recipient, {
+      name: "invite_joined",
+      properties: { room_id: room._id, sender_user_id: row.senderUserId },
+    });
+  }
   return room.code;
 }
 
@@ -125,7 +125,6 @@ export async function expire(
   }
 }
 
-// Called by the room membership module whenever a user is admitted.
 export async function endInvite(
   ctx: WriteCtx,
   roomId: Id<"rooms">,
@@ -135,7 +134,6 @@ export async function endInvite(
   if (row !== null) await ctx.db.delete("invites", row._id);
 }
 
-// Called by the room membership module when a Room closes.
 export async function endInvitesForRoom(ctx: WriteCtx, roomId: Id<"rooms">) {
   for await (const row of ctx.db
     .query("invites")

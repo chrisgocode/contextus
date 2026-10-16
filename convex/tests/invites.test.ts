@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { depart } from "../lib/roomMembership";
 import { posthog } from "../posthog";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
@@ -393,4 +394,27 @@ test("the toast's Invite list matches the panel's, and is empty when signed out"
     (await overview(t, friend)).invites,
   );
   expect(await t.query(api.friends.openInvites, {})).toEqual([]);
+});
+
+test("a Guest who signs in to an invited account ends that account's Invite to a Room the Guest was in", async () => {
+  const t = setupTest();
+  const { host, friend, roomId, code } = await roomWithFriend(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  await asUser(t, guest).mutation(api.rooms.join, { code });
+  await sendInvite(t, host, roomId, friend);
+
+  await t.run(async (ctx) => {
+    await depart(
+      ctx,
+      roomId,
+      { reason: "merged", userId: guest, into: friend },
+      Date.now(),
+    );
+  });
+
+  expect((await overview(t, friend)).invites).toEqual([]);
+  expect((await overview(t, host, roomId)).room).toEqual({
+    invited: [],
+    members: [friend],
+  });
 });
