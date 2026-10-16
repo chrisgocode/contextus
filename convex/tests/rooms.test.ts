@@ -554,6 +554,33 @@ test("a registered member can reactivate a group with a fresh room code", async 
   ).resolves.toContainEqual(expect.objectContaining({ _id: original.roomId }));
 });
 
+test("a group replayed elsewhere offers its active room, not an older one", async () => {
+  vi.useFakeTimers();
+  let now = Date.parse("2026-01-01T00:00:00.000Z");
+  const t = setupTest();
+  const chris = await seedUser(t, { isAnonymous: false });
+  const jane = await seedUser(t, { isAnonymous: false });
+  async function endedRoomWithJane() {
+    vi.setSystemTime((now += 1_000));
+    const room = await asUser(t, chris).mutation(api.rooms.create, {});
+    await asUser(t, jane).mutation(api.rooms.join, { code: room.code });
+    await asUser(t, chris).mutation(api.rooms.endRoom, { roomId: room.roomId });
+    return room;
+  }
+  await endedRoomWithJane();
+  const newest = await endedRoomWithJane();
+  vi.setSystemTime((now += 1_000));
+  const replayed = await asUser(t, chris).mutation(api.rooms.playAgain, {
+    roomId: newest.roomId,
+  });
+
+  const groups = await asUser(t, chris).query(api.rooms.listRecentGroups, {});
+  expect(groups.map((group) => group.roomId)).toEqual([newest.roomId]);
+  await expect(
+    asUser(t, chris).mutation(api.rooms.playAgain, { roomId: newest.roomId }),
+  ).resolves.toEqual(replayed);
+});
+
 test("playAgain preserves an unfinished game", async () => {
   const t = setupTest();
   const host = await seedUser(t, { isAnonymous: false });
