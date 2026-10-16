@@ -8,7 +8,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { useRouter } from "next/navigation";
+import { type ReactNode, useCallback, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +37,7 @@ import { cn } from "@/lib/utils";
 type Overview = NonNullable<FunctionReturnType<typeof api.friends.overview>>;
 type FriendStatus = Overview["friends"][number]["status"];
 type FriendPlayer = Overview["incoming"][number] & { status?: FriendStatus };
+type Invite = Overview["invites"][number];
 
 const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
   online: "Online",
@@ -43,10 +45,11 @@ const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
   offline: "Offline",
 };
 
-// Friends, and Friend requests both ways. Its button's badge counts the
-// requests waiting on you.
-export function FriendsPanel() {
-  const overview = useQuery(api.friends.overview, {});
+// Friends, Friend requests both ways, and your open Invites. Its button's
+// badge counts the requests waiting on you. Opened from a Room, it can also
+// invite Friends into it.
+export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
+  const overview = useQuery(api.friends.overview, { roomId });
   const incoming = overview?.incoming.length ?? 0;
   const incomingCount = `${incoming}${overview?.moreIncoming ? "+" : ""}`;
   const incomingLabel = `${incomingCount} friend request${incomingCount === "1" ? "" : "s"}`;
@@ -79,7 +82,9 @@ export function FriendsPanel() {
         <SheetHeader className="p-0 pr-8">
           <SheetTitle>Friends</SheetTitle>
           <SheetDescription>
-            Add friends by their exact username, or from their profile page.
+            {roomId === undefined
+              ? "Add friends by their exact username, or from their profile page."
+              : "Invite friends to this room, or add friends by their exact username."}
           </SheetDescription>
         </SheetHeader>
         {overview === undefined ? null : overview === null ? (
@@ -87,7 +92,7 @@ export function FriendsPanel() {
         ) : (
           <>
             <AddByUsername />
-            <FriendLists overview={overview} />
+            <FriendLists overview={overview} roomId={roomId} />
             <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4">
               <YourPresence appearOffline={overview.appearOffline} />
             </SheetFooter>
@@ -175,16 +180,24 @@ function AddByUsername() {
   );
 }
 
-function FriendLists({ overview }: { overview: Overview }) {
+function FriendLists({
+  overview,
+  roomId,
+}: {
+  overview: Overview;
+  roomId?: Id<"rooms">;
+}) {
   const answerRequest = useMutation(api.friends.answerRequest);
   const cancelRequest = useMutation(api.friends.cancelRequest);
   const unfriend = useMutation(api.friends.unfriend);
-  const [busyUserId, setBusyUserId] = useState<Id<"users"> | null>(null);
+  const invite = useMutation(api.friends.invite);
+  const answerInvite = useInviteAnswer();
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function act(userId: Id<"users">, run: () => Promise<unknown>) {
-    setBusyUserId(userId);
+  async function act(id: string, run: () => Promise<unknown>) {
+    setBusyId(id);
     await run();
-    setBusyUserId(null);
+    setBusyId(null);
   }
   const answer = (userId: Id<"users">, answer: "accept" | "decline") =>
     act(userId, () =>
@@ -208,16 +221,44 @@ function FriendLists({ overview }: { overview: Overview }) {
         fallback: "Could not unfriend. Try again.",
       }),
     );
+  const room = overview.room;
+  const inviteFriend = (roomId: Id<"rooms">, userId: Id<"users">) =>
+    act(userId, () =>
+      runMutation(() => invite({ roomId, userId }), {
+        context: "friends.invite",
+        fallback: "Could not invite this friend. Try again.",
+      }),
+    );
+  const busy = busyId !== null;
 
   return (
     <>
+      {overview.invites.length > 0 && (
+        <FriendSection title="Invites">
+          {overview.invites.map((invite) => (
+            <FriendRow
+              key={invite._id}
+              player={invite.sender}
+              detail={`Room ${invite.roomCode}`}
+            >
+              <InviteAnswers
+                invite={invite}
+                disabled={busy}
+                onAnswer={(answer) =>
+                  act(invite._id, () => answerInvite(invite, answer))
+                }
+              />
+            </FriendRow>
+          ))}
+        </FriendSection>
+      )}
       {overview.incoming.length > 0 && (
         <FriendSection title="Requests">
           {overview.incoming.map((player) => (
             <FriendRow key={player.id} player={player}>
               <Button
                 size="sm"
-                disabled={busyUserId !== null}
+                disabled={busy}
                 onClick={() => answer(player.id, "accept")}
               >
                 Accept
@@ -225,7 +266,7 @@ function FriendLists({ overview }: { overview: Overview }) {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busyUserId !== null}
+                disabled={busy}
                 onClick={() => answer(player.id, "decline")}
               >
                 Decline
@@ -240,10 +281,24 @@ function FriendLists({ overview }: { overview: Overview }) {
         ) : (
           overview.friends.map((player) => (
             <FriendRow key={player.id} player={player}>
-              {player.status.kind === "inRoom" && (
-                <Button asChild size="sm">
-                  <Link href={roomPath(player.status.code)}>Join</Link>
-                </Button>
+              {roomId !== undefined && room !== null ? (
+                <InviteAction
+                  state={
+                    room.members.includes(player.id)
+                      ? "inRoom"
+                      : room.invited.includes(player.id)
+                        ? "invited"
+                        : "none"
+                  }
+                  disabled={busy}
+                  onInvite={() => inviteFriend(roomId, player.id)}
+                />
+              ) : (
+                player.status.kind === "inRoom" && (
+                  <Button asChild size="sm">
+                    <Link href={roomPath(player.status.code)}>Join</Link>
+                  </Button>
+                )
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -251,7 +306,7 @@ function FriendLists({ overview }: { overview: Overview }) {
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`Options for ${player.name}`}
-                    disabled={busyUserId !== null}
+                    disabled={busy}
                   >
                     <HugeiconsIcon
                       icon={MoreHorizontalIcon}
@@ -280,7 +335,7 @@ function FriendLists({ overview }: { overview: Overview }) {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busyUserId !== null}
+                disabled={busy}
                 onClick={() => cancel(player.id)}
               >
                 Cancel
@@ -290,6 +345,96 @@ function FriendLists({ overview }: { overview: Overview }) {
         </FriendSection>
       )}
     </>
+  );
+}
+
+function InviteAction({
+  state,
+  disabled,
+  onInvite,
+}: {
+  state: "none" | "invited" | "inRoom";
+  disabled: boolean;
+  onInvite: () => void;
+}) {
+  if (state === "inRoom") {
+    return (
+      <span className="self-center text-xs text-muted-foreground">
+        In this room
+      </span>
+    );
+  }
+  return (
+    <>
+      {state === "invited" && (
+        <span className="self-center text-xs text-muted-foreground">
+          Invited
+        </span>
+      )}
+      <Button
+        size="sm"
+        variant={state === "invited" ? "outline" : "default"}
+        disabled={disabled}
+        onClick={onInvite}
+      >
+        {state === "invited" ? "Resend" : "Invite"}
+      </Button>
+    </>
+  );
+}
+
+export function InviteAnswers({
+  invite,
+  disabled,
+  onAnswer,
+}: {
+  invite: Pick<Invite, "roomCode">;
+  disabled: boolean;
+  onAnswer: (answer: "join" | "decline") => void;
+}) {
+  return (
+    <>
+      <Button
+        size="sm"
+        disabled={disabled}
+        aria-label={`Join room ${invite.roomCode}`}
+        onClick={() => onAnswer("join")}
+      >
+        Join
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={disabled}
+        onClick={() => onAnswer("decline")}
+      >
+        Decline
+      </Button>
+    </>
+  );
+}
+
+// Answers an Invite, and takes the recipient to the Room when they join.
+export function useInviteAnswer() {
+  const answerInvite = useMutation(api.friends.answerInvite);
+  const router = useRouter();
+  return useCallback(
+    async (
+      invite: Pick<Invite, "_id" | "roomCode">,
+      answer: "join" | "decline",
+    ) => {
+      const result = await runMutation(
+        () => answerInvite({ inviteId: invite._id, answer }),
+        {
+          context: "friends.answerInvite",
+          fallback: "Could not answer this invite. Try again.",
+        },
+      );
+      if (result.ok && result.value !== null) {
+        router.push(roomPath(result.value.code));
+      }
+    },
+    [answerInvite, router],
   );
 }
 
@@ -401,9 +546,11 @@ function FriendSection({
 
 export function FriendRow({
   player,
+  detail,
   children,
 }: {
   player: FriendPlayer;
+  detail?: string;
   children?: ReactNode;
 }) {
   const { status } = player;
@@ -431,6 +578,11 @@ export function FriendRow({
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <StatusDot offline={status.kind === "offline"} className="size-2" />
             {STATUS_LABELS[status.kind]}
+          </span>
+        )}
+        {detail && (
+          <span className="truncate text-xs text-muted-foreground">
+            {detail}
           </span>
         )}
       </div>

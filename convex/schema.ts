@@ -295,6 +295,18 @@ export default defineSchema({
     ])
     .index("by_requester_and_status", ["requesterUserId", "status"]),
 
+  // One row per open Invite: a row exists only while its Invite is open.
+  invites: defineTable({
+    roomId: v.id("rooms"),
+    recipientUserId: v.id("users"),
+    // Whoever invited them most recently.
+    senderUserId: v.id("users"),
+    expiresAt: v.number(),
+  })
+    .index("by_room_and_recipient", ["roomId", "recipientUserId"])
+    .index("by_recipient", ["recipientUserId"])
+    .index("by_sender", ["senderUserId"]),
+
   gamePlayerStats: defineTable({
     gameId: v.id("games"),
     userId: v.id("users"),

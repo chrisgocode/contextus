@@ -261,6 +261,8 @@ test("the friends overview is empty for a new user and null for a Guest", async 
     moreIncoming: false,
     outgoing: [],
     appearOffline: false,
+    invites: [],
+    room: null,
   });
   expect(await asUser(t, guest).query(api.friends.overview, {})).toBeNull();
 });
@@ -421,6 +423,8 @@ test("the friends overview lists Friends and pending requests both ways, hiding 
     moreIncoming: false,
     outgoing: [],
     appearOffline: false,
+    invites: [],
+    room: null,
   });
   expect(await asUser(t, dave).query(api.friends.overview, {})).toMatchObject({
     outgoing: [{ id: alice }],

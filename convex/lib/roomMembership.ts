@@ -9,6 +9,7 @@ import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { appError } from "./errors";
+import { endInvite, endInvitesForRoom } from "./invites";
 import { withdrawAllFor } from "./pendingRequests";
 
 type ReadCtx = Pick<QueryCtx, "db">;
@@ -111,13 +112,15 @@ export async function openRoom(
   return roomId;
 }
 
-// Adds the user to an active Room. Returns false when they were already in.
+// Adds the user to an active Room, ending any Invite they had to it however
+// they came in. Returns false when they were already in.
 export async function admit(
   ctx: WriteCtx,
   roomId: Id<"rooms">,
   userId: Id<"users">,
   now: number,
 ): Promise<boolean> {
+  await endInvite(ctx, roomId, userId);
   const existing = await findMembership(ctx, roomId, userId);
   if (existing === null) {
     await requireGuestRoomSlot(ctx, userId);
@@ -141,6 +144,7 @@ export async function closeRoom(
   roomId: Id<"rooms">,
 ): Promise<Doc<"roomMembers">[]> {
   await ctx.db.patch("rooms", roomId, { status: "ended" });
+  await endInvitesForRoom(ctx, roomId);
   const members = await ctx.db
     .query("roomMembers")
     .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
@@ -231,6 +235,7 @@ async function vacate(
   const membership = await findMembership(ctx, roomId, departure.userId);
   if (departure.reason === "merged") {
     if (membership === null) return false;
+    await endInvite(ctx, roomId, departure.into);
     const existing = await findMembership(ctx, roomId, departure.into);
     if (existing === null) {
       await ctx.db.patch("roomMembers", membership._id, {

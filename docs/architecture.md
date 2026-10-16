@@ -34,7 +34,7 @@ flowchart LR
 | `hints.ts`           | Host hint action and hint execution                                                              |
 | `giveup.ts`          | Host give-up action and give-up execution                                                        |
 | `requests.ts`        | Non-host hint and give-up requests: create, deny, approve                                        |
-| `friends.ts`         | Friend requests, unfriending, Friend status and suggestions, friends panel overview              |
+| `friends.ts`         | Friend requests, unfriending, Invites, Friend status and suggestions, friends panel overview     |
 | `presence.ts`        | Wraps `@convex-dev/presence`: who's online in a room, and the app-wide heartbeat for Friends     |
 | `achievements.ts`    | Profile achievement listing                                                                      |
 | `users.ts`           | Profiles, usernames, avatar upload, activity graph, guest account prompt, Appear offline         |
@@ -72,6 +72,7 @@ Pure logic lives in `convex/lib/` so it can be unit tested without a database. T
 | `gamePlayerStats`                                                     | Per-user, per-game stats used by achievements                                  |
 | `userAchievements`, `userAchievementProgress`, `userAchievementStats` | Unlocked achievements, progress counters, and lifetime guess color totals      |
 | `friendships`                                                         | One row per pair of users: a pending Friend request or a friendship            |
+| `invites`                                                             | Open Invites, one per Room and recipient, deleted when they end                |
 | `userSolveDays`                                                       | Local calendar days on which each user was credited with a solve (streaks)     |
 
 ## Guess pipeline

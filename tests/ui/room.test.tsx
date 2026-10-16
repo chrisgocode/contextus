@@ -124,13 +124,16 @@ beforeEach(() => {
     if (name === "rooms:endRoom") return mocks.endRoom;
     if (name === "friends:sendRequest") return mocks.sendFriendRequest;
     if (name === "friends:answerRequest") return mocks.answerFriendRequest;
-    if (name.startsWith("requests:")) return vi.fn();
+    if (name.startsWith("requests:") || name.startsWith("friends:")) {
+      return vi.fn();
+    }
     throw new Error(`Unexpected mutation: ${name}`);
   });
   mocks.useQuery.mockImplementation((reference) => {
     const name = getFunctionName(reference);
-    if (name.startsWith("requests:")) return undefined;
-    if (name === "friends:relationship") return undefined;
+    if (name.startsWith("requests:") || name.startsWith("friends:")) {
+      return undefined;
+    }
     throw new Error(`Unexpected query: ${name}`);
   });
 });
@@ -268,6 +271,7 @@ describe("RoomPage", () => {
     mocks.useQuery.mockImplementation((reference, args) => {
       const name = getFunctionName(reference);
       if (name === "friends:relationship") return relationships[args.userId];
+      if (name === "friends:overview") return undefined;
       if (name.startsWith("requests:")) return undefined;
       throw new Error(`Unexpected query: ${name}`);
     });

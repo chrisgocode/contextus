@@ -18,6 +18,7 @@ export const rateLimits = {
   giveup: { kind: "token bucket", rate: 15, period: MINUTE, capacity: 8 },
   createRoom: { kind: "token bucket", rate: 30, period: HOUR, capacity: 20 },
   friendRequest: { kind: "token bucket", rate: 30, period: HOUR, capacity: 20 },
+  invite: { kind: "token bucket", rate: 60, period: HOUR, capacity: 30 },
   // Guest sign-ups carry no identity to key on, so this one is shared.
   createGuest: { kind: "token bucket", rate: 80, period: MINUTE, capacity: 80 },
 } as const;

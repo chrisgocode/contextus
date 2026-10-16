@@ -111,6 +111,13 @@ type EventCatalog = {
     via: "accept" | "crossed_request";
   };
   friend_removed: { friend_user_id: Id<"users"> };
+  invite_sent: {
+    room_id: Id<"rooms">;
+    recipient_user_id: Id<"users">;
+    // Sent again while the recipient's Invite to the Room was still open.
+    resent: boolean;
+  };
+  invite_joined: { room_id: Id<"rooms">; sender_user_id: Id<"users"> };
   guest_merged: {
     guest_user_id: Id<"users">;
     account_user_id: Id<"users">;

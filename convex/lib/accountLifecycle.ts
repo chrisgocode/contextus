@@ -374,6 +374,29 @@ export const USER_KEYED_TABLES = [
     expire: "delete",
     purge: "delete",
   }),
+  // Guests never send or receive Invites, so they own no rows to move.
+  policy({
+    table: "invites",
+    field: "recipientUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("invites")
+        .withIndex("by_recipient", (q) => q.eq("recipientUserId", userId)),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
+  policy({
+    table: "invites",
+    field: "senderUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("invites")
+        .withIndex("by_sender", (q) => q.eq("senderUserId", userId)),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
 ];
 
 // Deletes what a finished merge leaves on the guest, then the guest itself.

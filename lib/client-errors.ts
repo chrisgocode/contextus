@@ -105,6 +105,13 @@ export const friendMessages = {
   "friends.answerRequest": [friendRequestGone, ...friendLimits],
   "friends.cancelRequest": [friendRequestGone],
   "friends.unfriend": [["notFriends"]],
+  "friends.invite": [
+    roomNotFound,
+    ["notFriends"],
+    ["alreadyInRoom"],
+    ["notMember", "You are no longer in this room."],
+  ],
+  "friends.answerInvite": [["inviteNotFound"], roomNotFound],
 } satisfies Record<string, readonly Rule[]>;
 
 const messages: Record<ErrorContext, readonly Rule[]> = {

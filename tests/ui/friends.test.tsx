@@ -8,8 +8,11 @@ import { appError } from "@/convex/lib/errors";
 import { render, screen, userEvent, waitFor, within } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
+  answerInvite: vi.fn(),
   answerRequest: vi.fn(),
   cancelRequest: vi.fn(),
+  invite: vi.fn(),
+  push: vi.fn(),
   sendRequest: vi.fn(),
   setAppearOffline: vi.fn(),
   sendRequestByUsername: vi.fn(),
@@ -20,7 +23,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("convex/react", () => ({
   useMutation: (reference: Parameters<typeof getFunctionName>[0]) => {
     const name = getFunctionName(reference);
+    if (name === "friends:answerInvite") return mocks.answerInvite;
     if (name === "friends:answerRequest") return mocks.answerRequest;
+    if (name === "friends:invite") return mocks.invite;
     if (name === "friends:cancelRequest") return mocks.cancelRequest;
     if (name === "friends:sendRequest") return mocks.sendRequest;
     if (name === "users:setAppearOffline") return mocks.setAppearOffline;
@@ -37,10 +42,14 @@ vi.mock("convex/react", () => ({
       ? { player: { name: "Alice" }, image: null }
       : mocks.useQuery(reference, args),
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mocks.push }),
+}));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/lib/sentry-client", () => ({ captureException: vi.fn() }));
 
 const bob = "bob" as Id<"users">;
+const roomId = "room" as Id<"rooms">;
 
 function player(id: string, name: string) {
   return { id, name, image: null, username: id, isGuest: false, exists: true };
@@ -55,6 +64,15 @@ function friend(id: string, name: string, status: FriendStatus) {
   return { ...player(id, name), status };
 }
 
+function invite(id: string, roomCode: string, sender: string) {
+  return {
+    _id: id,
+    roomCode,
+    expiresAt: 0,
+    sender: player(sender, sender),
+  };
+}
+
 function overview(
   overrides: Partial<{
     friends: ReturnType<typeof friend>[];
@@ -62,6 +80,8 @@ function overview(
     outgoing: ReturnType<typeof player>[];
     moreIncoming: boolean;
     appearOffline: boolean;
+    invites: ReturnType<typeof invite>[];
+    room: { invited: string[]; members: string[] } | null;
   }> = {},
 ) {
   return {
@@ -70,6 +90,8 @@ function overview(
     outgoing: [],
     moreIncoming: false,
     appearOffline: false,
+    invites: [],
+    room: null,
     ...overrides,
   };
 }
@@ -142,9 +164,9 @@ describe("FriendButton", () => {
 });
 
 describe("FriendsPanel", () => {
-  async function openPanel() {
+  async function openPanel(props: { roomId?: Id<"rooms"> } = {}) {
     const user = userEvent.setup();
-    render(<FriendsPanel />);
+    render(<FriendsPanel {...props} />);
     await user.click(screen.getByRole("button", { name: /^Friends/ }));
     return { user, panel: await screen.findByRole("dialog") };
   }
@@ -342,5 +364,93 @@ describe("FriendsPanel", () => {
     expect(
       within(panel).getByRole("link", { name: "Sign in" }),
     ).toHaveAttribute("href", "/signin");
+  });
+
+  it("invites Friends into the Room, and shows who is invited or already in", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        friends: [
+          friend("carol", "Carol", { kind: "online" }),
+          friend("dave", "Dave", { kind: "offline" }),
+          friend("erin", "Erin", { kind: "inRoom", code: "ABCDEF" }),
+        ],
+        room: { invited: ["dave"], members: ["erin"] },
+      }),
+    );
+    mocks.invite.mockResolvedValue(null);
+    const { user, panel } = await openPanel({ roomId });
+    const [carol, dave, erin] = within(
+      within(panel).getByRole("region", { name: "Friends" }),
+    ).getAllByRole("listitem");
+
+    await user.click(within(carol).getByRole("button", { name: "Invite" }));
+    expect(within(dave).getByText("Invited")).toBeInTheDocument();
+    await user.click(within(dave).getByRole("button", { name: "Resend" }));
+
+    expect(within(erin).getByText("In this room")).toBeInTheDocument();
+    expect(
+      within(erin).queryByRole("button", { name: /Invite|Resend/ }),
+    ).toBeNull();
+    expect(within(erin).queryByRole("link", { name: "Join" })).toBeNull();
+    expect(mocks.useQuery).toHaveBeenCalledWith(expect.anything(), { roomId });
+    expect(mocks.invite.mock.calls).toEqual([
+      [{ roomId, userId: "carol" }],
+      [{ roomId, userId: "dave" }],
+    ]);
+  });
+
+  it("offers no Invite buttons outside a Room", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({ friends: [friend("carol", "Carol", { kind: "online" })] }),
+    );
+    const { panel } = await openPanel();
+
+    expect(within(panel).queryByRole("button", { name: "Invite" })).toBeNull();
+  });
+
+  it("joins an open Invite's Room and declines another", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        invites: [
+          invite("i1", "ABCDEF", "Carol"),
+          invite("i2", "GHIJKL", "Dave"),
+        ],
+      }),
+    );
+    mocks.answerInvite.mockImplementation(async ({ answer }) =>
+      answer === "join" ? { code: "ABCDEF" } : null,
+    );
+    const { user, panel } = await openPanel();
+    const invites = within(panel).getByRole("region", { name: "Invites" });
+    expect(within(invites).getByText("Room GHIJKL")).toBeInTheDocument();
+
+    await user.click(
+      within(invites).getByRole("button", { name: "Join room ABCDEF" }),
+    );
+    const [, dave] = within(invites).getAllByRole("listitem");
+    await user.click(within(dave).getByRole("button", { name: "Decline" }));
+
+    expect(mocks.answerInvite.mock.calls).toEqual([
+      [{ inviteId: "i1", answer: "join" }],
+      [{ inviteId: "i2", answer: "decline" }],
+    ]);
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/r/ABCDEF");
+  });
+
+  it("explains an Invite that ended before it was answered", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({ invites: [invite("i1", "ABCDEF", "Carol")] }),
+    );
+    mocks.answerInvite.mockRejectedValue(appError("inviteNotFound"));
+    const { user, panel } = await openPanel();
+
+    await user.click(
+      within(panel).getByRole("button", { name: "Join room ABCDEF" }),
+    );
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("This invite has ended."),
+    );
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 });
