@@ -88,6 +88,7 @@ const friendLimits: Rule[] = [["friendLimit"], ["friendLimitOther"]];
 
 export const friendMessages = {
   "friends.sendRequest": [
+    ["userNotFound", "This player no longer exists."],
     ["friendsNeedAccount"],
     ["friendRequestLimit"],
     ...friendLimits,

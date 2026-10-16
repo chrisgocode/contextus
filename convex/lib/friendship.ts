@@ -150,6 +150,10 @@ export async function answerRequest(
     });
   } else {
     await ctx.db.patch("friendships", row._id, { declined: true });
+    await track(ctx, recipient, {
+      name: "friend_request_declined",
+      properties: { sender_user_id: sender },
+    });
   }
 }
 
@@ -163,6 +167,10 @@ export async function cancelRequest(
     throw appError("friendRequestNotFound");
   }
   await ctx.db.delete("friendships", row._id);
+  await track(ctx, sender, {
+    name: "friend_request_cancelled",
+    properties: { recipient_user_id: target },
+  });
 }
 
 // Incoming requests listed at most. Senders are capped, recipients aren't.

@@ -182,6 +182,12 @@ describe("reportClientError", () => {
       "They have reached the maximum number of friends.",
     ],
     [
+      "friends.sendRequest",
+      appError("userNotFound"),
+      "This player no longer exists.",
+    ],
+    ["friends.sendRequest", appError("friendSelf"), null],
+    [
       "friends.answerRequest",
       appError("friendRequestNotFound"),
       "This friend request is no longer available.",

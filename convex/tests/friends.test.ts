@@ -458,3 +458,41 @@ test("the friends overview lists 100 incoming requests and says when more are wa
   expect(overLimit?.incoming).toHaveLength(100);
   expect(overLimit?.moreIncoming).toBe(true);
 }, 30_000);
+
+test("declining and cancelling Friend requests record analytics", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  const carol = await seedUser(t);
+  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol });
+  capture.mockClear();
+
+  await asUser(t, bob).mutation(api.friends.answerRequest, {
+    userId: alice,
+    answer: "decline",
+  });
+  await asUser(t, alice).mutation(api.friends.cancelRequest, { userId: carol });
+
+  expect(
+    capture.mock.calls.map(([, event]) => ({
+      distinctId: event.distinctId,
+      event: event.event,
+      properties: event.properties,
+    })),
+  ).toEqual([
+    {
+      distinctId: bob,
+      event: "friend_request_declined",
+      properties: expect.objectContaining({ sender_user_id: alice }),
+    },
+    {
+      distinctId: alice,
+      event: "friend_request_cancelled",
+      properties: expect.objectContaining({ recipient_user_id: carol }),
+    },
+  ]);
+});
