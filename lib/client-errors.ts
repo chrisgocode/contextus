@@ -80,18 +80,37 @@ export const accountMessages = {
   "users.setTimeZone": [],
 } satisfies Record<string, readonly Rule[]>;
 
+const friendRequestGone: Rule = [
+  "friendRequestNotFound",
+  "This friend request is no longer available.",
+];
+const friendLimits: Rule[] = [["friendLimit"], ["friendLimitOther"]];
+
+export const friendMessages = {
+  "friends.sendRequest": [
+    ["userNotFound", "This player no longer exists."],
+    ["friendsNeedAccount"],
+    ["friendRequestLimit"],
+    ...friendLimits,
+  ],
+  "friends.answerRequest": [friendRequestGone, ...friendLimits],
+  "friends.cancelRequest": [friendRequestGone],
+} satisfies Record<string, readonly Rule[]>;
+
 const messages: Record<ErrorContext, readonly Rule[]> = {
   ...requestMessages,
   ...gameMessages,
   ...roomMessages,
   ...accountMessages,
+  ...friendMessages,
 };
 
 export type ErrorContext =
   | keyof typeof requestMessages
   | keyof typeof gameMessages
   | keyof typeof roomMessages
-  | keyof typeof accountMessages;
+  | keyof typeof accountMessages
+  | keyof typeof friendMessages;
 
 /** The message for an error `context` expects, or null if it's unexpected. */
 export function expectedClientErrorMessage(

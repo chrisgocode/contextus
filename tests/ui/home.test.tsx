@@ -181,6 +181,8 @@ describe("Home", () => {
             roomId: "old-room",
           },
         ];
+      if (name === "friends:overview")
+        return { friends: [], incoming: [], outgoing: [] };
       throw new Error(`Unexpected query: ${name}`);
     });
     mocks.playAgain.mockResolvedValue({ code: "NEWONE" });

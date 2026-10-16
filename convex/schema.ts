@@ -271,6 +271,29 @@ export default defineSchema({
     dayKey: v.string(),
   }).index("by_user_and_dayKey", ["userId", "dayKey"]),
 
+  // One row per unordered pair of users: `firstUserId` sorts before
+  // `secondUserId`. A declined request stays pending with `declined` set, so
+  // the requester still sees it and the recipient no longer does.
+  friendships: defineTable({
+    firstUserId: v.id("users"),
+    secondUserId: v.id("users"),
+    requesterUserId: v.id("users"),
+    status: v.union(v.literal("pending"), v.literal("friends")),
+    declined: v.boolean(),
+  })
+    .index("by_first_and_second", ["firstUserId", "secondUserId"])
+    .index("by_first_and_status_and_declined", [
+      "firstUserId",
+      "status",
+      "declined",
+    ])
+    .index("by_second_and_status_and_declined", [
+      "secondUserId",
+      "status",
+      "declined",
+    ])
+    .index("by_requester_and_status", ["requesterUserId", "status"]),
+
   gamePlayerStats: defineTable({
     gameId: v.id("games"),
     userId: v.id("users"),

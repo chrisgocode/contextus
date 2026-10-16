@@ -19,6 +19,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { runMutation } from "@/lib/report-error";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
+import { FriendButton } from "./FriendButton";
 
 // Mirrors the limits updateProfile enforces on the server.
 const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
@@ -283,6 +284,7 @@ export function ProfileClient({ username }: { username: string }) {
         </div>
 
         <div className="flex w-full flex-col gap-2">
+          {!canEdit && <FriendButton userId={loadedProfile._id} />}
           {canEdit &&
             (isEditing ? (
               <form

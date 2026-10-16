@@ -29,6 +29,14 @@ const messages = {
   usernameTaken: "Username is already taken.",
   profileImageTooLarge: "Profile image must be 1 MB or smaller.",
   profileImageType: "Profile image must be a PNG, JPEG, WebP or GIF.",
+  userNotFound: "User not found",
+  friendsNeedAccount: "Friends need an account.",
+  friendSelf: "You can't add yourself as a friend.",
+  friendRequestLimit:
+    "You have too many pending friend requests. Cancel some and try again.",
+  friendLimit: "You have reached the maximum number of friends.",
+  friendLimitOther: "They have reached the maximum number of friends.",
+  friendRequestNotFound: "Friend request not found",
 } as const;
 
 export type AppErrorCode = keyof typeof messages;

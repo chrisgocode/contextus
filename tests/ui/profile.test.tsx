@@ -56,6 +56,8 @@ beforeEach(() => {
     if (name === "users:generateProfileImageUploadUrl")
       return mocks.generateUploadUrl;
     if (name === "users:updateProfile") return mocks.updateProfile;
+    if (name === "friends:sendRequest" || name === "friends:answerRequest")
+      return vi.fn();
     throw new Error(`Unexpected mutation: ${name}`);
   });
 });
@@ -97,12 +99,14 @@ describe("ProfileClient", () => {
         return { ...profile, isCurrentUser: false };
       if (name === "users:getActivityGraph") return { days: [] };
       if (name === "achievements:listForProfile") return { achievements: [] };
+      if (name === "friends:relationship") return "none";
       throw new Error(`Unexpected query: ${name}`);
     });
     render(<ProfileClient username="alex" />);
     expect(
       screen.queryByRole("button", { name: "Change profile picture" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add friend" })).toBeVisible();
   });
 
   it("validates required profile fields before saving", async () => {

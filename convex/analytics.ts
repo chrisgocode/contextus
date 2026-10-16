@@ -102,6 +102,14 @@ type EventCatalog = {
     game_id: Id<"games">;
     request_type: "hint" | "giveup";
   };
+  friend_request_sent: { recipient_user_id: Id<"users"> };
+  friend_request_declined: { sender_user_id: Id<"users"> };
+  friend_request_cancelled: { recipient_user_id: Id<"users"> };
+  // Sent by whoever made the two Friends.
+  friend_added: {
+    friend_user_id: Id<"users">;
+    via: "accept" | "crossed_request";
+  };
   guest_merged: {
     guest_user_id: Id<"users">;
     account_user_id: Id<"users">;

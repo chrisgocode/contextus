@@ -12,6 +12,7 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
+import { FriendsPanel } from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ export default function Home() {
       <h1 className="text-2xl font-bold">Contextus</h1>
       <div className="flex items-center gap-2">
         <AppearancePicker />
+        {isAuthenticated && <FriendsPanel />}
         {isRegistered ? (
           <Button
             variant="outline"
