@@ -151,6 +151,15 @@ export const setTimeZone = mutation({
   },
 });
 
+export const setAppearOffline = mutation({
+  args: { appearOffline: v.boolean() },
+  handler: async (ctx, { appearOffline }) => {
+    const userId = await requireRegisteredUser(ctx);
+    await ctx.db.patch("users", userId, { appearOffline });
+    return null;
+  },
+});
+
 export const generateProfileImageUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {

@@ -30,6 +30,7 @@ import type * as lib_achievements from "../lib/achievements.js";
 import type * as lib_code from "../lib/code.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_errors from "../lib/errors.js";
+import type * as lib_friendStatus from "../lib/friendStatus.js";
 import type * as lib_friendship from "../lib/friendship.js";
 import type * as lib_gameTransitions from "../lib/gameTransitions.js";
 import type * as lib_guestEngagement from "../lib/guestEngagement.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/code": typeof lib_code;
   "lib/dates": typeof lib_dates;
   "lib/errors": typeof lib_errors;
+  "lib/friendStatus": typeof lib_friendStatus;
   "lib/friendship": typeof lib_friendship;
   "lib/gameTransitions": typeof lib_gameTransitions;
   "lib/guestEngagement": typeof lib_guestEngagement;

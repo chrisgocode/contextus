@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   answerRequest: vi.fn(),
   cancelRequest: vi.fn(),
   sendRequest: vi.fn(),
+  setAppearOffline: vi.fn(),
   useQuery: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock("convex/react", () => ({
     if (name === "friends:answerRequest") return mocks.answerRequest;
     if (name === "friends:cancelRequest") return mocks.cancelRequest;
     if (name === "friends:sendRequest") return mocks.sendRequest;
+    if (name === "users:setAppearOffline") return mocks.setAppearOffline;
     throw new Error(`Unexpected mutation: ${name}`);
   },
   useQuery: mocks.useQuery,
@@ -33,12 +35,22 @@ function player(id: string, name: string) {
   return { id, name, image: null, username: id, isGuest: false, exists: true };
 }
 
+type FriendStatus =
+  | { kind: "online" }
+  | { kind: "inRoom"; code: string }
+  | { kind: "offline" };
+
+function friend(id: string, name: string, status: FriendStatus) {
+  return { ...player(id, name), status };
+}
+
 function overview(
   overrides: Partial<{
-    friends: ReturnType<typeof player>[];
+    friends: ReturnType<typeof friend>[];
     incoming: ReturnType<typeof player>[];
     outgoing: ReturnType<typeof player>[];
     moreIncoming: boolean;
+    appearOffline: boolean;
   }> = {},
 ) {
   return {
@@ -46,6 +58,7 @@ function overview(
     incoming: [],
     outgoing: [],
     moreIncoming: false,
+    appearOffline: false,
     ...overrides,
   };
 }
@@ -185,6 +198,51 @@ describe("FriendsPanel", () => {
     await user.click(accept);
 
     expect(mocks.answerRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows each Friend's status, with Join for a Friend In a Room", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        friends: [
+          friend("carol", "Carol", { kind: "inRoom", code: "ABCD" }),
+          friend("dave", "Dave", { kind: "online" }),
+          friend("erin", "Erin", { kind: "offline" }),
+        ],
+      }),
+    );
+    const { panel } = await openPanel();
+    const friends = within(panel).getByRole("region", { name: "Friends" });
+    const [carol, dave, erin] = within(friends).getAllByRole("listitem");
+
+    expect(carol).toHaveTextContent("In a Room");
+    expect(within(carol).getByRole("link", { name: "Join" })).toHaveAttribute(
+      "href",
+      "/r/ABCD",
+    );
+    expect(dave).toHaveTextContent("Online");
+    expect(erin).toHaveTextContent("Offline");
+    for (const row of [dave, erin]) {
+      expect(
+        within(row).queryByRole("link", { name: "Join" }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it("turns Appear offline on and off", async () => {
+    mocks.useQuery.mockReturnValue(overview({ appearOffline: true }));
+    mocks.setAppearOffline.mockResolvedValue(null);
+    const { user, panel } = await openPanel();
+    const toggle = within(panel).getByRole("checkbox", {
+      name: /Appear offline/,
+    });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+
+    expect(mocks.setAppearOffline).toHaveBeenCalledWith({
+      appearOffline: false,
+    });
+    await waitFor(() => expect(toggle).toBeEnabled());
   });
 
   it("tells a Guest that Friends need an account", async () => {

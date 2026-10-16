@@ -19,6 +19,7 @@ export default defineSchema({
     guestCleanupStarted: v.optional(v.boolean()),
     // IANA time zone reported by the client, for local-time achievements.
     timeZone: v.optional(v.string()),
+    appearOffline: v.optional(v.boolean()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"])

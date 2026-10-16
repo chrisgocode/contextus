@@ -18,10 +18,19 @@ import {
 } from "@/components/ui/sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
+import { cn } from "@/lib/utils";
 
 type Overview = NonNullable<FunctionReturnType<typeof api.friends.overview>>;
-type FriendPlayer = Overview["friends"][number];
+type FriendPlayer = Overview["incoming"][number];
+type FriendStatus = Overview["friends"][number]["status"];
+
+const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
+  online: "Online",
+  inRoom: "In a Room",
+  offline: "Offline",
+};
 
 // Friends, and Friend requests both ways. Its button's badge counts the
 // requests waiting on you.
@@ -140,7 +149,13 @@ function FriendLists({ overview }: { overview: Overview }) {
           <li className="text-sm text-muted-foreground">No friends yet.</li>
         ) : (
           overview.friends.map((player) => (
-            <FriendRow key={player.id} player={player} />
+            <FriendRow key={player.id} player={player} status={player.status}>
+              {player.status.kind === "inRoom" && (
+                <Button asChild size="sm">
+                  <Link href={roomPath(player.status.code)}>Join</Link>
+                </Button>
+              )}
+            </FriendRow>
           ))
         )}
       </FriendSection>
@@ -160,7 +175,40 @@ function FriendLists({ overview }: { overview: Overview }) {
           ))}
         </FriendSection>
       )}
+      <AppearOfflineToggle appearOffline={overview.appearOffline} />
     </>
+  );
+}
+
+function AppearOfflineToggle({ appearOffline }: { appearOffline: boolean }) {
+  const setAppearOffline = useMutation(api.users.setAppearOffline);
+  const [saving, setSaving] = useState(false);
+
+  async function toggle(next: boolean) {
+    setSaving(true);
+    await runMutation(() => setAppearOffline({ appearOffline: next }), {
+      context: "users.setAppearOffline",
+      fallback: "Could not change Appear offline. Try again.",
+    });
+    setSaving(false);
+  }
+
+  return (
+    <label className="flex items-start gap-3 text-sm">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-4 accent-primary"
+        checked={appearOffline}
+        disabled={saving}
+        onChange={(event) => toggle(event.target.checked)}
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="font-medium">Appear offline</span>
+        <span className="text-muted-foreground">
+          Friends see you as offline, even while you&apos;re in a Room.
+        </span>
+      </span>
+    </label>
   );
 }
 
@@ -183,9 +231,11 @@ function FriendSection({
 
 function FriendRow({
   player,
+  status,
   children,
 }: {
   player: FriendPlayer;
+  status?: FriendStatus;
   children?: ReactNode;
 }) {
   const name = (
@@ -197,7 +247,7 @@ function FriendRow({
         {player.image && <AvatarImage src={player.image} alt="" />}
         <AvatarFallback>{player.name.slice(0, 1).toUpperCase()}</AvatarFallback>
       </Avatar>
-      <div className="flex min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
         {player.username ? (
           <Link
             href={`/user/${player.username}`}
@@ -207,6 +257,20 @@ function FriendRow({
           </Link>
         ) : (
           name
+        )}
+        {status && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-2 rounded-full",
+                status.kind === "offline"
+                  ? "bg-muted-foreground/40"
+                  : "bg-green-500",
+              )}
+            />
+            {STATUS_LABELS[status.kind]}
+          </span>
         )}
       </div>
       {children && <div className="flex shrink-0 gap-2">{children}</div>}

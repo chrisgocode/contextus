@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { statusOf } from "./lib/friendStatus";
 import { playerFromUser } from "./lib/player";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -83,7 +84,23 @@ export const overview = query({
         loadFriendPlayers(ctx, ids),
       ),
     );
-    friends.sort((a, b) => a.name.localeCompare(b.name));
-    return { friends, incoming, moreIncoming: more, outgoing };
+    const friendsWithStatus = await Promise.all(
+      friends.map(async (friend) => ({
+        ...friend,
+        status: await statusOf(ctx, friend.id),
+      })),
+    );
+    friendsWithStatus.sort(
+      (a, b) =>
+        Number(a.status.kind === "offline") -
+          Number(b.status.kind === "offline") || a.name.localeCompare(b.name),
+    );
+    return {
+      friends: friendsWithStatus,
+      incoming,
+      moreIncoming: more,
+      outgoing,
+      appearOffline: user.appearOffline === true,
+    };
   },
 });

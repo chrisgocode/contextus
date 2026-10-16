@@ -95,6 +95,7 @@ export const friendMessages = {
   ],
   "friends.answerRequest": [friendRequestGone, ...friendLimits],
   "friends.cancelRequest": [friendRequestGone],
+  "users.setAppearOffline": [],
 } satisfies Record<string, readonly Rule[]>;
 
 const messages: Record<ErrorContext, readonly Rule[]> = {
