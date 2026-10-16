@@ -178,7 +178,7 @@ function AddByUsername() {
 function FriendLists({ overview }: { overview: Overview }) {
   const answerRequest = useMutation(api.friends.answerRequest);
   const cancelRequest = useMutation(api.friends.cancelRequest);
-  const unfriendMutation = useMutation(api.friends.unfriend);
+  const unfriend = useMutation(api.friends.unfriend);
   const [busyUserId, setBusyUserId] = useState<Id<"users"> | null>(null);
 
   async function act(userId: Id<"users">, run: () => Promise<unknown>) {
@@ -201,9 +201,9 @@ function FriendLists({ overview }: { overview: Overview }) {
       }),
     );
 
-  const unfriend = (userId: Id<"users">) =>
+  const remove = (userId: Id<"users">) =>
     act(userId, () =>
-      runMutation(() => unfriendMutation({ userId }), {
+      runMutation(() => unfriend({ userId }), {
         context: "friends.unfriend",
         fallback: "Could not unfriend. Try again.",
       }),
@@ -263,7 +263,7 @@ function FriendLists({ overview }: { overview: Overview }) {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     variant="destructive"
-                    onSelect={() => unfriend(player.id)}
+                    onSelect={() => remove(player.id)}
                   >
                     Unfriend
                   </DropdownMenuItem>
@@ -399,7 +399,7 @@ function FriendSection({
   );
 }
 
-function FriendRow({
+export function FriendRow({
   player,
   children,
 }: {

@@ -22,7 +22,7 @@ export function FriendButton({
 
   if (relationship === undefined || relationship === null) return null;
 
-  const look = compact
+  const sizeProps = compact
     ? ({ size: "xs", className: "shrink-0" } as const)
     : ({ className: "w-full" } as const);
 
@@ -36,7 +36,7 @@ export function FriendButton({
     case "none":
       return (
         <Button
-          {...look}
+          {...sizeProps}
           disabled={busy}
           onClick={() =>
             run(() =>
@@ -53,7 +53,7 @@ export function FriendButton({
     case "incoming":
       return (
         <Button
-          {...look}
+          {...sizeProps}
           disabled={busy}
           onClick={() =>
             run(() =>
@@ -69,13 +69,13 @@ export function FriendButton({
       );
     case "requested":
       return (
-        <Button {...look} variant="outline" disabled>
+        <Button {...sizeProps} variant="outline" disabled>
           Requested
         </Button>
       );
     case "friends":
       return (
-        <Button {...look} variant="outline" disabled>
+        <Button {...sizeProps} variant="outline" disabled>
           Friends
         </Button>
       );

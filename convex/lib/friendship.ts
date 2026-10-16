@@ -70,9 +70,8 @@ async function isRegistered(ctx: ReadCtx, userId: UserId) {
   return user !== null && user.isAnonymous !== true;
 }
 
-// Whether `other` belongs in the viewer's Friend suggestions: registered,
-// and with no friendship row, so not a Friend and no request either way,
-// declined ones included.
+// A request you declined still rules its sender out: adding them would make
+// you Friends at once.
 export async function isSuggestable(
   ctx: ReadCtx,
   viewer: UserId,
@@ -149,7 +148,7 @@ export async function sendRequestByUsername(
   sender: UserId,
   username: string,
 ): Promise<"requested" | "friends"> {
-  const target = await findUserByUsername(ctx, username.trim());
+  const target = await findUserByUsername(ctx, username);
   if (target === null) throw appError("userNotFound");
   return await sendRequest(ctx, sender, target._id);
 }

@@ -129,6 +129,8 @@ export async function findUserByUsername(
 ) {
   return await ctx.db
     .query("users")
-    .withIndex("by_username", (q) => q.eq("username", username.toLowerCase()))
+    .withIndex("by_username", (q) =>
+      q.eq("username", username.trim().toLowerCase()),
+    )
     .unique();
 }

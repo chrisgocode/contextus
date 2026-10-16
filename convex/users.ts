@@ -75,7 +75,7 @@ export const staleSession = query({
 export const getByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, { username }) => {
-    const user = await findUserByUsername(ctx, username.trim());
+    const user = await findUserByUsername(ctx, username);
     if (user === null) return null;
 
     const currentUserId = await getCurrentUserId(ctx);
@@ -263,7 +263,7 @@ export const getActivityGraph = query({
     const requestedUserId =
       username === undefined
         ? (userId ?? (await getCurrentUserId(ctx)))
-        : (await findUserByUsername(ctx, username.trim()))?._id;
+        : (await findUserByUsername(ctx, username))?._id;
     if (requestedUserId === undefined || requestedUserId === null) {
       return null;
     }

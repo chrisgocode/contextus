@@ -12,7 +12,7 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { FriendsPanel } from "@/app/_components/FriendsPanel";
+import { FriendRow, FriendsPanel } from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -348,27 +348,7 @@ function FriendSuggestions() {
       </div>
       <ul className="flex flex-col gap-3">
         {suggestions.map((player) => (
-          <li key={player.id} className="flex items-center gap-3">
-            <Avatar>
-              {player.image && <AvatarImage src={player.image} alt="" />}
-              <AvatarFallback>
-                {player.name.slice(0, 1).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex min-w-0 flex-1">
-              {player.username ? (
-                <Link
-                  href={`/user/${player.username}`}
-                  className="min-w-0 truncate text-sm font-medium underline-offset-4 hover:underline"
-                >
-                  {player.name}
-                </Link>
-              ) : (
-                <span className="truncate text-sm font-medium">
-                  {player.name}
-                </span>
-              )}
-            </div>
+          <FriendRow key={player.id} player={player}>
             <Button
               size="sm"
               disabled={busyUserId !== null}
@@ -383,7 +363,7 @@ function FriendSuggestions() {
             >
               Add friend
             </Button>
-          </li>
+          </FriendRow>
         ))}
       </ul>
     </section>
