@@ -55,7 +55,7 @@ export function FriendsPanel() {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent className="gap-6 overflow-y-auto p-4">
+      <SheetContent className="gap-6 overflow-y-auto p-4 data-[side=right]:w-full">
         <SheetHeader className="p-0 pr-8">
           <SheetTitle>Friends</SheetTitle>
           <SheetDescription>
