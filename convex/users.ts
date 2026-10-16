@@ -1,11 +1,11 @@
 import { getAuthSessionId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
 import { getCurrentUserId, requireRegisteredUser, requireUser } from "./access";
 import {
   assertUsernameAvailable,
   ensureUserHasUsername,
+  findUserByUsername,
   normalizeUsernameInput,
 } from "./lib/usernames";
 import { appError } from "./lib/errors";
@@ -33,13 +33,6 @@ function startOfUtcDay(timestamp: number): number {
 
 function utcDateKey(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
-}
-
-async function getUserByUsername(ctx: Pick<QueryCtx, "db">, username: string) {
-  return await ctx.db
-    .query("users")
-    .withIndex("by_username", (q) => q.eq("username", username.toLowerCase()))
-    .unique();
 }
 
 export const getUser = query({
@@ -82,7 +75,7 @@ export const staleSession = query({
 export const getByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, { username }) => {
-    const user = await getUserByUsername(ctx, username.trim());
+    const user = await findUserByUsername(ctx, username.trim());
     if (user === null) return null;
 
     const currentUserId = await getCurrentUserId(ctx);
@@ -270,7 +263,7 @@ export const getActivityGraph = query({
     const requestedUserId =
       username === undefined
         ? (userId ?? (await getCurrentUserId(ctx)))
-        : (await getUserByUsername(ctx, username.trim()))?._id;
+        : (await findUserByUsername(ctx, username.trim()))?._id;
     if (requestedUserId === undefined || requestedUserId === null) {
       return null;
     }

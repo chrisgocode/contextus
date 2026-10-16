@@ -94,6 +94,7 @@ export default function Home() {
         <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
+        {isRegistered && <FriendSuggestions />}
       </div>
     </>
   );
@@ -324,6 +325,67 @@ function RecentGroups() {
         })}
       </ul>
       {error && <p className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+// Sending a request drops someone from the suggestions, so a button only
+// ever shows Add friend.
+function FriendSuggestions() {
+  const suggestions = useQuery(api.friends.suggestions, {});
+  const sendRequest = useMutation(api.friends.sendRequest);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+
+  if (suggestions === undefined || suggestions.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border p-6 flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">People you played with</h2>
+        <p className="text-sm text-muted-foreground">
+          Add them as friends to play together again.
+        </p>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {suggestions.map((player) => (
+          <li key={player.id} className="flex items-center gap-3">
+            <Avatar>
+              {player.image && <AvatarImage src={player.image} alt="" />}
+              <AvatarFallback>
+                {player.name.slice(0, 1).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex min-w-0 flex-1">
+              {player.username ? (
+                <Link
+                  href={`/user/${player.username}`}
+                  className="min-w-0 truncate text-sm font-medium underline-offset-4 hover:underline"
+                >
+                  {player.name}
+                </Link>
+              ) : (
+                <span className="truncate text-sm font-medium">
+                  {player.name}
+                </span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              disabled={busyUserId !== null}
+              onClick={async () => {
+                setBusyUserId(player.id);
+                await runMutation(() => sendRequest({ userId: player.id }), {
+                  context: "friends.sendRequest",
+                  fallback: "Could not send a friend request. Try again.",
+                });
+                setBusyUserId(null);
+              }}
+            >
+              Add friend
+            </Button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

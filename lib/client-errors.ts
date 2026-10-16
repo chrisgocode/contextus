@@ -86,16 +86,25 @@ const friendRequestGone: Rule = [
   "This friend request is no longer available.",
 ];
 const friendLimits: Rule[] = [["friendLimit"], ["friendLimitOther"]];
+const friendRequestRules: Rule[] = [
+  ["friendsNeedAccount"],
+  ["friendRequestLimit"],
+  ...friendLimits,
+];
 
 export const friendMessages = {
   "friends.sendRequest": [
     ["userNotFound", "This player no longer exists."],
-    ["friendsNeedAccount"],
-    ["friendRequestLimit"],
-    ...friendLimits,
+    ...friendRequestRules,
+  ],
+  "friends.sendRequestByUsername": [
+    ["userNotFound", "No player has that username."],
+    ["friendSelf"],
+    ...friendRequestRules,
   ],
   "friends.answerRequest": [friendRequestGone, ...friendLimits],
   "friends.cancelRequest": [friendRequestGone],
+  "friends.unfriend": [["notFriends"]],
 } satisfies Record<string, readonly Rule[]>;
 
 const messages: Record<ErrorContext, readonly Rule[]> = {

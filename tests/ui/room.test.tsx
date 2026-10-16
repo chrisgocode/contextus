@@ -16,6 +16,7 @@ import RoomPage from "@/app/(app)/r/[code]/page";
 import { act, render, screen, userEvent, waitFor, within } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
+  sendFriendRequest: vi.fn(),
   clipboardWrite: vi.fn(),
   endRoom: vi.fn(),
   push: vi.fn(),
@@ -120,12 +121,15 @@ beforeEach(() => {
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
     if (name === "rooms:endRoom") return mocks.endRoom;
-    if (name.startsWith("requests:")) return vi.fn();
+    if (name === "friends:sendRequest") return mocks.sendFriendRequest;
+    if (name.startsWith("requests:") || name.startsWith("friends:"))
+      return vi.fn();
     throw new Error(`Unexpected mutation: ${name}`);
   });
   mocks.useQuery.mockImplementation((reference) => {
     const name = getFunctionName(reference);
     if (name.startsWith("requests:")) return undefined;
+    if (name === "friends:relationship") return undefined;
     throw new Error(`Unexpected query: ${name}`);
   });
 });
@@ -253,6 +257,36 @@ describe("RoomPage", () => {
     expect(status("Alex")).toHaveAccessibleName("Online");
     expect(status("Blair")).toHaveAccessibleName("Online");
     expect(status("Casey")).toHaveAccessibleName("Offline");
+  });
+
+  it("offers Add friend on other registered members and reflects a sent request", async () => {
+    const relationships: Record<string, string | null> = {
+      friend: "none",
+      away: "friends",
+    };
+    mocks.useQuery.mockImplementation((reference, args) => {
+      const name = getFunctionName(reference);
+      if (name === "friends:relationship") return relationships[args.userId];
+      if (name.startsWith("requests:")) return undefined;
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    mocks.sendFriendRequest.mockResolvedValue({ status: "requested" });
+    const user = userEvent.setup();
+    const { rerender } = await renderRoom();
+    const row = (name: string) => within(screen.getByText(name).closest("li")!);
+
+    expect(row("Alex").queryByRole("button")).toBeNull();
+    expect(
+      row("Casey").getByRole("button", { name: "Friends" }),
+    ).toBeDisabled();
+    await user.click(row("Blair").getByRole("button", { name: "Add friend" }));
+    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({ userId: "friend" });
+
+    relationships.friend = "requested";
+    rerender(page());
+    expect(
+      row("Blair").getByRole("button", { name: "Requested" }),
+    ).toBeDisabled();
   });
 
   it("lets a signed-out visitor join as a guest or sign in", async () => {

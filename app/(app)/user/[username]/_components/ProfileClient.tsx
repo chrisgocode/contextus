@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { FriendButton } from "@/app/_components/FriendButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { runMutation } from "@/lib/report-error";
 import { Achievements } from "./Achievements";
 import { ActivityGraph } from "./ActivityGraph";
-import { FriendButton } from "./FriendButton";
 
 // Mirrors the limits updateProfile enforces on the server.
 const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";

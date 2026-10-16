@@ -14,6 +14,7 @@ import {
   type AchievementUnlockQueueItem,
 } from "@/app/_components/AchievementUnlockQueue";
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
+import { FriendButton } from "@/app/_components/FriendButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
@@ -385,6 +386,9 @@ function RoomLoaded({
                       <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
                         host
                       </span>
+                    )}
+                    {m.userId !== viewerUserId && !m.player.isGuest && (
+                      <FriendButton userId={m.userId} compact />
                     )}
                   </li>
                 );

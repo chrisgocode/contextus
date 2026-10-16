@@ -12,6 +12,7 @@ import {
 type Test = ReturnType<typeof setupTest>;
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -497,4 +498,246 @@ test("declining and cancelling Friend requests record analytics", async () => {
       properties: expect.objectContaining({ recipient_user_id: carol }),
     },
   ]);
+});
+
+test("a Friend request can be sent by exact username, ignoring case", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t, {
+    username: "bobby",
+    displayUsername: "Bobby",
+  });
+
+  const result = await asUser(t, alice).mutation(
+    api.friends.sendRequestByUsername,
+    { username: " Bobby " },
+  );
+
+  expect(result).toEqual({ status: "requested" });
+  expect(
+    await asUser(t, alice).query(api.friends.relationship, { userId: bob }),
+  ).toBe("requested");
+});
+
+test.each(["bob", "bobbyy", "obby"])(
+  "a username that only partly matches (%s) is not found",
+  async (username) => {
+    const t = setupTest();
+    const alice = await seedUser(t);
+    await seedUser(t, { username: "bobby" });
+
+    await expect(
+      asUser(t, alice).mutation(api.friends.sendRequestByUsername, {
+        username,
+      }),
+    ).rejects.toMatchObject({ data: { code: "userNotFound" } });
+  },
+);
+
+async function makeFriends(t: Test, a: Id<"users">, b: Id<"users">) {
+  await asUser(t, a).mutation(api.friends.sendRequest, { userId: b });
+  await asUser(t, b).mutation(api.friends.answerRequest, {
+    userId: a,
+    answer: "accept",
+  });
+}
+
+test.each(["requester", "recipient"] as const)(
+  "the %s can unfriend, which removes the friendship for both",
+  async (side) => {
+    const t = setupTest();
+    const alice = await seedUser(t);
+    const bob = await seedUser(t);
+    await makeFriends(t, alice, bob);
+    const [actor, other] = side === "requester" ? [alice, bob] : [bob, alice];
+
+    await asUser(t, actor).mutation(api.friends.unfriend, { userId: other });
+
+    for (const [viewer, target] of [
+      [actor, other],
+      [other, actor],
+    ]) {
+      expect(
+        await asUser(t, viewer).query(api.friends.relationship, {
+          userId: target,
+        }),
+      ).toBe("none");
+      const overview = await asUser(t, viewer).query(api.friends.overview, {});
+      expect(overview).toMatchObject({
+        friends: [],
+        incoming: [],
+        outgoing: [],
+      });
+    }
+  },
+);
+
+test("either side can send a new Friend request after unfriending", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  await makeFriends(t, alice, bob);
+  await asUser(t, alice).mutation(api.friends.unfriend, { userId: bob });
+
+  const result = await asUser(t, bob).mutation(api.friends.sendRequest, {
+    userId: alice,
+  });
+
+  expect(result).toEqual({ status: "requested" });
+  expect(
+    await asUser(t, alice).query(api.friends.relationship, { userId: bob }),
+  ).toBe("incoming");
+});
+
+test("unfriending someone who isn't a Friend fails and leaves a pending request alone", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+
+  await expect(
+    asUser(t, bob).mutation(api.friends.unfriend, { userId: alice }),
+  ).rejects.toMatchObject({ data: { code: "notFriends" } });
+  expect(
+    await asUser(t, bob).query(api.friends.relationship, { userId: alice }),
+  ).toBe("incoming");
+});
+
+function roomClock() {
+  vi.useFakeTimers();
+  let now = Date.parse("2026-01-01T00:00:00.000Z");
+  vi.setSystemTime(now);
+  return () => vi.setSystemTime((now += 1_000));
+}
+
+async function shareRoom(
+  t: Test,
+  host: Id<"users">,
+  others: Id<"users">[],
+  { end }: { end: boolean },
+) {
+  const room = await asUser(t, host).mutation(api.rooms.create, {});
+  for (const other of others) {
+    await asUser(t, other).mutation(api.rooms.join, { code: room.code });
+  }
+  if (end) {
+    await asUser(t, host).mutation(api.rooms.endRoom, { roomId: room.roomId });
+  }
+  return room;
+}
+
+async function suggestedIds(t: Test, viewer: Id<"users">) {
+  const suggestions = await asUser(t, viewer).query(
+    api.friends.suggestions,
+    {},
+  );
+  return suggestions.map((player) => player.id);
+}
+
+test("Friend suggestions are the 3 registered users most recently in a Room with you, ended or active", async () => {
+  const tick = roomClock();
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const [bob, carol, dave, erin] = await Promise.all(
+    ["Bob", "Carol", "Dave", "Erin"].map((name) => seedUser(t, { name })),
+  );
+  tick();
+  await shareRoom(t, alice, [bob], { end: true });
+  tick();
+  await shareRoom(t, alice, [carol], { end: false });
+  tick();
+  await shareRoom(t, dave, [alice], { end: true });
+  tick();
+  await shareRoom(t, alice, [erin], { end: true });
+
+  expect(await suggestedIds(t, alice)).toEqual([erin, dave, carol]);
+});
+
+test("Friend suggestions rank by a Room's latest activity, then by who joined it last", async () => {
+  const tick = roomClock();
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const [bob, carol, dave] = await Promise.all(
+    ["Bob", "Carol", "Dave"].map((name) => seedUser(t, { name })),
+  );
+  tick();
+  const older = await shareRoom(t, alice, [bob], { end: false });
+  tick();
+  await shareRoom(t, alice, [carol], { end: true });
+  tick();
+  await asUser(t, dave).mutation(api.rooms.join, { code: older.code });
+
+  expect(await suggestedIds(t, alice)).toEqual([dave, bob, carol]);
+});
+
+test("someone in several of your Rooms is suggested once", async () => {
+  const tick = roomClock();
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  const carol = await seedUser(t);
+  tick();
+  await shareRoom(t, alice, [carol], { end: true });
+  tick();
+  await shareRoom(t, alice, [bob], { end: true });
+  tick();
+  await shareRoom(t, alice, [bob], { end: true });
+
+  expect(await suggestedIds(t, alice)).toEqual([bob, carol]);
+});
+
+test("Friend suggestions leave out Friends, pending requests either way, and Guests", async () => {
+  const tick = roomClock();
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const stranger = await seedUser(t);
+  const friend = await seedUser(t);
+  const requested = await seedUser(t);
+  const incoming = await seedUser(t);
+  const declined = await seedUser(t);
+  const guest = await seedUser(t, { isAnonymous: true });
+  await makeFriends(t, alice, friend);
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    userId: requested,
+  });
+  await asUser(t, incoming).mutation(api.friends.sendRequest, {
+    userId: alice,
+  });
+  await asUser(t, declined).mutation(api.friends.sendRequest, {
+    userId: alice,
+  });
+  await asUser(t, alice).mutation(api.friends.answerRequest, {
+    userId: declined,
+    answer: "decline",
+  });
+  tick();
+  await shareRoom(t, alice, [stranger], { end: true });
+  tick();
+  await shareRoom(t, alice, [friend, requested, incoming, declined, guest], {
+    end: true,
+  });
+
+  expect(await suggestedIds(t, alice)).toEqual([stranger]);
+});
+
+test("unfriending makes someone you shared a Room with a suggestion again", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  await shareRoom(t, alice, [bob], { end: true });
+  await makeFriends(t, alice, bob);
+  expect(await suggestedIds(t, alice)).toEqual([]);
+
+  await asUser(t, bob).mutation(api.friends.unfriend, { userId: alice });
+
+  expect(await suggestedIds(t, alice)).toEqual([bob]);
+});
+
+test("Guests get no Friend suggestions", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const bob = await seedUser(t);
+  await shareRoom(t, bob, [guest], { end: true });
+
+  expect(await suggestedIds(t, guest)).toEqual([]);
 });

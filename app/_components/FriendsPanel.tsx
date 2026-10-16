@@ -1,6 +1,9 @@
 "use client";
 
-import { UserMultipleIcon } from "@hugeicons/core-free-icons";
+import {
+  MoreHorizontalIcon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -8,6 +11,13 @@ import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -69,13 +79,14 @@ export function FriendsPanel() {
         <SheetHeader className="p-0 pr-8">
           <SheetTitle>Friends</SheetTitle>
           <SheetDescription>
-            Add friends from their profile page.
+            Add friends by their exact username, or from their profile page.
           </SheetDescription>
         </SheetHeader>
         {overview === undefined ? null : overview === null ? (
           <GuestMessage />
         ) : (
           <>
+            <AddByUsername />
             <FriendLists overview={overview} />
             <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4">
               <YourPresence appearOffline={overview.appearOffline} />
@@ -100,9 +111,74 @@ function GuestMessage() {
   );
 }
 
+function AddByUsername() {
+  const sendRequest = useMutation(api.friends.sendRequestByUsername);
+  const [username, setUsername] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setResult(null);
+        const sent = await runMutation(() => sendRequest({ username }), {
+          context: "friends.sendRequestByUsername",
+          fallback: "Could not send a friend request. Try again.",
+          showToast: false,
+        });
+        if (sent.ok) {
+          setUsername("");
+          setResult({
+            ok: true,
+            message:
+              sent.value.status === "friends"
+                ? "You're now friends."
+                : "Friend request sent.",
+          });
+        } else {
+          setResult(sent);
+        }
+        setBusy(false);
+      }}
+    >
+      <div className="flex gap-2">
+        <Input
+          aria-label="Username"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          required
+          pattern=".*\S.*"
+        />
+        <Button type="submit" disabled={busy}>
+          Add friend
+        </Button>
+      </div>
+      {result && (
+        <p
+          role={result.ok ? "status" : "alert"}
+          className={`text-sm ${result.ok ? "text-muted-foreground" : "text-destructive"}`}
+        >
+          {result.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function FriendLists({ overview }: { overview: Overview }) {
   const answerRequest = useMutation(api.friends.answerRequest);
   const cancelRequest = useMutation(api.friends.cancelRequest);
+  const unfriendMutation = useMutation(api.friends.unfriend);
   const [busyUserId, setBusyUserId] = useState<Id<"users"> | null>(null);
 
   async function act(userId: Id<"users">, run: () => Promise<unknown>) {
@@ -122,6 +198,14 @@ function FriendLists({ overview }: { overview: Overview }) {
       runMutation(() => cancelRequest({ userId }), {
         context: "friends.cancelRequest",
         fallback: "Could not cancel this friend request. Try again.",
+      }),
+    );
+
+  const unfriend = (userId: Id<"users">) =>
+    act(userId, () =>
+      runMutation(() => unfriendMutation({ userId }), {
+        context: "friends.unfriend",
+        fallback: "Could not unfriend. Try again.",
       }),
     );
 
@@ -161,6 +245,30 @@ function FriendLists({ overview }: { overview: Overview }) {
                   <Link href={roomPath(player.status.code)}>Join</Link>
                 </Button>
               )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Options for ${player.name}`}
+                    disabled={busyUserId !== null}
+                  >
+                    <HugeiconsIcon
+                      icon={MoreHorizontalIcon}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => unfriend(player.id)}
+                  >
+                    Unfriend
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </FriendRow>
           ))
         )}

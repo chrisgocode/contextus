@@ -37,6 +37,7 @@ const messages = {
   friendLimit: "You have reached the maximum number of friends.",
   friendLimitOther: "They have reached the maximum number of friends.",
   friendRequestNotFound: "Friend request not found",
+  notFriends: "You aren't friends with this player.",
 } as const;
 
 export type AppErrorCode = keyof typeof messages;

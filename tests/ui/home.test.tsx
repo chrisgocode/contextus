@@ -11,6 +11,7 @@ import { render, screen, userEvent, waitFor } from "./test-utils";
 const mocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
   playAgain: vi.fn(),
+  sendFriendRequest: vi.fn(),
   push: vi.fn(),
   useConvexAuth: vi.fn(),
   useMutation: vi.fn(),
@@ -45,6 +46,7 @@ beforeEach(() => {
   mocks.useMutation.mockImplementation((reference) => {
     const name = getFunctionName(reference);
     if (name === "rooms:playAgain") return mocks.playAgain;
+    if (name === "friends:sendRequest") return mocks.sendFriendRequest;
     throw new Error(`Unexpected mutation: ${name}`);
   });
 });
@@ -183,6 +185,7 @@ describe("Home", () => {
         ];
       if (name === "friends:overview")
         return { friends: [], incoming: [], outgoing: [] };
+      if (name === "friends:suggestions") return [];
       throw new Error(`Unexpected query: ${name}`);
     });
     mocks.playAgain.mockResolvedValue({ code: "NEWONE" });
@@ -198,5 +201,35 @@ describe("Home", () => {
     await user.click(screen.getByRole("button", { name: "Play Contextus" }));
     expect(mocks.playAgain).toHaveBeenCalledWith({ roomId: "old-room" });
     expect(mocks.push).toHaveBeenCalledWith("/r/NEWONE");
+  });
+
+  it("adds a suggested Friend in one tap", async () => {
+    mocks.useConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    mocks.useQuery.mockImplementation((reference) => {
+      const name = getFunctionName(reference);
+      if (name === "users:getUser")
+        return { isAnonymous: false, username: "alex" };
+      if (name === "rooms:listMine" || name === "rooms:listRecentGroups")
+        return [];
+      if (name === "friends:overview")
+        return { friends: [], incoming: [], outgoing: [] };
+      if (name === "friends:suggestions")
+        return [{ id: "blair", name: "Blair", image: null, username: "blair" }];
+      throw new Error(`Unexpected query: ${name}`);
+    });
+    mocks.sendFriendRequest.mockResolvedValue({ status: "requested" });
+    const user = userEvent.setup();
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "Blair" })).toHaveAttribute(
+      "href",
+      "/user/blair",
+    );
+    await user.click(screen.getByRole("button", { name: "Add friend" }));
+
+    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({ userId: "blair" });
   });
 });

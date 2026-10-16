@@ -7,13 +7,24 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { runMutation } from "@/lib/report-error";
 
-export function FriendButton({ userId }: { userId: Id<"users"> }) {
+// Compact fits a list row, like a Room member; the default fills a profile card.
+export function FriendButton({
+  userId,
+  compact = false,
+}: {
+  userId: Id<"users">;
+  compact?: boolean;
+}) {
   const relationship = useQuery(api.friends.relationship, { userId });
   const sendRequest = useMutation(api.friends.sendRequest);
   const answerRequest = useMutation(api.friends.answerRequest);
   const [busy, setBusy] = useState(false);
 
   if (relationship === undefined || relationship === null) return null;
+
+  const look = compact
+    ? ({ size: "xs", className: "shrink-0" } as const)
+    : ({ className: "w-full" } as const);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -25,7 +36,7 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
     case "none":
       return (
         <Button
-          className="w-full"
+          {...look}
           disabled={busy}
           onClick={() =>
             run(() =>
@@ -42,7 +53,7 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
     case "incoming":
       return (
         <Button
-          className="w-full"
+          {...look}
           disabled={busy}
           onClick={() =>
             run(() =>
@@ -58,13 +69,13 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
       );
     case "requested":
       return (
-        <Button className="w-full" variant="outline" disabled>
+        <Button {...look} variant="outline" disabled>
           Requested
         </Button>
       );
     case "friends":
       return (
-        <Button className="w-full" variant="outline" disabled>
+        <Button {...look} variant="outline" disabled>
           Friends
         </Button>
       );
