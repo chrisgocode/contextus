@@ -356,37 +356,44 @@ function RoomLoaded({
                 return (
                   <li
                     key={m.userId}
-                    className={`flex items-center gap-2 rounded-md px-2 py-1 ${
-                      online ? "" : "opacity-50"
-                    }`}
+                    className="flex items-center gap-2 rounded-md px-2 py-1"
                   >
-                    {/* Filled vs. hollow, so status doesn't rely on colour. */}
-                    <span
-                      role="img"
-                      aria-label={online ? "Online" : "Offline"}
-                      title={online ? "Online" : "Offline"}
-                      className={`h-2 w-2 rounded-full ${
-                        online
-                          ? "bg-emerald-400"
-                          : "border border-muted-foreground"
+                    <div
+                      className={`flex min-w-0 flex-1 items-center gap-2 ${
+                        online ? "" : "opacity-50"
                       }`}
-                    />
-                    <Avatar className="h-6 w-6">
-                      {m.player.image && (
-                        <AvatarImage src={m.player.image} alt={m.player.name} />
-                      )}
-                      <AvatarFallback>
-                        {m.player.name.slice(0, 1).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm flex-1 truncate">
-                      {m.player.name}
-                    </span>
-                    {m.isHost && (
-                      <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
-                        host
+                    >
+                      {/* Filled vs. hollow, so status doesn't rely on colour. */}
+                      <span
+                        role="img"
+                        aria-label={online ? "Online" : "Offline"}
+                        title={online ? "Online" : "Offline"}
+                        className={`h-2 w-2 rounded-full ${
+                          online
+                            ? "bg-emerald-400"
+                            : "border border-muted-foreground"
+                        }`}
+                      />
+                      <Avatar className="h-6 w-6">
+                        {m.player.image && (
+                          <AvatarImage
+                            src={m.player.image}
+                            alt={m.player.name}
+                          />
+                        )}
+                        <AvatarFallback>
+                          {m.player.name.slice(0, 1).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm flex-1 truncate">
+                        {m.player.name}
                       </span>
-                    )}
+                      {m.isHost && (
+                        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
+                          host
+                        </span>
+                      )}
+                    </div>
                     {m.userId !== viewerUserId && !m.player.isGuest && (
                       <FriendButton userId={m.userId} compact />
                     )}
