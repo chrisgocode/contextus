@@ -11,6 +11,7 @@ import { generateRoomCode } from "./lib/code";
 import { appError } from "./lib/errors";
 import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
+import { MAX_INVITES_AT_ONCE } from "./lib/inviteLimits";
 import { invite } from "./lib/invites";
 import { enforceRateLimit } from "./lib/rateLimits";
 import {
@@ -56,6 +57,9 @@ export const create = mutation({
         throw appError("friendsNeedAccount");
       }
       if (friendIds.length === 0) throw appError("noFriendsPicked");
+      if (friendIds.length > MAX_INVITES_AT_ONCE) {
+        throw appError("tooManyFriendsPicked");
+      }
     }
     await enforceRateLimit(ctx, "createRoom", userId);
     const code = await generateUniqueRoomCode(ctx);

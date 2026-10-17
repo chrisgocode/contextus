@@ -37,6 +37,7 @@ import type * as lib_guestEngagement from "../lib/guestEngagement.js";
 import type * as lib_guestMerge from "../lib/guestMerge.js";
 import type * as lib_guestMergeRows from "../lib/guestMergeRows.js";
 import type * as lib_hint from "../lib/hint.js";
+import type * as lib_inviteLimits from "../lib/inviteLimits.js";
 import type * as lib_invites from "../lib/invites.js";
 import type * as lib_localTime from "../lib/localTime.js";
 import type * as lib_pendingRequests from "../lib/pendingRequests.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "lib/guestMerge": typeof lib_guestMerge;
   "lib/guestMergeRows": typeof lib_guestMergeRows;
   "lib/hint": typeof lib_hint;
+  "lib/inviteLimits": typeof lib_inviteLimits;
   "lib/invites": typeof lib_invites;
   "lib/localTime": typeof lib_localTime;
   "lib/pendingRequests": typeof lib_pendingRequests;
