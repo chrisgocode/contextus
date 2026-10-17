@@ -234,7 +234,7 @@ describe("FriendsPanel", () => {
     }
   });
 
-  it("shows your own status first and switches Appear offline", async () => {
+  it("shows your own status last and switches Appear offline", async () => {
     mocks.useQuery.mockReturnValue(
       overview({
         appearOffline: true,
@@ -243,7 +243,8 @@ describe("FriendsPanel", () => {
     );
     mocks.setAppearOffline.mockResolvedValue(null);
     const { user, panel } = await openPanel();
-    const [yours] = within(panel).getAllByRole("region");
+    const regions = within(panel).getAllByRole("region");
+    const yours = regions[regions.length - 1];
     expect(yours).toHaveAccessibleName("Your status");
     expect(yours).toHaveTextContent("Alice");
     const online = within(yours).getByRole("radio", { name: "Online" });

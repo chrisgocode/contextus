@@ -12,6 +12,7 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -74,7 +75,12 @@ export function FriendsPanel() {
         {overview === undefined ? null : overview === null ? (
           <GuestMessage />
         ) : (
-          <FriendLists overview={overview} />
+          <>
+            <FriendLists overview={overview} />
+            <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4">
+              <YourPresence appearOffline={overview.appearOffline} />
+            </SheetFooter>
+          </>
         )}
       </SheetContent>
     </Sheet>
@@ -121,7 +127,6 @@ function FriendLists({ overview }: { overview: Overview }) {
 
   return (
     <>
-      <YourPresence appearOffline={overview.appearOffline} />
       {overview.incoming.length > 0 && (
         <FriendSection title="Requests">
           {overview.incoming.map((player) => (
@@ -203,10 +208,7 @@ function YourPresence({ appearOffline }: { appearOffline: boolean }) {
 
   const name = me?.player.name ?? "You";
   return (
-    <section
-      aria-label="Your status"
-      className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3"
-    >
+    <section aria-label="Your status" className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
           <Avatar>
