@@ -9,7 +9,12 @@ import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,11 +50,29 @@ const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
   offline: "Offline",
 };
 
+const PHONE = "(max-width: 639px)";
+
+function useIsPhone() {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window.matchMedia !== "function") return () => {};
+      const query = window.matchMedia(PHONE);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () =>
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+
 // Friends, Friend requests both ways, and your open Invites. Its button's
 // badge counts the requests waiting on you. Opened from a Room, it can also
 // invite Friends into it.
 export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
   const overview = useQuery(api.friends.overview, { roomId });
+  const phone = useIsPhone();
   const incoming = overview?.incoming.length ?? 0;
   const incomingCount = `${incoming}${overview?.moreIncoming ? "+" : ""}`;
   const incomingLabel = `${incomingCount} friend request${incomingCount === "1" ? "" : "s"}`;
@@ -78,7 +101,12 @@ export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent className="gap-6 overflow-y-auto p-4 data-[side=right]:w-full">
+      {/* On phones it rises from the bottom only as tall as its lists, so
+          the Room stays in view above it. */}
+      <SheetContent
+        side={phone ? "bottom" : "right"}
+        className={cn("gap-6 overflow-y-auto p-4", phone && "max-h-[75dvh]")}
+      >
         <SheetHeader className="p-0 pr-8">
           <SheetTitle>Friends</SheetTitle>
           <SheetDescription>
@@ -93,7 +121,7 @@ export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
           <>
             <AddByUsername />
             <FriendLists overview={overview} roomId={roomId} />
-            <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4">
+            <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <YourPresence appearOffline={overview.appearOffline} />
             </SheetFooter>
           </>

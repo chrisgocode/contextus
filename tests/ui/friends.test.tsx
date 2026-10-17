@@ -453,4 +453,23 @@ describe("FriendsPanel", () => {
     );
     expect(mocks.push).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { device: "a phone", isPhone: true, side: "bottom" },
+    { device: "a wider screen", isPhone: false, side: "right" },
+  ])("opens from the $side on $device", async ({ isPhone, side }) => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: isPhone,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    mocks.useQuery.mockReturnValue(overview());
+    const { panel } = await openPanel();
+
+    expect(panel).toHaveAttribute("data-side", side);
+    vi.unstubAllGlobals();
+  });
 });
