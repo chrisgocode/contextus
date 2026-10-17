@@ -11,6 +11,7 @@ import {
   useCreateRoom,
   useRoomEntry,
 } from "@/app/(app)/r/[code]/_components/room-entry";
+import type { Id } from "@/convex/_generated/dataModel";
 import { appError } from "@/convex/lib/errors";
 import { captureException } from "@/lib/sentry-client";
 import { act, renderHook, waitFor } from "./test-utils";
@@ -431,5 +432,23 @@ describe("useCreateRoom", () => {
       kind: "error",
       message: "Too many requests. Wait a moment and try again.",
     });
+  });
+
+  it("invites the given Friends with the room, and explains a Friend who is gone", async () => {
+    mocks.create.mockResolvedValueOnce({ code: "ABCDEF" });
+    mocks.create.mockRejectedValueOnce(appError("notFriends"));
+    const { result } = renderCreate();
+    const friends = ["blair" as Id<"users">];
+
+    expect(await result.current(friends)).toEqual({
+      kind: "created",
+      code: "ABCDEF",
+    });
+    expect(mocks.create).toHaveBeenCalledWith({ invite: friends });
+    expect(await result.current(friends)).toEqual({
+      kind: "error",
+      message: "Someone you picked is no longer your friend.",
+    });
+    expect(captureException).not.toHaveBeenCalled();
   });
 });
