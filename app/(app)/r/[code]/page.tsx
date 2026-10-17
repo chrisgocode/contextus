@@ -14,7 +14,6 @@ import {
   type AchievementUnlockQueueItem,
 } from "@/app/_components/AchievementUnlockQueue";
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
-import { FriendButton } from "@/app/_components/FriendButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
@@ -34,6 +33,7 @@ import { GuessInput } from "./_components/GuessInput";
 import { GuessList } from "./_components/GuessList";
 import { GuestLimitPrompt } from "./_components/GuestLimitPrompt";
 import { HostRequestRows } from "./_components/HostRequestRows";
+import { MemberFriendAction } from "./_components/MemberFriendAction";
 import { PendingRequestsProvider } from "./_components/PendingRequests";
 import { RequestRows } from "./_components/RequestRows";
 import { GuessListSkeleton, RoomSkeleton } from "./_components/RoomSkeleton";
@@ -395,7 +395,10 @@ function RoomLoaded({
                       )}
                     </div>
                     {m.userId !== viewerUserId && !m.player.isGuest && (
-                      <FriendButton userId={m.userId} compact />
+                      <MemberFriendAction
+                        userId={m.userId}
+                        name={m.player.name}
+                      />
                     )}
                   </li>
                 );

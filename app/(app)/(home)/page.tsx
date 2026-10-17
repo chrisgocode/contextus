@@ -351,6 +351,7 @@ function FriendSuggestions() {
           <FriendRow key={player.id} player={player}>
             <Button
               size="sm"
+              variant="outline"
               disabled={busyUserId !== null}
               onClick={async () => {
                 setBusyUserId(player.id);
