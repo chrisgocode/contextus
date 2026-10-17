@@ -396,7 +396,9 @@ export const USER_KEYED_TABLES = [
     rows: (ctx, userId) =>
       ctx.db
         .query("invites")
-        .withIndex("by_senderUserId", (q) => q.eq("senderUserId", userId)),
+        .withIndex("by_senderUserId_and_recipientUserId", (q) =>
+          q.eq("senderUserId", userId),
+        ),
     merge: "removeWithGuest",
     expire: "delete",
     purge: "delete",

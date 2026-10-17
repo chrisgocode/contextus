@@ -253,6 +253,46 @@ test("ending the Room ends its Invites", async () => {
   ).rejects.toMatchObject({ data: { code: "inviteNotFound" } });
 });
 
+test("unfriending ends open Invites in both directions", async () => {
+  const t = setupTest();
+  const { host, friend, roomId } = await roomWithFriend(t);
+  const { roomId: friendRoomId } = await asUser(t, friend).mutation(
+    api.rooms.create,
+    {},
+  );
+  await sendInvite(t, host, roomId, friend);
+  await sendInvite(t, friend, friendRoomId, host);
+
+  await asUser(t, friend).mutation(api.friends.unfriend, { userId: host });
+
+  expect((await overview(t, friend)).invites).toEqual([]);
+  expect((await overview(t, host)).invites).toEqual([]);
+  expect((await overview(t, host, roomId)).room?.invited).toEqual([]);
+});
+
+test("unfriending leaves Invites from other Friends to the same Room", async () => {
+  const t = setupTest();
+  const { host, friend, roomId, code } = await roomWithFriend(t);
+  const other = await seedUser(t, { name: "Other" });
+  await befriend(t, host, other);
+  await befriend(t, other, friend);
+  await sendInvite(t, host, roomId, other);
+  await asUser(t, other).mutation(api.rooms.join, { code });
+  await sendInvite(t, other, roomId, friend);
+  const third = await seedUser(t, { name: "Third" });
+  await befriend(t, host, third);
+  await sendInvite(t, host, roomId, third);
+
+  await asUser(t, host).mutation(api.friends.unfriend, { userId: friend });
+
+  expect((await overview(t, friend)).invites).toEqual([
+    expect.objectContaining({
+      sender: expect.objectContaining({ id: other }),
+    }),
+  ]);
+  expect((await overview(t, third)).invites).toHaveLength(1);
+});
+
 test("a Room that ends when its last member leaves ends its Invites", async () => {
   const t = setupTest();
   const { host, friend, roomId } = await roomWithFriend(t);
