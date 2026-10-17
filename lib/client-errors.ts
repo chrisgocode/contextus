@@ -78,6 +78,7 @@ export const accountMessages = {
   "auth.signin": [],
   "auth.signOut": [],
   "users.setTimeZone": [],
+  "users.setAppearOffline": [],
 } satisfies Record<string, readonly Rule[]>;
 
 const friendRequestGone: Rule = [

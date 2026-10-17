@@ -1,6 +1,7 @@
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { preconnect } from "react-dom";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
+import { AppPresence } from "@/app/_components/AppPresence";
 import { StaleSessionSignOut } from "@/app/_components/StaleSessionSignOut";
 import { TimeZoneSync } from "@/app/_components/TimeZoneSync";
 
@@ -22,6 +23,7 @@ export default function AppLayout({
       <ConvexClientProvider>
         {children}
         <TimeZoneSync />
+        <AppPresence />
         <StaleSessionSignOut />
       </ConvexClientProvider>
     </ConvexAuthNextjsServerProvider>

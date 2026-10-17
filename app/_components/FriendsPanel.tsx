@@ -12,16 +12,26 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
+import { cn } from "@/lib/utils";
 
 type Overview = NonNullable<FunctionReturnType<typeof api.friends.overview>>;
-type FriendPlayer = Overview["friends"][number];
+type FriendStatus = Overview["friends"][number]["status"];
+type FriendPlayer = Overview["incoming"][number] & { status?: FriendStatus };
+
+const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
+  online: "Online",
+  inRoom: "In a Room",
+  offline: "Offline",
+};
 
 // Friends, and Friend requests both ways. Its button's badge counts the
 // requests waiting on you.
@@ -65,7 +75,12 @@ export function FriendsPanel() {
         {overview === undefined ? null : overview === null ? (
           <GuestMessage />
         ) : (
-          <FriendLists overview={overview} />
+          <>
+            <FriendLists overview={overview} />
+            <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4">
+              <YourPresence appearOffline={overview.appearOffline} />
+            </SheetFooter>
+          </>
         )}
       </SheetContent>
     </Sheet>
@@ -140,7 +155,13 @@ function FriendLists({ overview }: { overview: Overview }) {
           <li className="text-sm text-muted-foreground">No friends yet.</li>
         ) : (
           overview.friends.map((player) => (
-            <FriendRow key={player.id} player={player} />
+            <FriendRow key={player.id} player={player}>
+              {player.status.kind === "inRoom" && (
+                <Button asChild size="sm">
+                  <Link href={roomPath(player.status.code)}>Join</Link>
+                </Button>
+              )}
+            </FriendRow>
           ))
         )}
       </FriendSection>
@@ -161,6 +182,95 @@ function FriendLists({ overview }: { overview: Overview }) {
         </FriendSection>
       )}
     </>
+  );
+}
+
+const PRESENCE_CHOICES = [
+  { appearOffline: false, label: "Online" },
+  { appearOffline: true, label: "Appear offline" },
+] as const;
+
+// How the viewer shows up to their Friends, and the choice that sets it.
+function YourPresence({ appearOffline }: { appearOffline: boolean }) {
+  const me = useQuery(api.users.getUser, {});
+  const setAppearOffline = useMutation(api.users.setAppearOffline);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const shown = pending ?? appearOffline;
+
+  async function choose(next: boolean) {
+    setPending(next);
+    await runMutation(() => setAppearOffline({ appearOffline: next }), {
+      context: "users.setAppearOffline",
+      fallback: "Could not change how Friends see you. Try again.",
+    });
+    setPending(null);
+  }
+
+  const name = me?.player.name ?? "You";
+  return (
+    <section aria-label="Your status" className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <Avatar>
+            {me?.image && <AvatarImage src={me.image} alt="" />}
+            <AvatarFallback>{name.slice(0, 1).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <StatusDot
+            offline={shown}
+            className="absolute -right-0.5 -bottom-0.5 size-3 ring-2 ring-background"
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{name}</span>
+          <span className="text-xs text-muted-foreground">
+            {shown ? "Friends see you as offline." : "Friends see you online."}
+          </span>
+        </div>
+      </div>
+      <fieldset
+        disabled={pending !== null}
+        className="grid grid-cols-2 gap-1 rounded-md bg-background/60 p-1"
+      >
+        <legend className="sr-only">Show Friends that you are</legend>
+        {PRESENCE_CHOICES.map((choice) => (
+          <label
+            key={choice.label}
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-sm px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground has-checked:bg-secondary has-checked:text-foreground has-focus-visible:outline-2 has-focus-visible:outline-foreground has-disabled:cursor-wait"
+          >
+            <input
+              type="radio"
+              name="appear-offline"
+              className="sr-only"
+              checked={shown === choice.appearOffline}
+              onChange={() => choose(choice.appearOffline)}
+            />
+            <StatusDot offline={choice.appearOffline} className="size-2" />
+            {choice.label}
+          </label>
+        ))}
+      </fieldset>
+    </section>
+  );
+}
+
+function StatusDot({
+  offline,
+  className,
+}: {
+  offline: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "block rounded-full",
+        offline
+          ? "border border-muted-foreground bg-background"
+          : "bg-emerald-400",
+        className,
+      )}
+    />
   );
 }
 
@@ -188,6 +298,7 @@ function FriendRow({
   player: FriendPlayer;
   children?: ReactNode;
 }) {
+  const { status } = player;
   const name = (
     <span className="truncate text-sm font-medium">{player.name}</span>
   );
@@ -197,7 +308,7 @@ function FriendRow({
         {player.image && <AvatarImage src={player.image} alt="" />}
         <AvatarFallback>{player.name.slice(0, 1).toUpperCase()}</AvatarFallback>
       </Avatar>
-      <div className="flex min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
         {player.username ? (
           <Link
             href={`/user/${player.username}`}
@@ -207,6 +318,12 @@ function FriendRow({
           </Link>
         ) : (
           name
+        )}
+        {status && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <StatusDot offline={status.kind === "offline"} className="size-2" />
+            {STATUS_LABELS[status.kind]}
+          </span>
         )}
       </div>
       {children && <div className="flex shrink-0 gap-2">{children}</div>}

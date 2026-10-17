@@ -2,7 +2,8 @@ import { Presence } from "@convex-dev/presence";
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
-import { tryMemberByRoom } from "./access";
+import { getCurrentUserId, tryMemberByRoom } from "./access";
+import { APP_PRESENCE_ROOM } from "./lib/friendStatus";
 
 export const presence = new Presence(components.presence);
 
@@ -25,6 +26,27 @@ export const heartbeat = mutation({
       sessionId,
       interval,
     );
+  },
+});
+
+// Marks a registered user as having Contextus open, for Friend status. Only
+// the session token comes back: the app-wide room token would let anyone list
+// everyone online, Appear offline users included.
+export const appHeartbeat = mutation({
+  args: { sessionId: v.string(), interval: v.number() },
+  handler: async (ctx, { sessionId, interval }) => {
+    const userId = await getCurrentUserId(ctx);
+    if (userId === null) return null;
+    const user = await ctx.db.get("users", userId);
+    if (user === null || user.isAnonymous === true) return null;
+    const { sessionToken } = await presence.heartbeat(
+      ctx,
+      APP_PRESENCE_ROOM,
+      userId,
+      sessionId,
+      interval,
+    );
+    return { sessionToken };
   },
 });
 
