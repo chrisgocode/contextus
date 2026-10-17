@@ -145,6 +145,21 @@ export async function endInvitesForRoom(ctx: WriteCtx, roomId: Id<"rooms">) {
   }
 }
 
+export async function endInvitesBetween(ctx: WriteCtx, a: UserId, b: UserId) {
+  for (const [sender, recipient] of [
+    [a, b],
+    [b, a],
+  ]) {
+    for await (const row of ctx.db
+      .query("invites")
+      .withIndex("by_senderUserId_and_recipientUserId", (q) =>
+        q.eq("senderUserId", sender).eq("recipientUserId", recipient),
+      )) {
+      await ctx.db.delete("invites", row._id);
+    }
+  }
+}
+
 export async function listOpenFor(
   ctx: ReadCtx,
   recipient: UserId,
