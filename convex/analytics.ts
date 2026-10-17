@@ -3,9 +3,24 @@ import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { env } from "./_generated/server";
 import { posthog } from "./posthog";
 
+// Where a join came from: typing or following a Room's code or link, an
+// Invite, or the Join button on a Friend who is In a Room.
+export type JoinSource = "code" | "invite" | "friend_status";
+
+// Where a Friend request was sent from.
+export type FriendRequestSource =
+  | "profile"
+  | "room"
+  | "suggestion"
+  | "username";
+
 type EventCatalog = {
   room_created: { room_id: Id<"rooms"> };
-  room_joined: { room_id: Id<"rooms">; member_count: number };
+  room_joined: {
+    room_id: Id<"rooms">;
+    member_count: number;
+    via: JoinSource;
+  };
   room_left: {
     room_id: Id<"rooms">;
     host_moved: boolean;
@@ -102,7 +117,10 @@ type EventCatalog = {
     game_id: Id<"games">;
     request_type: "hint" | "giveup";
   };
-  friend_request_sent: { recipient_user_id: Id<"users"> };
+  friend_request_sent: {
+    recipient_user_id: Id<"users">;
+    via: FriendRequestSource;
+  };
   friend_request_declined: { sender_user_id: Id<"users"> };
   friend_request_cancelled: { recipient_user_id: Id<"users"> };
   // Sent by whoever made the two Friends.
@@ -111,6 +129,7 @@ type EventCatalog = {
     via: "accept" | "crossed_request";
   };
   friend_removed: { friend_user_id: Id<"users"> };
+  appear_offline_changed: { appear_offline: boolean };
   invite_sent: {
     room_id: Id<"rooms">;
     recipient_user_id: Id<"users">;

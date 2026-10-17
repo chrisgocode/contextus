@@ -5,7 +5,7 @@
 // one the other way, or a repeat, finds the row already there.
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { track } from "../analytics";
+import { type FriendRequestSource, track } from "../analytics";
 import { appError } from "./errors";
 import { enforceRateLimit } from "./rateLimits";
 import { findUserByUsername } from "./usernames";
@@ -100,6 +100,7 @@ export async function sendRequest(
   ctx: MutationCtx,
   sender: UserId,
   target: UserId,
+  via: FriendRequestSource,
 ): Promise<"requested" | "friends"> {
   if (sender === target) throw appError("friendSelf");
   const [senderUser, targetUser] = await Promise.all([
@@ -138,7 +139,7 @@ export async function sendRequest(
   });
   await track(ctx, sender, {
     name: "friend_request_sent",
-    properties: { recipient_user_id: target },
+    properties: { recipient_user_id: target, via },
   });
   return "requested";
 }
@@ -150,7 +151,7 @@ export async function sendRequestByUsername(
 ): Promise<"requested" | "friends"> {
   const target = await findUserByUsername(ctx, username);
   if (target === null) throw appError("userNotFound");
-  return await sendRequest(ctx, sender, target._id);
+  return await sendRequest(ctx, sender, target._id, "username");
 }
 
 export async function answerRequest(

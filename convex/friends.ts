@@ -27,10 +27,17 @@ import {
 import { isLiveMember } from "./lib/roomMembership";
 
 export const sendRequest = mutation({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
+  args: {
+    userId: v.id("users"),
+    via: v.union(
+      v.literal("profile"),
+      v.literal("room"),
+      v.literal("suggestion"),
+    ),
+  },
+  handler: async (ctx, { userId, via }) => {
     const sender = await requireUser(ctx);
-    return { status: await send(ctx, sender, userId) };
+    return { status: await send(ctx, sender, userId, via) };
   },
 });
 

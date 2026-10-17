@@ -23,6 +23,7 @@ async function sendMany(t: Test, sender: Id<"users">, count: number) {
     const target = await seedUser(t);
     await resetRateLimit(t, "friendRequest", sender);
     await asUser(t, sender).mutation(api.friends.sendRequest, {
+      via: "profile",
       userId: target,
     });
     targets.push(target);
@@ -33,7 +34,10 @@ async function sendMany(t: Test, sender: Id<"users">, count: number) {
 async function befriendMany(t: Test, user: Id<"users">, count: number) {
   for (let i = 0; i < count; i++) {
     const friend = await seedUser(t);
-    await asUser(t, friend).mutation(api.friends.sendRequest, { userId: user });
+    await asUser(t, friend).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: user,
+    });
     await asUser(t, user).mutation(api.friends.answerRequest, {
       userId: friend,
       answer: "accept",
@@ -47,6 +51,7 @@ test("a sent Friend request shows as Requested to the sender and incoming to the
   const bob = await seedUser(t, { name: "Bob" });
 
   const result = await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: bob,
   });
 
@@ -63,7 +68,10 @@ test("accepting a Friend request makes both users Friends", async () => {
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   await asUser(t, bob).mutation(api.friends.answerRequest, {
     userId: alice,
@@ -82,7 +90,10 @@ test("a declined Friend request still shows Requested to the sender and disappea
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   await asUser(t, bob).mutation(api.friends.answerRequest, {
     userId: alice,
@@ -107,7 +118,10 @@ test("only the recipient can answer a Friend request", async () => {
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   await expect(
     asUser(t, alice).mutation(api.friends.answerRequest, {
@@ -121,7 +135,10 @@ test("the sender can cancel a pending Friend request", async () => {
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   await asUser(t, alice).mutation(api.friends.cancelRequest, { userId: bob });
 
@@ -138,8 +155,14 @@ test("the recipient can't cancel a Friend request, and cancelling doesn't unfrie
   const alice = await seedUser(t);
   const bob = await seedUser(t);
   const carol = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: carol,
+  });
   await asUser(t, carol).mutation(api.friends.answerRequest, {
     userId: alice,
     answer: "accept",
@@ -163,9 +186,13 @@ test("sending to someone whose request to you is pending makes you Friends", asy
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   const result = await asUser(t, bob).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: alice,
   });
 
@@ -179,13 +206,17 @@ test("sending after declining their request makes you Friends", async () => {
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
   await asUser(t, bob).mutation(api.friends.answerRequest, {
     userId: alice,
     answer: "decline",
   });
 
   const result = await asUser(t, bob).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: alice,
   });
 
@@ -197,18 +228,30 @@ test("sending again to a pending target or a Friend changes nothing", async () =
   const alice = await seedUser(t);
   const bob = await seedUser(t);
   const carol = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: carol,
+  });
   await asUser(t, carol).mutation(api.friends.answerRequest, {
     userId: alice,
     answer: "accept",
   });
 
   expect(
-    await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob }),
+    await asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: bob,
+    }),
   ).toEqual({ status: "requested" });
   expect(
-    await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol }),
+    await asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: carol,
+    }),
   ).toEqual({ status: "friends" });
   expect(
     await asUser(t, bob).query(api.friends.relationship, { userId: alice }),
@@ -226,10 +269,16 @@ test("Friend requests are rejected when a Guest is on either side", async () => 
   const guest = await seedUser(t, { isAnonymous: true });
 
   await expect(
-    asUser(t, alice).mutation(api.friends.sendRequest, { userId: guest }),
+    asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: guest,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
   await expect(
-    asUser(t, guest).mutation(api.friends.sendRequest, { userId: alice }),
+    asUser(t, guest).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: alice,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
 });
 
@@ -275,12 +324,18 @@ test("sending stops at 50 pending outgoing Friend requests", async () => {
   await resetRateLimit(t, "friendRequest", alice);
 
   await expect(
-    asUser(t, alice).mutation(api.friends.sendRequest, { userId: extra }),
+    asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: extra,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendRequestLimit" } });
 
   await asUser(t, alice).mutation(api.friends.cancelRequest, { userId: first });
   expect(
-    await asUser(t, alice).mutation(api.friends.sendRequest, { userId: extra }),
+    await asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: extra,
+    }),
   ).toEqual({ status: "requested" });
 });
 
@@ -296,6 +351,7 @@ test("declined requests still count toward the 50 pending outgoing", async () =>
 
   await expect(
     asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
       userId: await seedUser(t),
     }),
   ).rejects.toMatchObject({ data: { code: "friendRequestLimit" } });
@@ -306,15 +362,24 @@ test("Friend requests stop at 200 Friends on either side", async () => {
   const alice = await seedUser(t);
   const early = await seedUser(t);
   const late = await seedUser(t);
-  await asUser(t, early).mutation(api.friends.sendRequest, { userId: alice });
+  await asUser(t, early).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: alice,
+  });
   await befriendMany(t, alice, 200);
   await resetRateLimit(t, "friendRequest", alice);
 
   await expect(
-    asUser(t, alice).mutation(api.friends.sendRequest, { userId: late }),
+    asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: late,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendLimit" } });
   await expect(
-    asUser(t, late).mutation(api.friends.sendRequest, { userId: alice }),
+    asUser(t, late).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: alice,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendLimitOther" } });
   await expect(
     asUser(t, alice).mutation(api.friends.answerRequest, {
@@ -323,7 +388,10 @@ test("Friend requests stop at 200 Friends on either side", async () => {
     }),
   ).rejects.toMatchObject({ data: { code: "friendLimit" } });
   await expect(
-    asUser(t, alice).mutation(api.friends.sendRequest, { userId: early }),
+    asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: early,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendLimit" } });
   expect(
     await asUser(t, early).query(api.friends.relationship, { userId: alice }),
@@ -335,6 +403,7 @@ test("sending Friend requests is rate-limited", async () => {
   const alice = await seedUser(t);
   const sendToNewUser = async () =>
     asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
       userId: await seedUser(t),
     });
   for (let i = 0; i < 20; i++) await sendToNewUser();
@@ -353,14 +422,26 @@ test("sending, accepting and crossing Friend requests record analytics", async (
   const bob = await seedUser(t);
   const carol = await seedUser(t);
 
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
   await asUser(t, bob).mutation(api.friends.answerRequest, {
     userId: alice,
     answer: "accept",
   });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol });
-  await asUser(t, carol).mutation(api.friends.sendRequest, { userId: alice });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: carol,
+  });
+  await asUser(t, carol).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: alice,
+  });
 
   const events = capture.mock.calls.map(([, event]) => ({
     distinctId: event.distinctId,
@@ -371,7 +452,10 @@ test("sending, accepting and crossing Friend requests record analytics", async (
     {
       distinctId: alice,
       event: "friend_request_sent",
-      properties: expect.objectContaining({ recipient_user_id: bob }),
+      properties: expect.objectContaining({
+        recipient_user_id: bob,
+        via: "profile",
+      }),
     },
     {
       distinctId: bob,
@@ -403,13 +487,22 @@ test("the friends overview lists Friends and pending requests both ways, hiding 
   const bob = await seedUser(t, { name: "Bob", username: "bob" });
   const carol = await seedUser(t, { name: "Carol" });
   const dave = await seedUser(t, { name: "Dave" });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
   await asUser(t, bob).mutation(api.friends.answerRequest, {
     userId: alice,
     answer: "accept",
   });
-  await asUser(t, carol).mutation(api.friends.sendRequest, { userId: alice });
-  await asUser(t, dave).mutation(api.friends.sendRequest, { userId: alice });
+  await asUser(t, carol).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: alice,
+  });
+  await asUser(t, dave).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: alice,
+  });
   await asUser(t, alice).mutation(api.friends.answerRequest, {
     userId: dave,
     answer: "decline",
@@ -439,11 +532,17 @@ test("sends that change nothing don't spend the rate limit", async () => {
 
   for (let i = 0; i < 25; i++) {
     expect(
-      await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob }),
+      await asUser(t, alice).mutation(api.friends.sendRequest, {
+        via: "profile",
+        userId: bob,
+      }),
     ).toEqual({ status: "requested" });
   }
   await expect(
-    asUser(t, alice).mutation(api.friends.sendRequest, { userId: guest }),
+    asUser(t, alice).mutation(api.friends.sendRequest, {
+      via: "profile",
+      userId: guest,
+    }),
   ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
 });
 
@@ -452,6 +551,7 @@ test("the friends overview lists 100 incoming requests and says when more are wa
   const alice = await seedUser(t);
   const sendToAlice = async () =>
     asUser(t, await seedUser(t)).mutation(api.friends.sendRequest, {
+      via: "profile",
       userId: alice,
     });
   for (let i = 0; i < 100; i++) await sendToAlice();
@@ -474,8 +574,14 @@ test("declining and cancelling Friend requests record analytics", async () => {
   const alice = await seedUser(t);
   const bob = await seedUser(t);
   const carol = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: carol });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: carol,
+  });
   capture.mockClear();
 
   await asUser(t, bob).mutation(api.friends.answerRequest, {
@@ -539,7 +645,10 @@ test.each(["bob", "bobbyy", "obby"])(
 );
 
 async function makeFriends(t: Test, a: Id<"users">, b: Id<"users">) {
-  await asUser(t, a).mutation(api.friends.sendRequest, { userId: b });
+  await asUser(t, a).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: b,
+  });
   await asUser(t, b).mutation(api.friends.answerRequest, {
     userId: a,
     answer: "accept",
@@ -584,6 +693,7 @@ test("either side can send a new Friend request after unfriending", async () => 
   await asUser(t, alice).mutation(api.friends.unfriend, { userId: bob });
 
   const result = await asUser(t, bob).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: alice,
   });
 
@@ -597,7 +707,10 @@ test("unfriending someone who isn't a Friend fails and leaves a pending request 
   const t = setupTest();
   const alice = await seedUser(t);
   const bob = await seedUser(t);
-  await asUser(t, alice).mutation(api.friends.sendRequest, { userId: bob });
+  await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: bob,
+  });
 
   await expect(
     asUser(t, bob).mutation(api.friends.unfriend, { userId: alice }),
@@ -702,12 +815,15 @@ test("Friend suggestions leave out Friends, pending requests either way, and Gue
   const guest = await seedUser(t, { isAnonymous: true });
   await makeFriends(t, alice, friend);
   await asUser(t, alice).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: requested,
   });
   await asUser(t, incoming).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: alice,
   });
   await asUser(t, declined).mutation(api.friends.sendRequest, {
+    via: "profile",
     userId: alice,
   });
   await asUser(t, alice).mutation(api.friends.answerRequest, {
@@ -744,4 +860,54 @@ test("Guests get no Friend suggestions", async () => {
   await shareRoom(t, bob, [guest], { end: true });
 
   expect(await suggestedIds(t, guest)).toEqual([]);
+});
+
+test.each(["profile", "room", "suggestion"] as const)(
+  "a Friend request sent from a %s records where it came from",
+  async (via) => {
+    vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+    vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+    const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+    const t = setupTest();
+    const alice = await seedUser(t);
+    const bob = await seedUser(t);
+
+    await asUser(t, alice).mutation(api.friends.sendRequest, {
+      userId: bob,
+      via,
+    });
+
+    expect(capture).toHaveBeenCalledWith(expect.anything(), {
+      distinctId: alice,
+      event: "friend_request_sent",
+      properties: {
+        recipient_user_id: bob,
+        via,
+        deployment_environment: "production",
+      },
+    });
+  },
+);
+
+test("a Friend request sent by username records that it came from the username lookup", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t, { username: "bob" });
+
+  await asUser(t, alice).mutation(api.friends.sendRequestByUsername, {
+    username: "bob",
+  });
+
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: alice,
+    event: "friend_request_sent",
+    properties: {
+      recipient_user_id: bob,
+      via: "username",
+      deployment_environment: "production",
+    },
+  });
 });

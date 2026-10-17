@@ -290,7 +290,10 @@ describe("RoomPage", () => {
         name: "Accept Casey's friend request",
       }),
     );
-    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({ userId: "friend" });
+    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({
+      userId: "friend",
+      via: "room",
+    });
     expect(mocks.answerFriendRequest).toHaveBeenCalledWith({
       userId: "away",
       answer: "accept",

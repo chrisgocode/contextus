@@ -61,8 +61,8 @@ export const create = mutation({
 });
 
 export const join = mutation({
-  args: { code: v.string() },
-  handler: async (ctx, { code }) => {
+  args: { code: v.string(), via: v.optional(v.literal("friend_status")) },
+  handler: async (ctx, { code, via }) => {
     const userId = await requireUser(ctx);
     const normalized = code.toUpperCase().trim();
     const room = await ctx.db
@@ -73,7 +73,7 @@ export const join = mutation({
       throw appError("roomNotFound");
     }
     if (await admit(ctx, room._id, userId, Date.now())) {
-      await trackJoin(ctx, room._id, userId);
+      await trackJoin(ctx, room._id, userId, via ?? "code");
     }
     return { roomId: room._id };
   },

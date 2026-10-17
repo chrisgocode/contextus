@@ -16,6 +16,7 @@ import { appErrorData } from "@/convex/lib/errors";
 import type { ErrorContext } from "@/lib/client-errors";
 import { reportClientError, runMutation } from "@/lib/report-error";
 import { clearCreatedRoom, isCreatedRoom } from "./created-room";
+import { takeJoinSource } from "./join-source";
 
 // Room entry: the auth ordering behind creating and joining a Room, and what
 // the Room page should show while it happens. Pages call these hooks and
@@ -228,7 +229,8 @@ export function useRoomEntry(code: string): RoomEntry {
   useEffect(() => {
     if (!shouldJoin || pendingAttempt.current === attempt) return;
     pendingAttempt.current = attempt;
-    join({ code })
+    const via = takeJoinSource(code);
+    join(via === undefined ? { code } : { code, via })
       .catch((err) => {
         if (currentAttempt.current !== attempt) return;
         // Shown in place of the Room, including the Guest room limit.

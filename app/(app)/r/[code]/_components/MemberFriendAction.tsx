@@ -48,7 +48,7 @@ export function MemberFriendAction({
           disabled={busy}
           onClick={() =>
             run(() =>
-              runMutation(() => sendRequest({ userId }), {
+              runMutation(() => sendRequest({ userId, via: "room" }), {
                 context: "friends.sendRequest",
                 fallback: "Could not send a friend request. Try again.",
               }),

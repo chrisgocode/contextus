@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
+import { posthog } from "../posthog";
 import type { Id } from "../_generated/dataModel";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
 
@@ -10,7 +11,10 @@ afterEach(() => {
 });
 
 async function befriend(t: Test, a: Id<"users">, b: Id<"users">) {
-  await asUser(t, a).mutation(api.friends.sendRequest, { userId: b });
+  await asUser(t, a).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: b,
+  });
   await asUser(t, b).mutation(api.friends.answerRequest, {
     userId: a,
     answer: "accept",
@@ -206,4 +210,31 @@ test("Friends who are Online or In a Room sort above Offline Friends", async () 
   const overview = await asUser(t, alice).query(api.friends.overview, {});
 
   expect(overview?.friends.map((f) => f.name)).toEqual(["Yves", "Zoe", "Anna"]);
+});
+
+test("turning Appear offline on or off records the choice", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const bob = await seedUser(t);
+
+  for (const appearOffline of [true, false]) {
+    await asUser(t, bob).mutation(api.users.setAppearOffline, {
+      appearOffline,
+    });
+  }
+
+  expect(capture.mock.calls.map(([, event]) => event)).toEqual([
+    expect.objectContaining({
+      distinctId: bob,
+      event: "appear_offline_changed",
+      properties: expect.objectContaining({ appear_offline: true }),
+    }),
+    expect.objectContaining({
+      distinctId: bob,
+      event: "appear_offline_changed",
+      properties: expect.objectContaining({ appear_offline: false }),
+    }),
+  ]);
 });

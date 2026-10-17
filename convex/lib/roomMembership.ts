@@ -6,7 +6,7 @@
 // member, or the Room is ended.
 import { Presence } from "@convex-dev/presence";
 import { components } from "../_generated/api";
-import { track } from "../analytics";
+import { type JoinSource, track } from "../analytics";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { appError } from "./errors";
@@ -142,6 +142,7 @@ export async function trackJoin(
   ctx: Pick<MutationCtx, "db" | "scheduler">,
   roomId: Id<"rooms">,
   userId: Id<"users">,
+  via: JoinSource,
 ): Promise<void> {
   // Capped like playAgain's Room size limit; 101 means "over 100".
   const memberCount = (
@@ -152,7 +153,7 @@ export async function trackJoin(
   ).length;
   await track(ctx, userId, {
     name: "room_joined",
-    properties: { room_id: roomId, member_count: memberCount },
+    properties: { room_id: roomId, member_count: memberCount, via },
   });
 }
 

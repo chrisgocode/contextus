@@ -105,7 +105,7 @@ export async function answer(
   const room = await ctx.db.get("rooms", row.roomId);
   if (room === null || room.status !== "active") throw appError("roomNotFound");
   if (await admit(ctx, room._id, recipient, now)) {
-    await trackJoin(ctx, room._id, recipient);
+    await trackJoin(ctx, room._id, recipient, "invite");
     await track(ctx, recipient, {
       name: "invite_joined",
       properties: { room_id: room._id, sender_user_id: row.senderUserId },

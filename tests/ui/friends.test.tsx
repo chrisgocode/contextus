@@ -5,7 +5,15 @@ import { FriendButton } from "@/app/_components/FriendButton";
 import { FriendsPanel } from "@/app/_components/FriendsPanel";
 import type { Id } from "@/convex/_generated/dataModel";
 import { appError } from "@/convex/lib/errors";
-import { render, screen, userEvent, waitFor, within } from "./test-utils";
+import { takeJoinSource } from "@/app/(app)/r/[code]/_components/join-source";
+import {
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+  within,
+} from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   answerInvite: vi.fn(),
@@ -109,7 +117,10 @@ describe("FriendButton", () => {
 
     await user.click(screen.getByRole("button", { name: "Add friend" }));
 
-    expect(mocks.sendRequest).toHaveBeenCalledWith({ userId: bob });
+    expect(mocks.sendRequest).toHaveBeenCalledWith({
+      userId: bob,
+      via: "profile",
+    });
   });
 
   it("accepts the profile user's Friend request", async () => {
@@ -248,10 +259,12 @@ describe("FriendsPanel", () => {
     const [carol, dave, erin] = within(friends).getAllByRole("listitem");
 
     expect(carol).toHaveTextContent("In a Room");
-    expect(within(carol).getByRole("link", { name: "Join" })).toHaveAttribute(
-      "href",
-      "/r/ABCD",
-    );
+    const join = within(carol).getByRole("link", { name: "Join" });
+    expect(join).toHaveAttribute("href", "/r/ABCD");
+    join.addEventListener("click", (e) => e.preventDefault());
+    fireEvent.click(join);
+    expect(takeJoinSource("ABCD")).toBe("friend_status");
+    expect(takeJoinSource("ABCD")).toBeUndefined();
     expect(dave).toHaveTextContent("Online");
     expect(erin).toHaveTextContent("Offline");
     for (const row of [dave, erin]) {

@@ -29,7 +29,7 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
           disabled={busy}
           onClick={() =>
             run(() =>
-              runMutation(() => sendRequest({ userId }), {
+              runMutation(() => sendRequest({ userId, via: "profile" }), {
                 context: "friends.sendRequest",
                 fallback: "Could not send a friend request. Try again.",
               }),

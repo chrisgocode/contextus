@@ -33,6 +33,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { markFriendStatusJoin } from "@/app/(app)/r/[code]/_components/join-source";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { roomPath } from "@/lib/room-code";
@@ -323,9 +324,7 @@ function FriendLists({
                 />
               ) : (
                 player.status.kind === "inRoom" && (
-                  <Button asChild size="sm">
-                    <Link href={roomPath(player.status.code)}>Join</Link>
-                  </Button>
+                  <JoinFriendsRoom code={player.status.code} />
                 )
               )}
               <DropdownMenu>
@@ -373,6 +372,16 @@ function FriendLists({
         </FriendSection>
       )}
     </>
+  );
+}
+
+function JoinFriendsRoom({ code }: { code: string }) {
+  return (
+    <Button asChild size="sm">
+      <Link href={roomPath(code)} onClick={() => markFriendStatusJoin(code)}>
+        Join
+      </Link>
+    </Button>
   );
 }
 

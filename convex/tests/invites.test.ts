@@ -14,7 +14,10 @@ afterEach(() => {
 });
 
 async function befriend(t: Test, a: Id<"users">, b: Id<"users">) {
-  await asUser(t, a).mutation(api.friends.sendRequest, { userId: b });
+  await asUser(t, a).mutation(api.friends.sendRequest, {
+    via: "profile",
+    userId: b,
+  });
   await asUser(t, b).mutation(api.friends.answerRequest, {
     userId: a,
     answer: "accept",
@@ -371,6 +374,7 @@ test("sending and joining through an Invite record analytics events", async () =
       properties: {
         room_id: roomId,
         member_count: 2,
+        via: "invite",
         deployment_environment: "production",
       },
     },
