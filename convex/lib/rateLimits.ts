@@ -7,6 +7,7 @@ import {
 } from "@convex-dev/rate-limiter";
 import { components } from "../_generated/api";
 import { appError } from "./errors";
+import { MAX_INVITES_AT_ONCE } from "./inviteLimits";
 
 // Every uncached guess and every hint reaches Contexto from this deployment,
 // so one script could get it throttled for everyone. These keep any one user
@@ -18,7 +19,12 @@ export const rateLimits = {
   giveup: { kind: "token bucket", rate: 15, period: MINUTE, capacity: 8 },
   createRoom: { kind: "token bucket", rate: 30, period: HOUR, capacity: 20 },
   friendRequest: { kind: "token bucket", rate: 30, period: HOUR, capacity: 20 },
-  invite: { kind: "token bucket", rate: 60, period: HOUR, capacity: 30 },
+  invite: {
+    kind: "token bucket",
+    rate: 60,
+    period: HOUR,
+    capacity: MAX_INVITES_AT_ONCE,
+  },
   // Guest sign-ups carry no identity to key on, so this one is shared.
   createGuest: { kind: "token bucket", rate: 80, period: MINUTE, capacity: 80 },
 } as const;

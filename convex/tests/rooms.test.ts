@@ -29,7 +29,11 @@ test("creating a Room records one analytics event", async () => {
   expect(capture).toHaveBeenCalledWith(expect.anything(), {
     distinctId: userId,
     event: "room_created",
-    properties: { room_id: roomId, deployment_environment: "production" },
+    properties: {
+      room_id: roomId,
+      invited_count: 0,
+      deployment_environment: "production",
+    },
   });
 });
 

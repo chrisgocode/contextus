@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { appErrorData } from "@/convex/lib/errors";
 import type { ErrorContext } from "@/lib/client-errors";
 import { reportClientError, runMutation } from "@/lib/report-error";
@@ -70,12 +71,12 @@ function useEntryAuth() {
 
 /**
  * Returns a function that creates a Room, signing in a new Guest first if
- * needed, and resolves with its code or why it failed. It waits for Convex
- * auth to load, so a click before then takes the right path, and after a
- * Guest sign-in it waits for a signed-in client: `signIn` resolves before the
- * Convex client sends the new token. A create still waiting on auth when the
- * page unmounts never resolves, so it can't finish somewhere the user has
- * left.
+ * needed, and resolves with its code or why it failed. Given Friends, it
+ * invites them to the Room in the same step. It waits for Convex auth to
+ * load, so a click before then takes the right path, and after a Guest
+ * sign-in it waits for a signed-in client: `signIn` resolves before the Convex
+ * client sends the new token. A create still waiting on auth when the page
+ * unmounts never resolves, so it can't finish somewhere the user has left.
  */
 export function useCreateRoom() {
   const { isLoading, isAuthenticated, signIn } = useEntryAuth();
@@ -98,30 +99,34 @@ export function useCreateRoom() {
     });
   }, [isLoading, isAuthenticated]);
 
-  return useCallback(async (): Promise<
-    { kind: "created"; code: string } | EntryFailure
-  > => {
-    const settledAuth = (untilAuthenticated: boolean) =>
-      settled.current === true ||
-      (settled.current === false && !untilAuthenticated)
-        ? Promise.resolve(settled.current)
-        : new Promise<boolean>((resolve) =>
-            waiters.current.push({ untilAuthenticated, resolve }),
-          );
-    try {
-      if (!(await settledAuth(false))) {
-        await signIn("anonymous");
-        await settledAuth(true);
+  return useCallback(
+    async (
+      invite?: Id<"users">[],
+    ): Promise<{ kind: "created"; code: string } | EntryFailure> => {
+      const settledAuth = (untilAuthenticated: boolean) =>
+        settled.current === true ||
+        (settled.current === false && !untilAuthenticated)
+          ? Promise.resolve(settled.current)
+          : new Promise<boolean>((resolve) =>
+              waiters.current.push({ untilAuthenticated, resolve }),
+            );
+      try {
+        if (!(await settledAuth(false))) {
+          await signIn("anonymous");
+          await settledAuth(true);
+        }
+        const { code } = await create(invite === undefined ? {} : { invite });
+        return { kind: "created", code };
+      } catch (err) {
+        return toFailure(err, {
+          context:
+            invite === undefined ? "room.create" : "room.playWithFriends",
+          fallback: "Could not create room. Try again.",
+        });
       }
-      const { code } = await create({});
-      return { kind: "created", code };
-    } catch (err) {
-      return toFailure(err, {
-        context: "room.create",
-        fallback: "Could not create room. Try again.",
-      });
-    }
-  }, [create, signIn]);
+    },
+    [create, signIn],
+  );
 }
 
 type RoomData = NonNullable<FunctionReturnType<typeof api.rooms.getByCode>>;
