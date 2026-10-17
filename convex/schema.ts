@@ -282,18 +282,18 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("friends")),
     declined: v.boolean(),
   })
-    .index("by_first_and_second", ["firstUserId", "secondUserId"])
-    .index("by_first_and_status_and_declined", [
+    .index("by_firstUserId_and_secondUserId", ["firstUserId", "secondUserId"])
+    .index("by_firstUserId_and_status_and_declined", [
       "firstUserId",
       "status",
       "declined",
     ])
-    .index("by_second_and_status_and_declined", [
+    .index("by_secondUserId_and_status_and_declined", [
       "secondUserId",
       "status",
       "declined",
     ])
-    .index("by_requester_and_status", ["requesterUserId", "status"]),
+    .index("by_requesterUserId_and_status", ["requesterUserId", "status"]),
 
   invites: defineTable({
     roomId: v.id("rooms"),

@@ -29,7 +29,7 @@ async function findPair(ctx: ReadCtx, a: UserId, b: UserId) {
   const { firstUserId, secondUserId } = pair(a, b);
   return await ctx.db
     .query("friendships")
-    .withIndex("by_first_and_second", (q) =>
+    .withIndex("by_firstUserId_and_secondUserId", (q) =>
       q.eq("firstUserId", firstUserId).eq("secondUserId", secondUserId),
     )
     .unique();
@@ -219,7 +219,7 @@ function side(
   return which === "first"
     ? ctx.db
         .query("friendships")
-        .withIndex("by_first_and_status_and_declined", (q) =>
+        .withIndex("by_firstUserId_and_status_and_declined", (q) =>
           q
             .eq("firstUserId", userId)
             .eq("status", status)
@@ -227,7 +227,7 @@ function side(
         )
     : ctx.db
         .query("friendships")
-        .withIndex("by_second_and_status_and_declined", (q) =>
+        .withIndex("by_secondUserId_and_status_and_declined", (q) =>
           q
             .eq("secondUserId", userId)
             .eq("status", status)
@@ -276,7 +276,7 @@ export async function listOutgoing(
 ): Promise<UserId[]> {
   const rows = await ctx.db
     .query("friendships")
-    .withIndex("by_requester_and_status", (q) =>
+    .withIndex("by_requesterUserId_and_status", (q) =>
       q.eq("requesterUserId", userId).eq("status", "pending"),
     )
     .take(MAX_PENDING_OUTGOING);
