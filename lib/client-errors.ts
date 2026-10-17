@@ -60,6 +60,7 @@ export const roomMessages = {
   "room.create": [guestRoomLimit],
   "room.playWithFriends": [
     ["noFriendsPicked"],
+    ["tooManyFriendsPicked"],
     ["notFriends", "Someone you picked is no longer your friend."],
     ["friendsNeedAccount"],
   ],

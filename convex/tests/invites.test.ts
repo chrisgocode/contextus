@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { MAX_INVITES_AT_ONCE } from "../lib/inviteLimits";
 import { depart } from "../lib/roomMembership";
 import { posthog } from "../posthog";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
@@ -541,4 +542,30 @@ test("Guests can't Play with friends", async () => {
     asUser(t, guest).mutation(api.rooms.create, { invite: [other] }),
   ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
   expect(await roomsHostedBy(t, guest)).toEqual([]);
+});
+
+test("Play with friends invites as many Friends as one go allows, and refuses more before creating a Room", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const friends: Id<"users">[] = [];
+  for (let i = 0; i < MAX_INVITES_AT_ONCE; i++) {
+    const friend = await seedUser(t);
+    await befriend(t, friend, host);
+    friends.push(friend);
+  }
+  const oneTooMany = await seedUser(t);
+
+  await expect(
+    asUser(t, host).mutation(api.rooms.create, {
+      invite: [...friends, oneTooMany],
+    }),
+  ).rejects.toMatchObject({ data: { code: "tooManyFriendsPicked" } });
+  expect(await roomsHostedBy(t, host)).toEqual([]);
+
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {
+    invite: friends,
+  });
+  expect((await overview(t, host, roomId)).room?.invited).toHaveLength(
+    MAX_INVITES_AT_ONCE,
+  );
 });

@@ -6,7 +6,8 @@ import {
   clearCreatedRoom,
   isCreatedRoom,
 } from "@/app/(app)/r/[code]/_components/created-room";
-import { render, screen, userEvent, waitFor } from "./test-utils";
+import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
+import { fireEvent, render, screen, userEvent, waitFor } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
@@ -325,6 +326,30 @@ describe("Home", () => {
         "Someone you picked is no longer your friend.",
       );
       expect(mocks.push).not.toHaveBeenCalled();
+    });
+
+    it("stops picking at the most Friends one Room can invite at once", async () => {
+      signInWithFriends(
+        Array.from({ length: MAX_INVITES_AT_ONCE + 1 }, (_, i) => ({
+          id: `friend${i}`,
+          name: `Friend ${i}`,
+        })),
+      );
+      const user = await openPicker();
+
+      const boxes = screen.getAllByRole("checkbox");
+      for (const box of boxes.slice(0, MAX_INVITES_AT_ONCE)) {
+        fireEvent.click(box);
+      }
+
+      expect(boxes.at(-1)).toBeDisabled();
+      expect(
+        screen.getByText(
+          `You can invite up to ${MAX_INVITES_AT_ONCE} friends at once.`,
+        ),
+      ).toBeVisible();
+      await user.click(boxes[0]);
+      expect(boxes.at(-1)).toBeEnabled();
     });
 
     it("points to the Friends panel when there are no Friends", async () => {

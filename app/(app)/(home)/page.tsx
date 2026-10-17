@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
@@ -215,6 +216,7 @@ function PlayWithFriends({
   const invite = friends
     .filter((friend) => picked.has(friend.id))
     .map((friend) => friend.id);
+  const atLimit = invite.length >= MAX_INVITES_AT_ONCE;
 
   function toggle(id: Id<"users">, checked: boolean) {
     setNonePicked(false);
@@ -276,12 +278,18 @@ function PlayWithFriends({
                       aria-label={`Invite ${friend.name}`}
                       className="size-5 accent-primary dark:scheme-dark"
                       checked={picked.has(friend.id)}
+                      disabled={atLimit && !picked.has(friend.id)}
                       onChange={(e) => toggle(friend.id, e.target.checked)}
                     />
                   </FriendRow>
                 ))}
               </ul>
             </fieldset>
+            {atLimit && (
+              <p className="text-sm text-muted-foreground">
+                You can invite up to {MAX_INVITES_AT_ONCE} friends at once.
+              </p>
+            )}
             {nonePicked ? (
               <p role="alert" className="text-sm text-destructive">
                 Pick at least one friend to play with.

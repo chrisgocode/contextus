@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { MAX_INVITES_AT_ONCE } from "./inviteLimits";
 
 // Errors that code matches on: the client to pick a user message, the server
 // to categorize a failed Game turn. Each is thrown as `ConvexError` data
@@ -41,6 +42,7 @@ const messages = {
   alreadyInRoom: "They are already in this room.",
   inviteNotFound: "This invite has ended.",
   noFriendsPicked: "Pick at least one friend to play with.",
+  tooManyFriendsPicked: `You can invite up to ${MAX_INVITES_AT_ONCE} friends at once.`,
 } as const;
 
 export type AppErrorCode = keyof typeof messages;
