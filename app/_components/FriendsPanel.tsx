@@ -121,6 +121,7 @@ function FriendLists({ overview }: { overview: Overview }) {
 
   return (
     <>
+      <YourPresence appearOffline={overview.appearOffline} />
       {overview.incoming.length > 0 && (
         <FriendSection title="Requests">
           {overview.incoming.map((player) => (
@@ -175,40 +176,99 @@ function FriendLists({ overview }: { overview: Overview }) {
           ))}
         </FriendSection>
       )}
-      <AppearOfflineToggle appearOffline={overview.appearOffline} />
     </>
   );
 }
 
-function AppearOfflineToggle({ appearOffline }: { appearOffline: boolean }) {
-  const setAppearOffline = useMutation(api.users.setAppearOffline);
-  const [saving, setSaving] = useState(false);
+const PRESENCE_CHOICES = [
+  { appearOffline: false, label: "Online" },
+  { appearOffline: true, label: "Appear offline" },
+] as const;
 
-  async function toggle(next: boolean) {
-    setSaving(true);
+// How the viewer shows up to their Friends, and the choice that sets it.
+function YourPresence({ appearOffline }: { appearOffline: boolean }) {
+  const me = useQuery(api.users.getUser, {});
+  const setAppearOffline = useMutation(api.users.setAppearOffline);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const shown = pending ?? appearOffline;
+
+  async function choose(next: boolean) {
+    setPending(next);
     await runMutation(() => setAppearOffline({ appearOffline: next }), {
       context: "users.setAppearOffline",
-      fallback: "Could not change Appear offline. Try again.",
+      fallback: "Could not change how Friends see you. Try again.",
     });
-    setSaving(false);
+    setPending(null);
   }
 
+  const name = me?.player.name ?? "You";
   return (
-    <label className="flex items-start gap-3 text-sm">
-      <input
-        type="checkbox"
-        className="mt-0.5 size-4 accent-primary"
-        checked={appearOffline}
-        disabled={saving}
-        onChange={(event) => toggle(event.target.checked)}
-      />
-      <span className="flex flex-col gap-0.5">
-        <span className="font-medium">Appear offline</span>
-        <span className="text-muted-foreground">
-          Friends see you as offline, even while you&apos;re in a Room.
-        </span>
-      </span>
-    </label>
+    <section
+      aria-label="Your status"
+      className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3"
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <Avatar>
+            {me?.image && <AvatarImage src={me.image} alt="" />}
+            <AvatarFallback>{name.slice(0, 1).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <StatusDot
+            offline={shown}
+            className="absolute -right-0.5 -bottom-0.5 size-3 ring-2 ring-background"
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{name}</span>
+          <span className="text-xs text-muted-foreground">
+            {shown ? "Friends see you as offline." : "Friends see you online."}
+          </span>
+        </div>
+      </div>
+      <fieldset
+        disabled={pending !== null}
+        className="grid grid-cols-2 gap-1 rounded-md bg-background/60 p-1"
+      >
+        <legend className="sr-only">Show Friends that you are</legend>
+        {PRESENCE_CHOICES.map((choice) => (
+          <label
+            key={choice.label}
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-sm px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground has-checked:bg-secondary has-checked:text-foreground has-focus-visible:outline-2 has-focus-visible:outline-foreground has-disabled:cursor-wait"
+          >
+            <input
+              type="radio"
+              name="appear-offline"
+              className="sr-only"
+              checked={shown === choice.appearOffline}
+              onChange={() => choose(choice.appearOffline)}
+            />
+            <StatusDot offline={choice.appearOffline} className="size-2" />
+            {choice.label}
+          </label>
+        ))}
+      </fieldset>
+    </section>
+  );
+}
+
+function StatusDot({
+  offline,
+  className,
+}: {
+  offline: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "block rounded-full",
+        offline
+          ? "border border-muted-foreground bg-background"
+          : "bg-emerald-400",
+        className,
+      )}
+    />
   );
 }
 
@@ -259,15 +319,7 @@ function FriendRow({
         )}
         {status && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-2 rounded-full",
-                status.kind === "offline"
-                  ? "border border-muted-foreground"
-                  : "bg-emerald-400",
-              )}
-            />
+            <StatusDot offline={status.kind === "offline"} className="size-2" />
             {STATUS_LABELS[status.kind]}
           </span>
         )}

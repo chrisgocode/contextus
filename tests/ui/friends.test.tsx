@@ -24,7 +24,13 @@ vi.mock("convex/react", () => ({
     if (name === "users:setAppearOffline") return mocks.setAppearOffline;
     throw new Error(`Unexpected mutation: ${name}`);
   },
-  useQuery: mocks.useQuery,
+  useQuery: (
+    reference: Parameters<typeof getFunctionName>[0],
+    args: unknown,
+  ) =>
+    getFunctionName(reference) === "users:getUser"
+      ? { player: { name: "Alice" }, image: null }
+      : mocks.useQuery(reference, args),
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/lib/sentry-client", () => ({ captureException: vi.fn() }));
@@ -228,21 +234,30 @@ describe("FriendsPanel", () => {
     }
   });
 
-  it("turns Appear offline on and off", async () => {
-    mocks.useQuery.mockReturnValue(overview({ appearOffline: true }));
+  it("shows your own status first and switches Appear offline", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        appearOffline: true,
+        friends: [friend("dave", "Dave", { kind: "online" })],
+      }),
+    );
     mocks.setAppearOffline.mockResolvedValue(null);
     const { user, panel } = await openPanel();
-    const toggle = within(panel).getByRole("checkbox", {
-      name: /Appear offline/,
+    const [yours] = within(panel).getAllByRole("region");
+    expect(yours).toHaveAccessibleName("Your status");
+    expect(yours).toHaveTextContent("Alice");
+    const online = within(yours).getByRole("radio", { name: "Online" });
+    const appearOffline = within(yours).getByRole("radio", {
+      name: "Appear offline",
     });
-    expect(toggle).toBeChecked();
+    expect(appearOffline).toBeChecked();
 
-    await user.click(toggle);
+    await user.click(online);
 
     expect(mocks.setAppearOffline).toHaveBeenCalledWith({
       appearOffline: false,
     });
-    await waitFor(() => expect(toggle).toBeEnabled());
+    await waitFor(() => expect(online).toBeEnabled());
   });
 
   it("tells a Guest that Friends need an account", async () => {
