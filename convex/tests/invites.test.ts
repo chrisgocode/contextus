@@ -278,6 +278,7 @@ test("unfriending leaves Invites from other Friends to the same Room", async () 
   await befriend(t, other, friend);
   await sendInvite(t, host, roomId, other);
   await asUser(t, other).mutation(api.rooms.join, { code });
+  await sendInvite(t, host, roomId, friend);
   await sendInvite(t, other, roomId, friend);
   const third = await seedUser(t, { name: "Third" });
   await befriend(t, host, third);
