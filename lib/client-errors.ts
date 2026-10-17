@@ -58,6 +58,11 @@ export const gameMessages = {
 
 export const roomMessages = {
   "room.create": [guestRoomLimit],
+  "room.playWithFriends": [
+    ["noFriendsPicked"],
+    ["notFriends", "Someone you picked is no longer your friend."],
+    ["friendsNeedAccount"],
+  ],
   "room.autojoin": [roomNotFound, guestRoomLimit],
   "room.guestJoin": [],
   "room.playAgain": [],

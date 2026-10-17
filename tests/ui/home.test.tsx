@@ -235,4 +235,113 @@ describe("Home", () => {
       via: "suggestion",
     });
   });
+
+  describe("Play with friends", () => {
+    function signInWithFriends(friends: { id: string; name: string }[]) {
+      mocks.useConvexAuth.mockReturnValue({
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      mocks.useQuery.mockImplementation((reference) => {
+        const name = getFunctionName(reference);
+        if (name === "users:getUser")
+          return { isAnonymous: false, username: "alex" };
+        if (name === "rooms:listMine" || name === "rooms:listRecentGroups")
+          return [];
+        if (name === "friends:suggestions") return [];
+        if (name === "friends:overview")
+          return {
+            friends: friends.map((friend) => ({
+              ...friend,
+              image: null,
+              username: friend.id,
+              status: { kind: "online" },
+            })),
+            incoming: [],
+            outgoing: [],
+            invites: [],
+            room: null,
+          };
+        throw new Error(`Unexpected query: ${name}`);
+      });
+    }
+
+    async function openPicker() {
+      const user = userEvent.setup();
+      render(<Home />);
+      await user.click(
+        screen.getByRole("button", { name: "Play with friends" }),
+      );
+      return user;
+    }
+
+    it("creates a room inviting the picked Friends and opens it on game setup", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "casey", name: "Casey" },
+      ]);
+      mocks.createRoom.mockResolvedValue({ kind: "created", code: "FRIEND" });
+      const user = await openPicker();
+
+      await user.click(screen.getByRole("checkbox", { name: "Invite Blair" }));
+      await user.click(
+        screen.getByRole("button", { name: "Create room and invite 1" }),
+      );
+
+      expect(mocks.createRoom).toHaveBeenCalledWith(["blair"]);
+      await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/FRIEND"));
+      expect(isCreatedRoom("FRIEND")).toBe(true);
+      clearCreatedRoom("FRIEND");
+    });
+
+    it("asks for a Friend when none is picked", async () => {
+      signInWithFriends([{ id: "blair", name: "Blair" }]);
+      const user = await openPicker();
+
+      await user.click(
+        screen.getByRole("button", { name: "Create room and invite" }),
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Pick at least one friend to play with.",
+      );
+      expect(mocks.createRoom).not.toHaveBeenCalled();
+    });
+
+    it("shows why the room couldn't be created", async () => {
+      signInWithFriends([{ id: "blair", name: "Blair" }]);
+      mocks.createRoom.mockResolvedValue({
+        kind: "error",
+        message: "Someone you picked is no longer your friend.",
+      });
+      const user = await openPicker();
+
+      await user.click(screen.getByRole("checkbox", { name: "Invite Blair" }));
+      await user.click(
+        screen.getByRole("button", { name: "Create room and invite 1" }),
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Someone you picked is no longer your friend.",
+      );
+      expect(mocks.push).not.toHaveBeenCalled();
+    });
+
+    it("points to the Friends panel when there are no Friends", async () => {
+      signInWithFriends([]);
+      await openPicker();
+
+      expect(
+        screen.getByText("No friends yet. Add friends from the Friends panel."),
+      ).toBeVisible();
+    });
+
+    it("isn't offered to Guests", () => {
+      render(<Home />);
+
+      expect(
+        screen.queryByRole("button", { name: "Play with friends" }),
+      ).toBeNull();
+    });
+  });
 });

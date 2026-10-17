@@ -40,6 +40,7 @@ const messages = {
   notFriends: "You aren't friends with this player.",
   alreadyInRoom: "They are already in this room.",
   inviteNotFound: "This invite has ended.",
+  noFriendsPicked: "Pick at least one friend to play with.",
 } as const;
 
 export type AppErrorCode = keyof typeof messages;

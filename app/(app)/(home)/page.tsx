@@ -16,7 +16,16 @@ import { FriendRow, FriendsPanel } from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
@@ -31,9 +40,7 @@ import {
 export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
-  const [openingRoom, setOpeningRoom] = useState<false | "waiting" | "unknown">(
-    false,
-  );
+  const [openingRoom, setOpeningRoom] = useState<OpeningRoom>(false);
   const currentUser = useQuery(
     api.users.getUser,
     isAuthenticated ? {} : "skip",
@@ -90,7 +97,10 @@ export default function Home() {
       <div inert={Boolean(openingRoom)} className="contents">
         {header}
         <HomeIntro />
-        <CreateRoom onOpeningChange={setOpeningRoom} />
+        <CreateRoom
+          isRegistered={isRegistered}
+          onOpeningChange={setOpeningRoom}
+        />
         <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
@@ -124,43 +134,57 @@ function HomeIntro() {
   );
 }
 
+type OpeningRoom = false | "waiting" | "unknown";
+
 function CreateRoom({
+  isRegistered,
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
+  isRegistered: boolean;
+  onOpeningChange: (opening: OpeningRoom) => void;
 }) {
   const router = useRouter();
   const createRoom = useCreateRoom();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<EntryFailure | null>(null);
+
+  async function start(invite?: Id<"users">[]) {
+    setFailure(null);
+    setBusy(true);
+    onOpeningChange("waiting");
+    // The new room opens on the game setup calendar.
+    preloadCalendar();
+    const result = await createRoom(invite);
+    if (result.kind === "created") {
+      markRoomCreated(result.code);
+      router.push(`/r/${result.code}`);
+    } else {
+      onOpeningChange(false);
+      setFailure(result);
+    }
+    setBusy(false);
+    return result;
+  }
+
   return (
     <section className="rounded-lg border p-6 flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Start a new room</h2>
       <p className="text-sm text-muted-foreground">
         You will be the host. Share the room code with friends to play together.
       </p>
-      <Button
-        disabled={busy}
-        onClick={async () => {
-          setFailure(null);
-          setBusy(true);
-          onOpeningChange("waiting");
-          // The new room opens on the game setup calendar.
-          preloadCalendar();
-          // A failure is shown inline.
-          const result = await createRoom();
-          if (result.kind === "created") {
-            markRoomCreated(result.code);
-            router.push(`/r/${result.code}`);
-          } else {
-            onOpeningChange(false);
-            setFailure(result);
-          }
-          setBusy(false);
-        }}
-      >
-        {busy ? "Creating…" : "Create room"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {/* A failure is shown inline. */}
+        <Button disabled={busy} onClick={() => start()}>
+          {busy ? "Creating…" : "Create room"}
+        </Button>
+        {isRegistered && (
+          <PlayWithFriends
+            busy={busy}
+            failure={failure}
+            onStart={async (invite) => (await start(invite)).kind === "created"}
+          />
+        )}
+      </div>
       {failure?.kind === "guestLimit" ? (
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <GuestLimitPrompt redirectTo="/" buttonVariant="outline" />
@@ -172,13 +196,122 @@ function CreateRoom({
   );
 }
 
+// Picks Friends to invite into a new Room, Online and In a Room ones first.
+function PlayWithFriends({
+  busy,
+  failure,
+  onStart,
+}: {
+  busy: boolean;
+  failure: EntryFailure | null;
+  onStart: (invite: Id<"users">[]) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const overview = useQuery(api.friends.overview, open ? {} : "skip");
+  const [picked, setPicked] = useState<ReadonlySet<Id<"users">>>(new Set());
+  const [nonePicked, setNonePicked] = useState(false);
+  const friends = overview?.friends ?? [];
+  // Friends removed since they were picked aren't invited.
+  const invite = friends
+    .filter((friend) => picked.has(friend.id))
+    .map((friend) => friend.id);
+
+  function toggle(id: Id<"users">, checked: boolean) {
+    setNonePicked(false);
+    setPicked((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setPicked(new Set());
+          setNonePicked(false);
+        }
+      }}
+    >
+      <SheetTrigger asChild>
+        <Button variant="outline" disabled={busy}>
+          Play with friends
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="gap-6 overflow-y-auto p-4">
+        <SheetHeader className="p-0 pr-8">
+          <SheetTitle>Play with friends</SheetTitle>
+          <SheetDescription>
+            Pick friends to invite. You will land in the new room and can start
+            a game when they arrive.
+          </SheetDescription>
+        </SheetHeader>
+        {overview === undefined ? null : friends.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No friends yet. Add friends from the Friends panel.
+          </p>
+        ) : (
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (invite.length === 0) {
+                setNonePicked(true);
+                return;
+              }
+              if (await onStart(invite)) setOpen(false);
+            }}
+          >
+            <fieldset className="flex flex-col gap-3">
+              <legend className="sr-only">Friends to invite</legend>
+              <ul className="flex flex-col gap-3">
+                {friends.map((friend) => (
+                  <FriendRow key={friend.id} player={friend}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Invite ${friend.name}`}
+                      className="size-5 accent-primary"
+                      checked={picked.has(friend.id)}
+                      onChange={(e) => toggle(friend.id, e.target.checked)}
+                    />
+                  </FriendRow>
+                ))}
+              </ul>
+            </fieldset>
+            {nonePicked ? (
+              <p role="alert" className="text-sm text-destructive">
+                Pick at least one friend to play with.
+              </p>
+            ) : failure?.kind === "error" ? (
+              <p role="alert" className="text-sm text-destructive">
+                {failure.message}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={busy}>
+              {busy
+                ? "Creating…"
+                : invite.length === 0
+                  ? "Create room and invite"
+                  : `Create room and invite ${invite.length}`}
+            </Button>
+          </form>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // Joining is only navigation: the room page joins signed-in users and offers
 // guests "Join as guest", so this form doesn't need auth state. The GET
 // action to /join makes it work before hydration too.
 function JoinRoom({
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
+  onOpeningChange: (opening: OpeningRoom) => void;
 }) {
   const router = useRouter();
   const [code, setCode] = useState("");
