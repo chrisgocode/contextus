@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { appError } from "./errors";
 import { OBJECTS, PREDICATES } from "./words";
 
@@ -121,4 +121,16 @@ export async function ensureUserHasUsername(
   const generated = await generateUniqueUsername(ctx, userId);
   await ctx.db.patch("users", userId, generated);
   return generated;
+}
+
+export async function findUserByUsername(
+  ctx: Pick<QueryCtx, "db">,
+  username: string,
+) {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_username", (q) =>
+      q.eq("username", username.trim().toLowerCase()),
+    )
+    .unique();
 }

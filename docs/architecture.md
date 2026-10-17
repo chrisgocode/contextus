@@ -34,7 +34,7 @@ flowchart LR
 | `hints.ts`           | Host hint action and hint execution                                                              |
 | `giveup.ts`          | Host give-up action and give-up execution                                                        |
 | `requests.ts`        | Non-host hint and give-up requests: create, deny, approve                                        |
-| `friends.ts`         | Friend requests, Friend status and the friends panel overview                                    |
+| `friends.ts`         | Friend requests, unfriending, Friend status and suggestions, friends panel overview              |
 | `presence.ts`        | Wraps `@convex-dev/presence`: who's online in a room, and the app-wide heartbeat for Friends     |
 | `achievements.ts`    | Profile achievement listing                                                                      |
 | `users.ts`           | Profiles, usernames, avatar upload, activity graph, guest account prompt, Appear offline         |

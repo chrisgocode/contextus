@@ -1,7 +1,7 @@
 import { getFunctionName } from "convex/server";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FriendButton } from "@/app/(app)/user/[username]/_components/FriendButton";
+import { FriendButton } from "@/app/_components/FriendButton";
 import { FriendsPanel } from "@/app/_components/FriendsPanel";
 import type { Id } from "@/convex/_generated/dataModel";
 import { appError } from "@/convex/lib/errors";
@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   cancelRequest: vi.fn(),
   sendRequest: vi.fn(),
   setAppearOffline: vi.fn(),
+  sendRequestByUsername: vi.fn(),
+  unfriend: vi.fn(),
   useQuery: vi.fn(),
 }));
 
@@ -22,6 +24,9 @@ vi.mock("convex/react", () => ({
     if (name === "friends:cancelRequest") return mocks.cancelRequest;
     if (name === "friends:sendRequest") return mocks.sendRequest;
     if (name === "users:setAppearOffline") return mocks.setAppearOffline;
+    if (name === "friends:sendRequestByUsername")
+      return mocks.sendRequestByUsername;
+    if (name === "friends:unfriend") return mocks.unfriend;
     throw new Error(`Unexpected mutation: ${name}`);
   },
   useQuery: (
@@ -275,6 +280,56 @@ describe("FriendsPanel", () => {
     await waitFor(() => expect(online).toBeEnabled());
     expect(online).toBeChecked();
     expect(yours).toHaveTextContent("Friends see you online.");
+  });
+
+  it("sends a Friend request by username and says when it's sent", async () => {
+    mocks.useQuery.mockReturnValue(overview());
+    mocks.sendRequestByUsername.mockResolvedValue({ status: "requested" });
+    const { user, panel } = await openPanel();
+    const username = within(panel).getByRole("textbox", { name: "Username" });
+
+    await user.type(username, "Bobby");
+    await user.click(within(panel).getByRole("button", { name: "Add friend" }));
+
+    expect(mocks.sendRequestByUsername).toHaveBeenCalledWith({
+      username: "Bobby",
+    });
+    expect(await within(panel).findByRole("status")).toHaveTextContent(
+      "Friend request sent.",
+    );
+    expect(username).toHaveValue("");
+  });
+
+  it("shows an unknown username inline, keeping what was typed", async () => {
+    mocks.useQuery.mockReturnValue(overview());
+    mocks.sendRequestByUsername.mockRejectedValue(appError("userNotFound"));
+    const { user, panel } = await openPanel();
+    const username = within(panel).getByRole("textbox", { name: "Username" });
+
+    await user.type(username, "nobody{Enter}");
+
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+      "No player has that username.",
+    );
+    expect(username).toHaveValue("nobody");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("unfriends from a Friend's menu", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        friends: [friend("carol", "Carol", { kind: "online" })],
+      }),
+    );
+    mocks.unfriend.mockResolvedValue(null);
+    const { user, panel } = await openPanel();
+
+    await user.click(
+      within(panel).getByRole("button", { name: "Options for Carol" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Unfriend" }));
+
+    expect(mocks.unfriend).toHaveBeenCalledWith({ userId: "carol" });
   });
 
   it("tells a Guest that Friends need an account", async () => {

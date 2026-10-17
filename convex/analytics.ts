@@ -110,6 +110,7 @@ type EventCatalog = {
     friend_user_id: Id<"users">;
     via: "accept" | "crossed_request";
   };
+  friend_removed: { friend_user_id: Id<"users"> };
   guest_merged: {
     guest_user_id: Id<"users">;
     account_user_id: Id<"users">;

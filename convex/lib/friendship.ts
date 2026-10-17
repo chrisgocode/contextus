@@ -8,6 +8,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { track } from "../analytics";
 import { appError } from "./errors";
 import { enforceRateLimit } from "./rateLimits";
+import { findUserByUsername } from "./usernames";
 
 type ReadCtx = Pick<QueryCtx, "db">;
 type WriteCtx = Pick<MutationCtx, "db" | "scheduler">;
@@ -67,6 +68,17 @@ async function assertRoomForFriend(ctx: ReadCtx, actor: UserId, other: UserId) {
 async function isRegistered(ctx: ReadCtx, userId: UserId) {
   const user = await ctx.db.get("users", userId);
   return user !== null && user.isAnonymous !== true;
+}
+
+// A request you declined still rules its sender out: adding them would make
+// you Friends at once.
+export async function isSuggestable(
+  ctx: ReadCtx,
+  viewer: UserId,
+  other: UserId,
+) {
+  if (viewer === other || !(await isRegistered(ctx, other))) return false;
+  return (await findPair(ctx, viewer, other)) === null;
 }
 
 // Null when the two can't be Friends: a Guest on either side, or one user.
@@ -131,6 +143,16 @@ export async function sendRequest(
   return "requested";
 }
 
+export async function sendRequestByUsername(
+  ctx: MutationCtx,
+  sender: UserId,
+  username: string,
+): Promise<"requested" | "friends"> {
+  const target = await findUserByUsername(ctx, username);
+  if (target === null) throw appError("userNotFound");
+  return await sendRequest(ctx, sender, target._id);
+}
+
 export async function answerRequest(
   ctx: WriteCtx,
   recipient: UserId,
@@ -170,6 +192,16 @@ export async function cancelRequest(
   await track(ctx, sender, {
     name: "friend_request_cancelled",
     properties: { recipient_user_id: target },
+  });
+}
+
+export async function unfriend(ctx: WriteCtx, userId: UserId, friend: UserId) {
+  const row = await findPair(ctx, userId, friend);
+  if (row?.status !== "friends") throw appError("notFriends");
+  await ctx.db.delete("friendships", row._id);
+  await track(ctx, userId, {
+    name: "friend_removed",
+    properties: { friend_user_id: friend },
   });
 }
 

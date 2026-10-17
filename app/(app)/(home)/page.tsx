@@ -12,7 +12,7 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { FriendsPanel } from "@/app/_components/FriendsPanel";
+import { FriendRow, FriendsPanel } from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +94,7 @@ export default function Home() {
         <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
+        {isRegistered && <FriendSuggestions />}
       </div>
     </>
   );
@@ -324,6 +325,48 @@ function RecentGroups() {
         })}
       </ul>
       {error && <p className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+// Sending a request drops someone from the suggestions, so a button only
+// ever shows Add friend.
+function FriendSuggestions() {
+  const suggestions = useQuery(api.friends.suggestions, {});
+  const sendRequest = useMutation(api.friends.sendRequest);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+
+  if (suggestions === undefined || suggestions.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border p-6 flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">People you played with</h2>
+        <p className="text-sm text-muted-foreground">
+          Add them as friends to play together again.
+        </p>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {suggestions.map((player) => (
+          <FriendRow key={player.id} player={player}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busyUserId !== null}
+              onClick={async () => {
+                setBusyUserId(player.id);
+                await runMutation(() => sendRequest({ userId: player.id }), {
+                  context: "friends.sendRequest",
+                  fallback: "Could not send a friend request. Try again.",
+                });
+                setBusyUserId(null);
+              }}
+            >
+              Add friend
+            </Button>
+          </FriendRow>
+        ))}
+      </ul>
     </section>
   );
 }
