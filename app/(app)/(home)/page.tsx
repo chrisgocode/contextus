@@ -274,7 +274,7 @@ function PlayWithFriends({
                     <input
                       type="checkbox"
                       aria-label={`Invite ${friend.name}`}
-                      className="size-5 accent-primary"
+                      className="size-5 accent-primary dark:scheme-dark"
                       checked={picked.has(friend.id)}
                       onChange={(e) => toggle(friend.id, e.target.checked)}
                     />
