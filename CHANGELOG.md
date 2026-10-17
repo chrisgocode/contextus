@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0](https://github.com/chrisgocode/contextus/compare/v0.3.3...v0.4.0) (2026-10-17)
+
+
+### Features
+
+* friend requests and the friends panel ([#248](https://github.com/chrisgocode/contextus/issues/248)) ([93c90b7](https://github.com/chrisgocode/contextus/commit/93c90b7498dc3d5e95f7f5d34ef3dc49fa0c1e2b))
+* Friend status and Join ([#253](https://github.com/chrisgocode/contextus/issues/253)) ([81b026d](https://github.com/chrisgocode/contextus/commit/81b026d428fab0fe913e69878c0a694b88229158))
+* invite Friends from inside a Room ([#251](https://github.com/chrisgocode/contextus/issues/251)) ([09a8f9a](https://github.com/chrisgocode/contextus/commit/09a8f9a319cdddef3983b462e8f7b3ea3948d628))
+* more ways to add Friends, and unfriending ([#252](https://github.com/chrisgocode/contextus/issues/252)) ([6ed353f](https://github.com/chrisgocode/contextus/commit/6ed353ff0d1a8129cce24238f505118efdfc02d4))
+
+
+### Bug Fixes
+
+* point Play again at a group's active Room ([#249](https://github.com/chrisgocode/contextus/issues/249)) ([e0019fc](https://github.com/chrisgocode/contextus/commit/e0019fc4c60216cc0fb14065e15439327bcafc82))
+
+
+### Dependencies
+
+* bump next ([#238](https://github.com/chrisgocode/contextus/issues/238)) ([bbb82dc](https://github.com/chrisgocode/contextus/commit/bbb82dc116f244c2b84e0a6990619dc85daa1429))
+* bump the actions group with 2 updates ([#239](https://github.com/chrisgocode/contextus/issues/239)) ([bcebe23](https://github.com/chrisgocode/contextus/commit/bcebe23a30d3a3a4e05089c1a1ede490435b540e))
+* bump the minor-and-patch group with 10 updates ([#240](https://github.com/chrisgocode/contextus/issues/240)) ([970301a](https://github.com/chrisgocode/contextus/commit/970301a4e96007cefe437eb8e0907a430a26bf74))
+
 ## [0.3.3](https://github.com/chrisgocode/contextus/compare/v0.3.2...v0.3.3) (2026-10-10)
 
 
