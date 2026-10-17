@@ -367,6 +367,15 @@ test("sending and joining through an Invite record analytics events", async () =
     },
     {
       distinctId: friend,
+      event: "room_joined",
+      properties: {
+        room_id: roomId,
+        member_count: 2,
+        deployment_environment: "production",
+      },
+    },
+    {
+      distinctId: friend,
       event: "invite_joined",
       properties: {
         room_id: roomId,

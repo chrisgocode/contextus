@@ -6,6 +6,7 @@
 // member, or the Room is ended.
 import { Presence } from "@convex-dev/presence";
 import { components } from "../_generated/api";
+import { track } from "../analytics";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { appError } from "./errors";
@@ -133,6 +134,26 @@ export async function admit(
   }
   await touchRoomActivity(ctx, roomId, now);
   return existing === null;
+}
+
+// Records that `userId` joined, after `admit` let them in, whichever way
+// they came.
+export async function trackJoin(
+  ctx: Pick<MutationCtx, "db" | "scheduler">,
+  roomId: Id<"rooms">,
+  userId: Id<"users">,
+): Promise<void> {
+  // Capped like playAgain's Room size limit; 101 means "over 100".
+  const memberCount = (
+    await ctx.db
+      .query("roomMembers")
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+      .take(101)
+  ).length;
+  await track(ctx, userId, {
+    name: "room_joined",
+    properties: { room_id: roomId, member_count: memberCount },
+  });
 }
 
 // Room status and membership `active` flags move together: an ended Room

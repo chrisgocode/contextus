@@ -81,6 +81,34 @@ describe("InviteToasts", () => {
     );
   });
 
+  it("removes its toasts when it unmounts, as on a page outside the app", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    const { unmount } = render(<InviteToasts />);
+    await waitFor(() => expect(toast.custom).toHaveBeenCalled());
+
+    unmount();
+
+    await waitFor(() =>
+      expect(toast.dismiss).toHaveBeenCalledWith("invite-i1"),
+    );
+  });
+
+  it("removes its toasts once the viewer is signed out", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    const { rerender } = render(<InviteToasts />);
+    await waitFor(() => expect(toast.custom).toHaveBeenCalled());
+
+    mocks.useQuery.mockReturnValue(undefined);
+    rerender(<InviteToasts />);
+
+    await waitFor(() =>
+      expect(toast.dismiss).toHaveBeenCalledWith("invite-i1"),
+    );
+    mocks.useQuery.mockReturnValue([invite()]);
+    rerender(<InviteToasts />);
+    await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(2));
+  });
+
   it("joins the Room from the toast", async () => {
     mocks.useQuery.mockReturnValue([invite()]);
     mocks.answerInvite.mockResolvedValue({ code: "ABCDEF" });

@@ -302,9 +302,9 @@ export default defineSchema({
     senderUserId: v.id("users"),
     expiresAt: v.number(),
   })
-    .index("by_room_and_recipient", ["roomId", "recipientUserId"])
-    .index("by_recipient", ["recipientUserId"])
-    .index("by_sender", ["senderUserId"]),
+    .index("by_roomId_and_recipientUserId", ["roomId", "recipientUserId"])
+    .index("by_recipientUserId", ["recipientUserId"])
+    .index("by_senderUserId", ["senderUserId"]),
 
   gamePlayerStats: defineTable({
     gameId: v.id("games"),

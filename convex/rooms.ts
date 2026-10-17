@@ -19,6 +19,7 @@ import {
   findMembership,
   openRoom,
   reopenRoom,
+  trackJoin,
 } from "./lib/roomMembership";
 
 const MAX_CODE_RETRIES = 10;
@@ -72,17 +73,7 @@ export const join = mutation({
       throw appError("roomNotFound");
     }
     if (await admit(ctx, room._id, userId, Date.now())) {
-      // Capped like playAgain's Room size limit; 101 means "over 100".
-      const memberCount = (
-        await ctx.db
-          .query("roomMembers")
-          .withIndex("by_room_user", (q) => q.eq("roomId", room._id))
-          .take(101)
-      ).length;
-      await track(ctx, userId, {
-        name: "room_joined",
-        properties: { room_id: room._id, member_count: memberCount },
-      });
+      await trackJoin(ctx, room._id, userId);
     }
     return { roomId: room._id };
   },

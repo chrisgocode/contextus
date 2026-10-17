@@ -17,7 +17,9 @@ const toastId = (invite: Pick<Invite, "_id">) => `invite-${invite._id}`;
 // A corner toast for each open Invite, on every page. Dismissing one only
 // hides it; the Invite stays in the friends panel. Re-sending an Invite shows
 // it again. The toast times out with the Invite, since the query won't rerun
-// at the deadline if the scheduled expiry is late.
+// at the deadline if the scheduled expiry is late. The Toaster outlives this
+// component on pages outside the app, so its toasts go when it does, and when
+// the viewer signs out.
 export function InviteToasts() {
   const { isAuthenticated } = useConvexAuth();
   const invites = useQuery(
@@ -28,13 +30,13 @@ export function InviteToasts() {
   const shown = useRef(new Map<string, number>());
 
   useEffect(() => {
-    if (invites === undefined) return;
-    const open = new Set(invites.map(toastId));
+    const open = new Set((invites ?? []).map(toastId));
     for (const id of shown.current.keys()) {
       if (open.has(id)) continue;
       shown.current.delete(id);
       lazyToast((toast) => toast.dismiss(id));
     }
+    if (invites === undefined) return;
     for (const invite of invites) {
       const id = toastId(invite);
       if (shown.current.get(id) === invite.expiresAt) continue;
@@ -60,6 +62,16 @@ export function InviteToasts() {
       );
     }
   }, [invites, answer]);
+
+  useEffect(() => {
+    const toasts = shown.current;
+    return () => {
+      for (const id of toasts.keys()) {
+        lazyToast((toast) => toast.dismiss(id));
+      }
+      toasts.clear();
+    };
+  }, []);
 
   return null;
 }

@@ -10,7 +10,7 @@ import { track } from "../analytics";
 import { appError } from "./errors";
 import { relationshipBetween } from "./friendship";
 import { enforceRateLimit } from "./rateLimits";
-import { admit, isLiveMember } from "./roomMembership";
+import { admit, isLiveMember, trackJoin } from "./roomMembership";
 
 type ReadCtx = Pick<QueryCtx, "db">;
 type WriteCtx = Pick<MutationCtx, "db">;
@@ -31,7 +31,7 @@ async function findInvite(
 ) {
   return await ctx.db
     .query("invites")
-    .withIndex("by_room_and_recipient", (q) =>
+    .withIndex("by_roomId_and_recipientUserId", (q) =>
       q.eq("roomId", roomId).eq("recipientUserId", recipient),
     )
     .unique();
@@ -105,6 +105,7 @@ export async function answer(
   const room = await ctx.db.get("rooms", row.roomId);
   if (room === null || room.status !== "active") throw appError("roomNotFound");
   if (await admit(ctx, room._id, recipient, now)) {
+    await trackJoin(ctx, room._id, recipient);
     await track(ctx, recipient, {
       name: "invite_joined",
       properties: { room_id: room._id, sender_user_id: row.senderUserId },
@@ -137,7 +138,9 @@ export async function endInvite(
 export async function endInvitesForRoom(ctx: WriteCtx, roomId: Id<"rooms">) {
   for await (const row of ctx.db
     .query("invites")
-    .withIndex("by_room_and_recipient", (q) => q.eq("roomId", roomId))) {
+    .withIndex("by_roomId_and_recipientUserId", (q) =>
+      q.eq("roomId", roomId),
+    )) {
     await ctx.db.delete("invites", row._id);
   }
 }
@@ -150,7 +153,7 @@ export async function listOpenFor(
   const open: Doc<"invites">[] = [];
   for await (const row of ctx.db
     .query("invites")
-    .withIndex("by_recipient", (q) => q.eq("recipientUserId", recipient))
+    .withIndex("by_recipientUserId", (q) => q.eq("recipientUserId", recipient))
     .order("desc")) {
     if (!isOpen(row, now)) continue;
     open.push(row);
