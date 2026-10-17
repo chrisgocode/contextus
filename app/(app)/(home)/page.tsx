@@ -355,10 +355,13 @@ function FriendSuggestions() {
               disabled={busyUserId !== null}
               onClick={async () => {
                 setBusyUserId(player.id);
-                await runMutation(() => sendRequest({ userId: player.id }), {
-                  context: "friends.sendRequest",
-                  fallback: "Could not send a friend request. Try again.",
-                });
+                await runMutation(
+                  () => sendRequest({ userId: player.id, via: "suggestion" }),
+                  {
+                    context: "friends.sendRequest",
+                    fallback: "Could not send a friend request. Try again.",
+                  },
+                );
                 setBusyUserId(null);
               }}
             >

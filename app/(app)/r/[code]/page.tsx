@@ -14,6 +14,7 @@ import {
   type AchievementUnlockQueueItem,
 } from "@/app/_components/AchievementUnlockQueue";
 import { getUnlockedAchievementMetadata } from "@/app/_components/achievement-metadata";
+import { FriendsPanel } from "@/app/_components/FriendsPanel";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
@@ -269,6 +270,7 @@ function RoomLoaded({
             </span>
           </Button>
           <AppearancePicker />
+          <FriendsPanel roomId={room._id} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Room menu">

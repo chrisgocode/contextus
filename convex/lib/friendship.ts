@@ -5,7 +5,7 @@
 // one the other way, or a repeat, finds the row already there.
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { track } from "../analytics";
+import { type FriendRequestSource, track } from "../analytics";
 import { appError } from "./errors";
 import { enforceRateLimit } from "./rateLimits";
 import { findUserByUsername } from "./usernames";
@@ -29,7 +29,7 @@ async function findPair(ctx: ReadCtx, a: UserId, b: UserId) {
   const { firstUserId, secondUserId } = pair(a, b);
   return await ctx.db
     .query("friendships")
-    .withIndex("by_first_and_second", (q) =>
+    .withIndex("by_firstUserId_and_secondUserId", (q) =>
       q.eq("firstUserId", firstUserId).eq("secondUserId", secondUserId),
     )
     .unique();
@@ -100,6 +100,7 @@ export async function sendRequest(
   ctx: MutationCtx,
   sender: UserId,
   target: UserId,
+  via: FriendRequestSource,
 ): Promise<"requested" | "friends"> {
   if (sender === target) throw appError("friendSelf");
   const [senderUser, targetUser] = await Promise.all([
@@ -138,7 +139,7 @@ export async function sendRequest(
   });
   await track(ctx, sender, {
     name: "friend_request_sent",
-    properties: { recipient_user_id: target },
+    properties: { recipient_user_id: target, via },
   });
   return "requested";
 }
@@ -150,7 +151,7 @@ export async function sendRequestByUsername(
 ): Promise<"requested" | "friends"> {
   const target = await findUserByUsername(ctx, username);
   if (target === null) throw appError("userNotFound");
-  return await sendRequest(ctx, sender, target._id);
+  return await sendRequest(ctx, sender, target._id, "username");
 }
 
 export async function answerRequest(
@@ -218,7 +219,7 @@ function side(
   return which === "first"
     ? ctx.db
         .query("friendships")
-        .withIndex("by_first_and_status_and_declined", (q) =>
+        .withIndex("by_firstUserId_and_status_and_declined", (q) =>
           q
             .eq("firstUserId", userId)
             .eq("status", status)
@@ -226,7 +227,7 @@ function side(
         )
     : ctx.db
         .query("friendships")
-        .withIndex("by_second_and_status_and_declined", (q) =>
+        .withIndex("by_secondUserId_and_status_and_declined", (q) =>
           q
             .eq("secondUserId", userId)
             .eq("status", status)
@@ -275,7 +276,7 @@ export async function listOutgoing(
 ): Promise<UserId[]> {
   const rows = await ctx.db
     .query("friendships")
-    .withIndex("by_requester_and_status", (q) =>
+    .withIndex("by_requesterUserId_and_status", (q) =>
       q.eq("requesterUserId", userId).eq("status", "pending"),
     )
     .take(MAX_PENDING_OUTGOING);

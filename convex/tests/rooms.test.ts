@@ -83,7 +83,11 @@ test("Room join, Host handoff, and end record their committed outcomes", async (
     expect.objectContaining({
       distinctId: other,
       event: "room_joined",
-      properties: expect.objectContaining({ room_id: roomId, member_count: 2 }),
+      properties: expect.objectContaining({
+        room_id: roomId,
+        member_count: 2,
+        via: "code",
+      }),
     }),
     expect.objectContaining({
       distinctId: host,
@@ -689,4 +693,31 @@ test("create rate limits each user", async () => {
   await expect(
     asUser(t, other).mutation(api.rooms.create, {}),
   ).resolves.toMatchObject({ code: expect.any(String) });
+});
+
+test("joining from a Friend's status records that it came from there", async () => {
+  vi.stubEnv("POSTHOG_PROJECT_TOKEN", "test-token");
+  vi.stubEnv("POSTHOG_ENVIRONMENT", "production");
+  const capture = vi.spyOn(posthog, "capture").mockResolvedValue(undefined);
+  const t = setupTest();
+  const host = await seedUser(t);
+  const friend = await seedUser(t);
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  capture.mockClear();
+
+  await asUser(t, friend).mutation(api.rooms.join, {
+    code,
+    via: "friend_status",
+  });
+
+  expect(capture).toHaveBeenCalledWith(expect.anything(), {
+    distinctId: friend,
+    event: "room_joined",
+    properties: {
+      room_id: roomId,
+      member_count: 2,
+      via: "friend_status",
+      deployment_environment: "production",
+    },
+  });
 });

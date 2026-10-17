@@ -8,6 +8,7 @@ import {
   findUserByUsername,
   normalizeUsernameInput,
 } from "./lib/usernames";
+import { track } from "./analytics";
 import { appError } from "./lib/errors";
 import { canonicalTimeZone } from "./lib/localTime";
 import { playerFromUser } from "./lib/player";
@@ -149,6 +150,10 @@ export const setAppearOffline = mutation({
   handler: async (ctx, { appearOffline }) => {
     const userId = await requireRegisteredUser(ctx);
     await ctx.db.patch("users", userId, { appearOffline });
+    await track(ctx, userId, {
+      name: "appear_offline_changed",
+      properties: { appear_offline: appearOffline },
+    });
     return null;
   },
 });

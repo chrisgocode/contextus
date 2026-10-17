@@ -343,7 +343,9 @@ export const USER_KEYED_TABLES = [
     rows: (ctx, userId) =>
       ctx.db
         .query("friendships")
-        .withIndex("by_first_and_second", (q) => q.eq("firstUserId", userId)),
+        .withIndex("by_firstUserId_and_secondUserId", (q) =>
+          q.eq("firstUserId", userId),
+        ),
     merge: "removeWithGuest",
     expire: "delete",
     purge: "delete",
@@ -354,7 +356,7 @@ export const USER_KEYED_TABLES = [
     rows: (ctx, userId) =>
       ctx.db
         .query("friendships")
-        .withIndex("by_second_and_status_and_declined", (q) =>
+        .withIndex("by_secondUserId_and_status_and_declined", (q) =>
           q.eq("secondUserId", userId),
         ),
     merge: "removeWithGuest",
@@ -367,9 +369,34 @@ export const USER_KEYED_TABLES = [
     rows: (ctx, userId) =>
       ctx.db
         .query("friendships")
-        .withIndex("by_requester_and_status", (q) =>
+        .withIndex("by_requesterUserId_and_status", (q) =>
           q.eq("requesterUserId", userId),
         ),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
+  // Guests never send or receive Invites, so they own no rows to move.
+  policy({
+    table: "invites",
+    field: "recipientUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("invites")
+        .withIndex("by_recipientUserId", (q) =>
+          q.eq("recipientUserId", userId),
+        ),
+    merge: "removeWithGuest",
+    expire: "delete",
+    purge: "delete",
+  }),
+  policy({
+    table: "invites",
+    field: "senderUserId",
+    rows: (ctx, userId) =>
+      ctx.db
+        .query("invites")
+        .withIndex("by_senderUserId", (q) => q.eq("senderUserId", userId)),
     merge: "removeWithGuest",
     expire: "delete",
     purge: "delete",

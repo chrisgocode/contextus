@@ -6,9 +6,11 @@
 // member, or the Room is ended.
 import { Presence } from "@convex-dev/presence";
 import { components } from "../_generated/api";
+import { type JoinSource, track } from "../analytics";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { appError } from "./errors";
+import { endInvite, endInvitesForRoom } from "./invites";
 import { withdrawAllFor } from "./pendingRequests";
 
 type ReadCtx = Pick<QueryCtx, "db">;
@@ -111,13 +113,15 @@ export async function openRoom(
   return roomId;
 }
 
-// Adds the user to an active Room. Returns false when they were already in.
+// Adds the user to an active Room, ending any Invite they had to it however
+// they came in. Returns false when they were already in.
 export async function admit(
   ctx: WriteCtx,
   roomId: Id<"rooms">,
   userId: Id<"users">,
   now: number,
 ): Promise<boolean> {
+  await endInvite(ctx, roomId, userId);
   const existing = await findMembership(ctx, roomId, userId);
   if (existing === null) {
     await requireGuestRoomSlot(ctx, userId);
@@ -132,6 +136,27 @@ export async function admit(
   return existing === null;
 }
 
+// Records that `userId` joined, after `admit` let them in, whichever way
+// they came.
+export async function trackJoin(
+  ctx: Pick<MutationCtx, "db" | "scheduler">,
+  roomId: Id<"rooms">,
+  userId: Id<"users">,
+  via: JoinSource,
+): Promise<void> {
+  // Capped like playAgain's Room size limit; 101 means "over 100".
+  const memberCount = (
+    await ctx.db
+      .query("roomMembers")
+      .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
+      .take(101)
+  ).length;
+  await track(ctx, userId, {
+    name: "room_joined",
+    properties: { room_id: roomId, member_count: memberCount, via },
+  });
+}
+
 // Room status and membership `active` flags move together: an ended Room
 // holds no active memberships, and reopening one restores them all.
 
@@ -141,6 +166,7 @@ export async function closeRoom(
   roomId: Id<"rooms">,
 ): Promise<Doc<"roomMembers">[]> {
   await ctx.db.patch("rooms", roomId, { status: "ended" });
+  await endInvitesForRoom(ctx, roomId);
   const members = await ctx.db
     .query("roomMembers")
     .withIndex("by_room_user", (q) => q.eq("roomId", roomId))
@@ -231,6 +257,7 @@ async function vacate(
   const membership = await findMembership(ctx, roomId, departure.userId);
   if (departure.reason === "merged") {
     if (membership === null) return false;
+    await endInvite(ctx, roomId, departure.into);
     const existing = await findMembership(ctx, roomId, departure.into);
     if (existing === null) {
       await ctx.db.patch("roomMembers", membership._id, {

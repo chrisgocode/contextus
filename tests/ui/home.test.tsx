@@ -230,6 +230,9 @@ describe("Home", () => {
     );
     await user.click(screen.getByRole("button", { name: "Add friend" }));
 
-    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({ userId: "blair" });
+    expect(mocks.sendFriendRequest).toHaveBeenCalledWith({
+      userId: "blair",
+      via: "suggestion",
+    });
   });
 });

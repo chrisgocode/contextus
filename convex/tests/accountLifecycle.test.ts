@@ -172,6 +172,20 @@ const seeds: Record<
       status: "pending",
       declined: true,
     }),
+  "invites.recipientUserId": (ctx, userId, { owner, roomId }) =>
+    ctx.db.insert("invites", {
+      roomId,
+      recipientUserId: userId,
+      senderUserId: owner,
+      expiresAt: Date.now() + 60_000,
+    }),
+  "invites.senderUserId": (ctx, userId, { owner, roomId }) =>
+    ctx.db.insert("invites", {
+      roomId,
+      recipientUserId: owner,
+      senderUserId: userId,
+      expiresAt: Date.now() + 60_000,
+    }),
 };
 
 afterEach(() => {

@@ -4,6 +4,7 @@ import {
   clearCreatedRoom,
   markRoomCreated,
 } from "@/app/(app)/r/[code]/_components/created-room";
+import { markFriendStatusJoin } from "@/app/(app)/r/[code]/_components/join-source";
 import {
   type RoomEntryAuth,
   RoomEntryAuthContext,
@@ -147,6 +148,19 @@ describe("useRoomEntry", () => {
 
     expect(result.current).toEqual({ kind: "sessionExpired" });
     expect(mocks.join).not.toHaveBeenCalled();
+  });
+
+  it("says a join came from a Friend's status when the friends panel's Join led here", () => {
+    queries.getByCode = () => ({ ...room, members: [] });
+    mocks.join.mockImplementation(() => new Promise(() => {}));
+    markFriendStatusJoin("abcdef");
+
+    renderEntry();
+
+    expect(mocks.join).toHaveBeenCalledWith({
+      code: "ABCDEF",
+      via: "friend_status",
+    });
   });
 
   it("joins an active Room the viewer isn't in, then is a member", async () => {
