@@ -1,9 +1,10 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type Ref, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Avatar,
@@ -12,23 +13,21 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { FriendRow, FriendsPanel } from "@/app/_components/FriendsPanel";
+import {
+  FriendRow,
+  FriendsPanel,
+  STATUS_LABELS,
+  StatusDot,
+} from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
+import { cn } from "@/lib/utils";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { GuestLimitPrompt } from "../r/[code]/_components/GuestLimitPrompt";
@@ -148,6 +147,24 @@ function CreateRoom({
   const createRoom = useCreateRoom();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<EntryFailure | null>(null);
+  const [picking, setPicking] = useState(false);
+  const playWithFriends = useRef<HTMLButtonElement>(null);
+  const roster = useRef<HTMLDivElement>(null);
+  const switched = useRef(false);
+
+  // Focus follows the switch, so keyboard users land in what replaced the
+  // button they pressed.
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    (picking ? roster : playWithFriends).current?.focus();
+  }, [picking]);
+
+  function switchTo(next: boolean) {
+    setFailure(null);
+    setPicking(next);
+    switched.current = true;
+  }
 
   async function start(invite?: Id<"users">[]) {
     setFailure(null);
@@ -164,7 +181,6 @@ function CreateRoom({
       setFailure(result);
     }
     setBusy(false);
-    return result;
   }
 
   return (
@@ -173,143 +189,205 @@ function CreateRoom({
       <p className="text-sm text-muted-foreground">
         You will be the host. Share the room code with friends to play together.
       </p>
-      <div className="flex flex-wrap gap-2">
-        {/* A failure is shown inline. */}
-        <Button disabled={busy} onClick={() => start()}>
-          {busy ? "Creating…" : "Create room"}
-        </Button>
-        {isRegistered && (
-          <PlayWithFriends
-            busy={busy}
-            failure={failure}
-            onStart={async (invite) => (await start(invite)).kind === "created"}
-          />
-        )}
-      </div>
+      {picking ? (
+        <FriendRoster
+          ref={roster}
+          busy={busy}
+          onStart={start}
+          onCancel={() => switchTo(false)}
+        />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {/* A failure is shown inline. */}
+          <Button disabled={busy} onClick={() => start()}>
+            {busy ? "Creating…" : "Create room"}
+          </Button>
+          {isRegistered && (
+            <Button
+              ref={playWithFriends}
+              variant="outline"
+              disabled={busy}
+              onClick={() => switchTo(true)}
+            >
+              Play with friends
+            </Button>
+          )}
+        </div>
+      )}
       {failure?.kind === "guestLimit" ? (
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <GuestLimitPrompt redirectTo="/" buttonVariant="outline" />
         </div>
       ) : failure?.kind === "error" ? (
-        <p className="text-sm text-destructive">{failure.message}</p>
+        <p role="alert" className="text-sm text-destructive">
+          {failure.message}
+        </p>
       ) : null}
     </section>
   );
 }
 
-// Picks Friends to invite into a new Room, Online and In a Room ones first.
-function PlayWithFriends({
-  busy,
-  failure,
-  onStart,
-}: {
-  busy: boolean;
-  failure: EntryFailure | null;
-  onStart: (invite: Id<"users">[]) => Promise<boolean>;
-}) {
-  const [open, setOpen] = useState(false);
-  const overview = useQuery(api.friends.overview, open ? {} : "skip");
-  const [picked, setPicked] = useState<ReadonlySet<Id<"users">>>(new Set());
-  const [nonePicked, setNonePicked] = useState(false);
-  const friends = overview?.friends ?? [];
-  // Friends removed since they were picked aren't invited.
-  const invite = friends
-    .filter((friend) => picked.has(friend.id))
-    .map((friend) => friend.id);
-  const atLimit = invite.length >= MAX_INVITES_AT_ONCE;
+type RosterFriend = NonNullable<
+  FunctionReturnType<typeof api.friends.overview>
+>["friends"][number];
 
-  function toggle(id: Id<"users">, checked: boolean) {
-    setNonePicked(false);
+function createLabel(names: string[]) {
+  if (names.length === 0) return "Pick friends to invite";
+  if (names.length === 1) return `Create room with ${names[0]}`;
+  if (names.length === 2) return `Create room with ${names[0]} and ${names[1]}`;
+  return `Create room with ${names[0]}, ${names[1]} and ${names.length - 2} more`;
+}
+
+// Play with friends, in place of the Create room buttons. Friends who are
+// Online or In a Room come first; offline ones wait behind a link unless
+// nobody is around.
+function FriendRoster({
+  ref,
+  busy,
+  onStart,
+  onCancel,
+}: {
+  ref: Ref<HTMLDivElement>;
+  busy: boolean;
+  onStart: (invite: Id<"users">[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const overview = useQuery(api.friends.overview, {});
+  const [picked, setPicked] = useState<ReadonlySet<Id<"users">>>(new Set());
+  const [showOffline, setShowOffline] = useState(false);
+  const friends = overview?.friends ?? [];
+  const around = friends.filter((friend) => friend.status.kind !== "offline");
+  const offline = friends.filter((friend) => friend.status.kind === "offline");
+  const offlineShown = showOffline || around.length === 0;
+  // Friends removed since they were picked aren't invited.
+  const invited = friends.filter((friend) => picked.has(friend.id));
+  const atLimit = invited.length >= MAX_INVITES_AT_ONCE;
+
+  function toggle(id: Id<"users">) {
     setPicked((current) => {
       const next = new Set(current);
-      if (checked) next.add(id);
-      else next.delete(id);
+      if (!next.delete(id)) next.add(id);
       return next;
     });
   }
 
+  const token = (friend: RosterFriend) => (
+    <FriendToken
+      key={friend.id}
+      friend={friend}
+      picked={picked.has(friend.id)}
+      disabled={busy || (atLimit && !picked.has(friend.id))}
+      onToggle={() => toggle(friend.id)}
+    />
+  );
+
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setPicked(new Set());
-          setNonePicked(false);
-        }
-      }}
+    <div
+      ref={ref}
+      tabIndex={-1}
+      role="group"
+      aria-label="Play with friends"
+      aria-busy={overview === undefined}
+      className="flex flex-col gap-3 outline-none"
     >
-      <SheetTrigger asChild>
-        <Button variant="outline" disabled={busy}>
-          Play with friends
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="gap-6 overflow-y-auto p-4">
-        <SheetHeader className="p-0 pr-8">
-          <SheetTitle>Play with friends</SheetTitle>
-          <SheetDescription>
-            Pick friends to invite. You will land in the new room and can start
-            a game when they arrive.
-          </SheetDescription>
-        </SheetHeader>
-        {overview === undefined ? null : friends.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No friends yet. Add friends from the Friends panel.
-          </p>
-        ) : (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (invite.length === 0) {
-                setNonePicked(true);
-                return;
-              }
-              if (await onStart(invite)) setOpen(false);
-            }}
+      {overview === undefined ? null : friends.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Add Friends from the Friends panel to invite them here.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {around.map(token)}
+            {offlineShown
+              ? offline.map(token)
+              : offline.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                    onClick={() => setShowOffline(true)}
+                  >
+                    Show {offline.length} offline
+                  </button>
+                )}
+          </div>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You can invite up to {MAX_INVITES_AT_ONCE} friends at once.
+            </p>
+          )}
+        </>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {friends.length > 0 && (
+          <Button
+            className="h-11 w-full max-w-full sm:h-8 sm:w-auto"
+            disabled={busy || invited.length === 0}
+            onClick={() => onStart(invited.map((friend) => friend.id))}
           >
-            <fieldset className="flex flex-col gap-3">
-              <legend className="sr-only">Friends to invite</legend>
-              <ul className="flex flex-col gap-3">
-                {friends.map((friend) => (
-                  <FriendRow key={friend.id} player={friend}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Invite ${friend.name}`}
-                      className="size-5 accent-primary dark:scheme-dark"
-                      checked={picked.has(friend.id)}
-                      disabled={atLimit && !picked.has(friend.id)}
-                      onChange={(e) => toggle(friend.id, e.target.checked)}
-                    />
-                  </FriendRow>
-                ))}
-              </ul>
-            </fieldset>
-            {atLimit && (
-              <p className="text-sm text-muted-foreground">
-                You can invite up to {MAX_INVITES_AT_ONCE} friends at once.
-              </p>
-            )}
-            {nonePicked ? (
-              <p role="alert" className="text-sm text-destructive">
-                Pick at least one friend to play with.
-              </p>
-            ) : failure?.kind === "error" ? (
-              <p role="alert" className="text-sm text-destructive">
-                {failure.message}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={busy}>
+            <span className="truncate">
               {busy
                 ? "Creating…"
-                : invite.length === 0
-                  ? "Create room and invite"
-                  : `Create room and invite ${invite.length}`}
-            </Button>
-          </form>
+                : createLabel(invited.map((friend) => friend.name))}
+            </span>
+          </Button>
         )}
-      </SheetContent>
-    </Sheet>
+        <Button
+          variant="ghost"
+          className="h-11 w-full sm:h-8 sm:w-auto"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FriendToken({
+  friend,
+  picked,
+  disabled,
+  onToggle,
+}: {
+  friend: RosterFriend;
+  picked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const offline = friend.status.kind === "offline";
+  return (
+    <button
+      type="button"
+      aria-pressed={picked}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        "flex min-w-0 items-center gap-2 border py-1.5 pr-3 pl-1.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        picked
+          ? "border-primary bg-primary/25"
+          : "border-border bg-input/10 hover:bg-input/30",
+      )}
+    >
+      <span aria-hidden="true" className="relative shrink-0">
+        <Avatar>
+          {friend.image && <AvatarImage src={friend.image} alt="" />}
+          <AvatarFallback>
+            {friend.name.slice(0, 1).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <StatusDot
+          offline={offline}
+          className="absolute -right-0.5 -bottom-0.5 size-2.5 ring-2 ring-background"
+        />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-medium">{friend.name}</span>{" "}
+        <span className="text-xs text-muted-foreground">
+          {STATUS_LABELS[friend.status.kind]}
+        </span>
+      </span>
+    </button>
   );
 }
 

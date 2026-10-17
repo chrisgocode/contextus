@@ -238,7 +238,10 @@ describe("Home", () => {
   });
 
   describe("Play with friends", () => {
-    function signInWithFriends(friends: { id: string; name: string }[]) {
+    type Kind = "online" | "inRoom" | "offline";
+    function signInWithFriends(
+      friends: { id: string; name: string; status?: Kind }[],
+    ) {
       mocks.useConvexAuth.mockReturnValue({
         isAuthenticated: true,
         isLoading: false,
@@ -252,11 +255,11 @@ describe("Home", () => {
         if (name === "friends:suggestions") return [];
         if (name === "friends:overview")
           return {
-            friends: friends.map((friend) => ({
+            friends: friends.map(({ status = "online", ...friend }) => ({
               ...friend,
               image: null,
               username: friend.id,
-              status: { kind: "online" },
+              status: { kind: status },
             })),
             incoming: [],
             outgoing: [],
@@ -267,7 +270,7 @@ describe("Home", () => {
       });
     }
 
-    async function openPicker() {
+    async function openRoster() {
       const user = userEvent.setup();
       render(<Home />);
       await user.click(
@@ -276,37 +279,74 @@ describe("Home", () => {
       return user;
     }
 
-    it("creates a room inviting the picked Friends and opens it on game setup", async () => {
+    const friend = (name: RegExp) =>
+      screen.getByRole("button", { name, pressed: false }) as HTMLElement;
+
+    it("creates a room with the picked Friends, named on the button, and opens it on game setup", async () => {
       signInWithFriends([
         { id: "blair", name: "Blair" },
         { id: "casey", name: "Casey" },
+        { id: "drew", name: "Drew" },
       ]);
       mocks.createRoom.mockResolvedValue({ kind: "created", code: "FRIEND" });
-      const user = await openPicker();
+      const user = await openRoster();
 
-      await user.click(screen.getByRole("checkbox", { name: "Invite Blair" }));
+      expect(
+        screen.getByRole("group", { name: "Play with friends" }),
+      ).toHaveFocus();
+      expect(
+        screen.getByRole("button", { name: "Pick friends to invite" }),
+      ).toBeDisabled();
+      await user.click(friend(/^Blair/));
+      expect(
+        screen.getByRole("button", { name: "Create room with Blair" }),
+      ).toBeEnabled();
+      await user.click(friend(/^Casey/));
+      await user.click(friend(/^Drew/));
       await user.click(
-        screen.getByRole("button", { name: "Create room and invite 1" }),
+        screen.getByRole("button", {
+          name: "Create room with Blair, Casey and 1 more",
+        }),
       );
 
-      expect(mocks.createRoom).toHaveBeenCalledWith(["blair"]);
+      expect(mocks.createRoom).toHaveBeenCalledWith(["blair", "casey", "drew"]);
       await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/FRIEND"));
       expect(isCreatedRoom("FRIEND")).toBe(true);
       clearCreatedRoom("FRIEND");
     });
 
-    it("asks for a Friend when none is picked", async () => {
+    it("unpicks a Friend tapped again", async () => {
       signInWithFriends([{ id: "blair", name: "Blair" }]);
-      const user = await openPicker();
+      const user = await openRoster();
 
+      await user.click(friend(/^Blair/));
       await user.click(
-        screen.getByRole("button", { name: "Create room and invite" }),
+        screen.getByRole("button", { name: /^Blair/, pressed: true }),
       );
 
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Pick at least one friend to play with.",
-      );
-      expect(mocks.createRoom).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Pick friends to invite" }),
+      ).toBeDisabled();
+    });
+
+    it("keeps offline Friends behind a link while someone is around", async () => {
+      signInWithFriends([
+        { id: "riley", name: "Riley", status: "offline" },
+        { id: "sam", name: "Sam", status: "inRoom" },
+      ]);
+      const user = await openRoster();
+
+      expect(friend(/^Sam In a Room/)).toBeVisible();
+      expect(screen.queryByRole("button", { name: /^Riley/ })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Show 1 offline" }));
+      expect(friend(/^Riley Offline/)).toBeVisible();
+    });
+
+    it("shows offline Friends straight away when nobody is around", async () => {
+      signInWithFriends([{ id: "riley", name: "Riley", status: "offline" }]);
+      await openRoster();
+
+      expect(friend(/^Riley Offline/)).toBeVisible();
     });
 
     it("shows why the room couldn't be created", async () => {
@@ -315,11 +355,11 @@ describe("Home", () => {
         kind: "error",
         message: "Someone you picked is no longer your friend.",
       });
-      const user = await openPicker();
+      const user = await openRoster();
 
-      await user.click(screen.getByRole("checkbox", { name: "Invite Blair" }));
+      await user.click(friend(/^Blair/));
       await user.click(
-        screen.getByRole("button", { name: "Create room and invite 1" }),
+        screen.getByRole("button", { name: "Create room with Blair" }),
       );
 
       expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -335,30 +375,44 @@ describe("Home", () => {
           name: `Friend ${i}`,
         })),
       );
-      const user = await openPicker();
+      await openRoster();
 
-      const boxes = screen.getAllByRole("checkbox");
-      for (const box of boxes.slice(0, MAX_INVITES_AT_ONCE)) {
-        fireEvent.click(box);
+      const tokens = screen.getAllByRole("button", { pressed: false });
+      for (const token of tokens.slice(0, MAX_INVITES_AT_ONCE)) {
+        fireEvent.click(token);
       }
 
-      expect(boxes.at(-1)).toBeDisabled();
+      expect(tokens.at(-1)).toBeDisabled();
       expect(
         screen.getByText(
           `You can invite up to ${MAX_INVITES_AT_ONCE} friends at once.`,
         ),
       ).toBeVisible();
-      await user.click(boxes[0]);
-      expect(boxes.at(-1)).toBeEnabled();
+      fireEvent.click(tokens[0]);
+      expect(tokens.at(-1)).toBeEnabled();
     });
 
     it("points to the Friends panel when there are no Friends", async () => {
       signInWithFriends([]);
-      await openPicker();
+      await openRoster();
 
       expect(
-        screen.getByText("No friends yet. Add friends from the Friends panel."),
+        screen.getByText(
+          "Add Friends from the Friends panel to invite them here.",
+        ),
       ).toBeVisible();
+    });
+
+    it("goes back to the Create room buttons on Cancel", async () => {
+      signInWithFriends([{ id: "blair", name: "Blair" }]);
+      const user = await openRoster();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(
+        screen.getByRole("button", { name: "Play with friends" }),
+      ).toHaveFocus();
+      expect(screen.getByRole("button", { name: "Create room" })).toBeVisible();
     });
 
     it("isn't offered to Guests", () => {

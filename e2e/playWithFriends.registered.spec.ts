@@ -32,9 +32,21 @@ test("a Friend invited with Play with friends joins from the Invite toast", asyn
   await b.page.keyboard.press("Escape");
 
   await a.page.getByRole("button", { name: "Play with friends" }).click();
-  await a.page.getByRole("checkbox", { name: `Invite ${b.name}` }).check();
-  await a.page
-    .getByRole("button", { name: "Create room and invite 1" })
+  const roster = a.page.getByRole("group", { name: "Play with friends" });
+  // B shows as Online once their app heartbeat lands; until then they're
+  // behind the offline link.
+  const showOffline = roster.getByRole("button", {
+    name: /^Show \d+ offline$/,
+  });
+  const friendB = roster.getByRole("button", {
+    name: `${b.name} `,
+    exact: false,
+  });
+  await expect(friendB.or(showOffline)).toBeVisible();
+  if (await showOffline.isVisible()) await showOffline.click();
+  await friendB.click();
+  await roster
+    .getByRole("button", { name: `Create room with ${b.name}` })
     .click();
   await expect(a.page).toHaveURL(/\/r\/[A-Z0-9]{6}$/);
   const code = new URL(a.page.url()).pathname.split("/").pop()!;

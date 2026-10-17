@@ -45,7 +45,7 @@ type FriendStatus = Overview["friends"][number]["status"];
 type FriendPlayer = Overview["incoming"][number] & { status?: FriendStatus };
 type Invite = Overview["invites"][number];
 
-const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
+export const STATUS_LABELS: Record<FriendStatus["kind"], string> = {
   online: "Online",
   inRoom: "In a Room",
   offline: "Offline",
@@ -543,7 +543,7 @@ function YourPresence({ appearOffline }: { appearOffline: boolean }) {
   );
 }
 
-function StatusDot({
+export function StatusDot({
   offline,
   className,
 }: {
