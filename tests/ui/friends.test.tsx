@@ -260,6 +260,22 @@ describe("FriendsPanel", () => {
     await waitFor(() => expect(online).toBeEnabled());
   });
 
+  it("puts the choice back when saving Appear offline fails", async () => {
+    mocks.useQuery.mockReturnValue(overview());
+    mocks.setAppearOffline.mockRejectedValue(new Error("timed out"));
+    const { user, panel } = await openPanel();
+    const yours = within(panel).getByRole("region", { name: "Your status" });
+    const online = within(yours).getByRole("radio", { name: "Online" });
+
+    await user.click(
+      within(yours).getByRole("radio", { name: "Appear offline" }),
+    );
+
+    await waitFor(() => expect(online).toBeEnabled());
+    expect(online).toBeChecked();
+    expect(yours).toHaveTextContent("Friends see you online.");
+  });
+
   it("tells a Guest that Friends need an account", async () => {
     mocks.useQuery.mockReturnValue(null);
     const { panel } = await openPanel();
