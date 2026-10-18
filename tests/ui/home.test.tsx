@@ -417,6 +417,49 @@ describe("Home", () => {
       expect(friend(/^Blair/)).toBeVisible();
     });
 
+    it("keeps focus on a Friend whose status changes", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "casey", name: "Casey", status: "offline" },
+      ]);
+      const user = userEvent.setup();
+      const { rerender } = render(<Home />);
+      await user.click(
+        screen.getByRole("button", { name: "Play with friends" }),
+      );
+      await user.click(
+        screen.getByRole("searchbox", { name: "Find a friend" }),
+      );
+      await user.keyboard("{ArrowDown}");
+      expect(friend(/^Blair Online/)).toHaveFocus();
+
+      signInWithFriends([
+        { id: "blair", name: "Blair", status: "offline" },
+        { id: "casey", name: "Casey", status: "offline" },
+      ]);
+      rerender(<Home />);
+
+      expect(friend(/^Blair Offline/)).toHaveFocus();
+      await user.keyboard("{ArrowDown}");
+      expect(friend(/^Casey/)).toHaveFocus();
+    });
+
+    it("leaves focus alone once it has moved out of the list", async () => {
+      signInWithFriends([{ id: "blair", name: "Blair" }]);
+      const user = userEvent.setup();
+      const { rerender } = render(<Home />);
+      await user.click(
+        screen.getByRole("button", { name: "Play with friends" }),
+      );
+      await user.click(friend(/^Blair/));
+      await user.click(document.body);
+
+      signInWithFriends([{ id: "blair", name: "Blair", status: "offline" }]);
+      rerender(<Home />);
+
+      expect(document.body).toHaveFocus();
+    });
+
     it("moves between Friends with the arrow keys", async () => {
       signInWithFriends([
         { id: "blair", name: "Blair" },

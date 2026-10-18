@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type Ref,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -262,6 +263,8 @@ function FriendRoster({
   const [query, setQuery] = useState("");
   const [onlyPicked, setOnlyPicked] = useState(false);
   const search = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const focusedFriend = useRef<string | null>(null);
   const friends = overview?.friends ?? [];
   // Friends removed since they were picked aren't invited.
   const invited = friends.filter((friend) => picked.has(friend.id));
@@ -281,6 +284,16 @@ function FriendRoster({
       friends: shown.filter((friend) => friend.status.kind === "offline"),
     },
   ].filter((group) => group.friends.length > 0);
+
+  // A Friend whose status changes moves to the other heading, which mounts a
+  // new row, so focus is put back on them.
+  useLayoutEffect(() => {
+    const id = focusedFriend.current;
+    if (id === null || document.activeElement !== document.body) return;
+    list.current
+      ?.querySelector<HTMLButtonElement>(`[data-friend="${id}"]`)
+      ?.focus();
+  });
 
   function toggle(id: Id<"users">) {
     setPicked((current) => {
@@ -340,7 +353,25 @@ function FriendRoster({
                 </button>
               )}
             </div>
-            <div className="max-h-64 overflow-y-auto pb-1">
+            <div
+              ref={list}
+              className="max-h-64 overflow-y-auto pb-1"
+              onFocus={(e) => {
+                focusedFriend.current = e.target.dataset.friend ?? null;
+              }}
+              onBlur={(e) => {
+                // A row React removed may blur too; only one still on the page
+                // means focus moved away on purpose.
+                const row = e.target;
+                queueMicrotask(() => {
+                  if (
+                    row.isConnected &&
+                    focusedFriend.current === row.dataset.friend
+                  )
+                    focusedFriend.current = null;
+                });
+              }}
+            >
               {groups.length === 0 && (
                 <p className="px-3 py-2 text-sm text-muted-foreground">
                   No friend matches “{query.trim()}”.
@@ -442,7 +473,7 @@ function RosterRow({
   return (
     <button
       type="button"
-      data-friend
+      data-friend={friend.id}
       aria-pressed={picked}
       disabled={disabled}
       onClick={onToggle}
