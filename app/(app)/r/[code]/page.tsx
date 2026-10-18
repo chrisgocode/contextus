@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/convex/_generated/api";
 import { reportClientError, runMutation } from "@/lib/report-error";
+import { testIds } from "@/lib/test-ids";
 import { AssistSheet } from "./_components/AssistSheet";
 import { EndGameBanner } from "./_components/EndGameBanner";
 import { preloadCalendar } from "./_components/calendar-loader";
@@ -351,7 +352,10 @@ function RoomLoaded({
         <aside className="flex flex-col gap-4">
           <section className="border p-4">
             <h2 className="font-semibold mb-3">Members</h2>
-            <ul className="flex flex-col gap-2">
+            <ul
+              className="flex flex-col gap-2"
+              data-testid={testIds.roomMembers}
+            >
               {members.map((m) => {
                 const online =
                   m.userId === viewerUserId || onlineSet.has(m.userId);

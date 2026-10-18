@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { testIds } from "@/lib/test-ids";
 import { GuessListSkeleton } from "./RoomSkeleton";
 
 type Guess = NonNullable<
@@ -73,7 +74,7 @@ export function GuessList({
           <Row g={latest} highlight />
         </div>
       )}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-testid={testIds.guessList}>
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           All guesses (closest first)
         </p>
@@ -114,6 +115,8 @@ function Row({
   const color = barColor(g.distance);
   return (
     <div
+      data-testid={testIds.guessRow(g.lemma)}
+      data-highlighted={highlight ? "true" : undefined}
       className={`relative rounded-md overflow-hidden bg-neutral-900/60 ${
         highlight ? "ring-2 ring-foreground" : ""
       }`}

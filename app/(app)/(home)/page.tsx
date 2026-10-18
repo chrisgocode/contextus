@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
+import { testIds } from "@/lib/test-ids";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { GuestLimitPrompt } from "../r/[code]/_components/GuestLimitPrompt";
@@ -87,7 +88,11 @@ export default function Home() {
   return (
     <>
       {loadingOverlay}
-      <div inert={Boolean(openingRoom)} className="contents">
+      <div
+        inert={Boolean(openingRoom)}
+        className="contents"
+        data-testid={testIds.homeContent}
+      >
         {header}
         <HomeIntro />
         <CreateRoom onOpeningChange={setOpeningRoom} />

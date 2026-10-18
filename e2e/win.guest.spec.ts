@@ -1,7 +1,13 @@
 import type { Page } from "@playwright/test";
 import { api } from "../convex/_generated/api";
 import { clientFor } from "./convex";
-import { createRoom, expect, roomMemberItems, test } from "./fixtures";
+import {
+  createRoom,
+  expect,
+  guessRow,
+  roomMemberItems,
+  test,
+} from "./fixtures";
 
 // The E2E word oracle makes "wordN" score distance N and "word0" every
 // puzzle's answer. The Host is a Guest, so achievements start from zero.
@@ -62,8 +68,4 @@ test("a guest wins a game and keeps the win on their profile", async ({
 async function guess(page: Page, word: string) {
   await page.getByPlaceholder("Type a word…").fill(word);
   await page.getByRole("button", { name: "Guess" }).click();
-}
-
-function guessRow(page: Page, lemma: string) {
-  return page.getByText(lemma, { exact: true }).first().locator("..");
 }
