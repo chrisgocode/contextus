@@ -7,7 +7,14 @@ import {
   isCreatedRoom,
 } from "@/app/(app)/r/[code]/_components/created-room";
 import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
-import { fireEvent, render, screen, userEvent, waitFor } from "./test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+  within,
+} from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
@@ -329,24 +336,106 @@ describe("Home", () => {
       ).toBeDisabled();
     });
 
-    it("keeps offline Friends behind a link while someone is around", async () => {
+    it("lists Friends who are around under Online and the rest under Offline", async () => {
       signInWithFriends([
-        { id: "riley", name: "Riley", status: "offline" },
         { id: "sam", name: "Sam", status: "inRoom" },
+        { id: "riley", name: "Riley", status: "offline" },
+      ]);
+      await openRoster();
+
+      expect(
+        within(screen.getByRole("region", { name: "Online" })).getByRole(
+          "button",
+          { name: "Sam In a Room" },
+        ),
+      ).toBeVisible();
+      expect(
+        within(screen.getByRole("region", { name: "Offline" })).getByRole(
+          "button",
+          { name: "Riley Offline" },
+        ),
+      ).toBeVisible();
+    });
+
+    it("finds Friends by name or username", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "riley", name: "Riley", status: "offline" },
+      ]);
+      const user = await openRoster();
+      const search = screen.getByRole("searchbox", { name: "Find a friend" });
+
+      await user.type(search, "RIL");
+      expect(friend(/^Riley/)).toBeVisible();
+      expect(screen.queryByRole("button", { name: /^Blair/ })).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Clear search" }));
+      expect(search).toHaveValue("");
+      expect(search).toHaveFocus();
+      expect(friend(/^Blair/)).toBeVisible();
+
+      await user.type(search, "zz");
+      expect(screen.getByText("No friend matches “zz”.")).toBeVisible();
+    });
+
+    it("keeps a pick made before searching", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "casey", name: "Casey" },
       ]);
       const user = await openRoster();
 
-      expect(friend(/^Sam In a Room/)).toBeVisible();
-      expect(screen.queryByRole("button", { name: /^Riley/ })).toBeNull();
-      await user.click(screen.getByRole("button", { name: "Show 1 offline" }));
-      expect(friend(/^Riley Offline/)).toBeVisible();
+      await user.click(friend(/^Blair/));
+      await user.type(
+        screen.getByRole("searchbox", { name: "Find a friend" }),
+        "cas",
+      );
+      await user.click(friend(/^Casey/));
+
+      expect(
+        screen.getByRole("button", {
+          name: "Create room with Blair and Casey",
+        }),
+      ).toBeEnabled();
     });
 
-    it("shows offline Friends straight away when nobody is around", async () => {
-      signInWithFriends([{ id: "riley", name: "Riley", status: "offline" }]);
-      await openRoster();
+    it("narrows the list to picked Friends and back", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "casey", name: "Casey" },
+      ]);
+      const user = await openRoster();
 
-      expect(friend(/^Riley Offline/)).toBeVisible();
+      await user.click(friend(/^Casey/));
+      await user.click(screen.getByRole("button", { name: "1 picked" }));
+      expect(screen.queryByRole("button", { name: /^Blair/ })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /^Casey/, pressed: true }),
+      ).toBeVisible();
+
+      await user.click(screen.getByRole("button", { name: "1 picked" }));
+      expect(friend(/^Blair/)).toBeVisible();
+    });
+
+    it("moves between Friends with the arrow keys", async () => {
+      signInWithFriends([
+        { id: "blair", name: "Blair" },
+        { id: "casey", name: "Casey" },
+      ]);
+      const user = await openRoster();
+
+      await user.click(
+        screen.getByRole("searchbox", { name: "Find a friend" }),
+      );
+      await user.keyboard("{ArrowDown}");
+      expect(friend(/^Blair/)).toHaveFocus();
+      await user.keyboard("{ArrowDown}");
+      expect(friend(/^Casey/)).toHaveFocus();
+      await user.keyboard(" ");
+
+      expect(
+        screen.getByRole("button", { name: "Create room with Casey" }),
+      ).toBeEnabled();
     });
 
     it("shows why the room couldn't be created", async () => {

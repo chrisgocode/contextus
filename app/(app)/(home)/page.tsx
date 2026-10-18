@@ -4,7 +4,13 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type Ref, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type Ref,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Avatar,
@@ -238,9 +244,8 @@ function createLabel(names: string[]) {
   return `Create room with ${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
-// Play with friends, in place of the Create room buttons. Friends who are
-// Online or In a Room come first; offline ones wait behind a link unless
-// nobody is around.
+// Play with friends, in place of the Create room buttons: one searchable list
+// that stays the same height however many Friends there are.
 function FriendRoster({
   ref,
   busy,
@@ -254,14 +259,28 @@ function FriendRoster({
 }) {
   const overview = useQuery(api.friends.overview, {});
   const [picked, setPicked] = useState<ReadonlySet<Id<"users">>>(new Set());
-  const [showOffline, setShowOffline] = useState(false);
+  const [query, setQuery] = useState("");
+  const [onlyPicked, setOnlyPicked] = useState(false);
+  const search = useRef<HTMLInputElement>(null);
   const friends = overview?.friends ?? [];
-  const around = friends.filter((friend) => friend.status.kind !== "offline");
-  const offline = friends.filter((friend) => friend.status.kind === "offline");
-  const offlineShown = showOffline || around.length === 0;
   // Friends removed since they were picked aren't invited.
   const invited = friends.filter((friend) => picked.has(friend.id));
   const atLimit = invited.length >= MAX_INVITES_AT_ONCE;
+  const showingPicked = onlyPicked && invited.length > 0;
+  const shown = friends.filter(
+    (friend) =>
+      matchesFriend(friend, query) && (!showingPicked || picked.has(friend.id)),
+  );
+  const groups = [
+    {
+      title: "Online",
+      friends: shown.filter((friend) => friend.status.kind !== "offline"),
+    },
+    {
+      title: "Offline",
+      friends: shown.filter((friend) => friend.status.kind === "offline"),
+    },
+  ].filter((group) => group.friends.length > 0);
 
   function toggle(id: Id<"users">) {
     setPicked((current) => {
@@ -270,16 +289,6 @@ function FriendRoster({
       return next;
     });
   }
-
-  const token = (friend: RosterFriend) => (
-    <FriendToken
-      key={friend.id}
-      friend={friend}
-      picked={picked.has(friend.id)}
-      disabled={busy || (atLimit && !picked.has(friend.id))}
-      onToggle={() => toggle(friend.id)}
-    />
-  );
 
   return (
     <div
@@ -296,19 +305,65 @@ function FriendRoster({
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            {around.map(token)}
-            {offlineShown
-              ? offline.map(token)
-              : offline.length > 0 && (
-                  <button
-                    type="button"
-                    className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                    onClick={() => setShowOffline(true)}
-                  >
-                    Show {offline.length} offline
-                  </button>
-                )}
+          <div className="border" onKeyDown={moveBetweenFriends}>
+            <div className="flex h-11 items-center border-b sm:h-9">
+              <Input
+                ref={search}
+                type="search"
+                aria-label="Find a friend"
+                placeholder="Find a friend"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-full border-0 bg-transparent focus-visible:ring-0 dark:bg-transparent [&::-webkit-search-cancel-button]:appearance-none"
+              />
+              {query !== "" && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setQuery("");
+                    search.current?.focus();
+                  }}
+                  className="grid size-8 shrink-0 place-items-center text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  ×
+                </button>
+              )}
+              {invited.length > 0 && (
+                <button
+                  type="button"
+                  aria-pressed={showingPicked}
+                  onClick={() => setOnlyPicked(!showingPicked)}
+                  className="mr-2 shrink-0 px-1.5 py-0.5 text-xs text-muted-foreground tabular-nums outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-primary/15 aria-pressed:text-foreground"
+                >
+                  {invited.length} picked
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-y-auto py-1">
+              {groups.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  No friend matches “{query.trim()}”.
+                </p>
+              )}
+              {groups.map((group) => (
+                <section key={group.title} aria-label={group.title}>
+                  <h3 className="sticky top-0 z-10 flex h-6 items-center justify-between bg-card px-3 text-[11px] tracking-wide text-muted-foreground uppercase">
+                    <span>{group.title}</span>
+                    <span className="tabular-nums">{group.friends.length}</span>
+                  </h3>
+                  {group.friends.map((friend) => (
+                    <RosterRow
+                      key={friend.id}
+                      friend={friend}
+                      picked={picked.has(friend.id)}
+                      disabled={busy || (atLimit && !picked.has(friend.id))}
+                      onToggle={() => toggle(friend.id)}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
           </div>
           {atLimit && (
             <p className="text-sm text-muted-foreground">
@@ -344,7 +399,35 @@ function FriendRoster({
   );
 }
 
-function FriendToken({
+function matchesFriend(friend: RosterFriend, query: string) {
+  const needle = query.trim().toLowerCase();
+  return (
+    friend.name.toLowerCase().includes(needle) ||
+    (friend.username ?? "").includes(needle)
+  );
+}
+
+function moveBetweenFriends(e: KeyboardEvent<HTMLElement>) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const rows = [
+    ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+      "[data-friend]:not(:disabled)",
+    ),
+  ];
+  if (rows.length === 0) return;
+  e.preventDefault();
+  const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+  const step = e.key === "ArrowDown" ? 1 : -1;
+  const next =
+    at === -1
+      ? step === 1
+        ? 0
+        : rows.length - 1
+      : Math.min(Math.max(at + step, 0), rows.length - 1);
+  rows[next].focus();
+}
+
+function RosterRow({
   friend,
   picked,
   disabled,
@@ -359,18 +442,28 @@ function FriendToken({
   return (
     <button
       type="button"
+      data-friend
       aria-pressed={picked}
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        "flex min-w-0 items-center gap-2 border py-1.5 pr-3 pl-1.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-        picked
-          ? "border-primary bg-primary/25"
-          : "border-border bg-input/10 hover:bg-input/30",
+        "flex h-11 w-full scroll-my-6 items-center gap-2.5 px-3 text-left text-sm outline-none hover:bg-input/30 focus-visible:bg-input/50 disabled:opacity-40 sm:h-8",
+        picked && "bg-primary/10",
       )}
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "grid size-4 shrink-0 place-items-center border text-[10px] leading-none",
+          picked
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-input",
+        )}
+      >
+        {picked && "✓"}
+      </span>
       <span aria-hidden="true" className="relative shrink-0">
-        <Avatar>
+        <Avatar size="sm">
           {friend.image && <AvatarImage src={friend.image} alt="" />}
           <AvatarFallback>
             {friend.name.slice(0, 1).toUpperCase()}
@@ -378,14 +471,24 @@ function FriendToken({
         </Avatar>
         <StatusDot
           offline={offline}
-          className="absolute -right-0.5 -bottom-0.5 size-2.5 ring-2 ring-background"
+          className="absolute -right-0.5 -bottom-0.5 size-2.5 ring-2 ring-card"
         />
       </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium">{friend.name}</span>{" "}
-        <span className="text-xs text-muted-foreground">
-          {STATUS_LABELS[friend.status.kind]}
-        </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          offline && !picked && "text-muted-foreground",
+        )}
+      >
+        {friend.name}
+      </span>{" "}
+      <span
+        className={cn(
+          "shrink-0 text-xs text-muted-foreground",
+          friend.status.kind !== "inRoom" && "sr-only",
+        )}
+      >
+        {STATUS_LABELS[friend.status.kind]}
       </span>
     </button>
   );
