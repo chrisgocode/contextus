@@ -19,6 +19,7 @@ import {
 } from "./lib/friendship";
 import {
   answer as answerInviteFor,
+  endInvitesBetween,
   expire as expireInvite,
   invite as inviteFriend,
   invitedAmong,
@@ -75,6 +76,7 @@ export const unfriend = mutation({
   handler: async (ctx, { userId }) => {
     const user = await requireUser(ctx);
     await removeFriend(ctx, user, userId);
+    await endInvitesBetween(ctx, user, userId);
     return null;
   },
 });

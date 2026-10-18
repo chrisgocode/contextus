@@ -11,6 +11,8 @@ import { generateRoomCode } from "./lib/code";
 import { appError } from "./lib/errors";
 import { track } from "./analytics";
 import { loadPlayers } from "./lib/player";
+import { MAX_INVITES_AT_ONCE } from "./lib/inviteLimits";
+import { invite } from "./lib/invites";
 import { enforceRateLimit } from "./lib/rateLimits";
 import {
   admit,
@@ -41,20 +43,34 @@ async function generateUniqueRoomCode(ctx: Pick<MutationCtx, "db">) {
   throw new ConvexError("Could not generate unique room code");
 }
 
+// Given Friends to invite, this is Play with friends: the Room and every
+// Invite land together, or nothing does.
 export const create = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { invite: v.optional(v.array(v.id("users"))) },
+  handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
+    const friendIds =
+      args.invite === undefined ? [] : [...new Set(args.invite)];
+    if (args.invite !== undefined) {
+      const user = await ctx.db.get("users", userId);
+      if (user === null || user.isAnonymous === true) {
+        throw appError("friendsNeedAccount");
+      }
+      if (friendIds.length === 0) throw appError("noFriendsPicked");
+      if (friendIds.length > MAX_INVITES_AT_ONCE) {
+        throw appError("tooManyFriendsPicked");
+      }
+    }
     await enforceRateLimit(ctx, "createRoom", userId);
     const code = await generateUniqueRoomCode(ctx);
-    const roomId = await openRoom(
-      ctx,
-      { code, hostUserId: userId },
-      Date.now(),
-    );
+    const now = Date.now();
+    const roomId = await openRoom(ctx, { code, hostUserId: userId }, now);
+    for (const friendId of friendIds) {
+      await invite(ctx, userId, friendId, roomId, now);
+    }
     await track(ctx, userId, {
       name: "room_created",
-      properties: { room_id: roomId },
+      properties: { room_id: roomId, invited_count: friendIds.length },
     });
     return { code, roomId };
   },

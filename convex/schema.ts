@@ -304,7 +304,10 @@ export default defineSchema({
   })
     .index("by_roomId_and_recipientUserId", ["roomId", "recipientUserId"])
     .index("by_recipientUserId", ["recipientUserId"])
-    .index("by_senderUserId", ["senderUserId"]),
+    .index("by_senderUserId_and_recipientUserId", [
+      "senderUserId",
+      "recipientUserId",
+    ]),
 
   gamePlayerStats: defineTable({
     gameId: v.id("games"),

@@ -1,9 +1,17 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import {
+  type KeyboardEvent,
+  type Ref,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Avatar,
@@ -12,14 +20,22 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { FriendRow, FriendsPanel } from "@/app/_components/FriendsPanel";
+import {
+  FriendRow,
+  FriendsPanel,
+  STATUS_LABELS,
+  StatusDot,
+} from "@/app/_components/FriendsPanel";
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
 import { testIds } from "@/lib/test-ids";
+import { cn } from "@/lib/utils";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
 import { GuestLimitPrompt } from "../r/[code]/_components/GuestLimitPrompt";
@@ -32,9 +48,7 @@ import {
 export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
-  const [openingRoom, setOpeningRoom] = useState<false | "waiting" | "unknown">(
-    false,
-  );
+  const [openingRoom, setOpeningRoom] = useState<OpeningRoom>(false);
   const currentUser = useQuery(
     api.users.getUser,
     isAuthenticated ? {} : "skip",
@@ -95,7 +109,10 @@ export default function Home() {
       >
         {header}
         <HomeIntro />
-        <CreateRoom onOpeningChange={setOpeningRoom} />
+        <CreateRoom
+          isRegistered={isRegistered}
+          onOpeningChange={setOpeningRoom}
+        />
         <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
         {isRegistered && <RecentGroups />}
@@ -129,51 +146,387 @@ function HomeIntro() {
   );
 }
 
+type OpeningRoom = false | "waiting" | "unknown";
+
 function CreateRoom({
+  isRegistered,
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
+  isRegistered: boolean;
+  onOpeningChange: (opening: OpeningRoom) => void;
 }) {
   const router = useRouter();
   const createRoom = useCreateRoom();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<EntryFailure | null>(null);
+  const [picking, setPicking] = useState(false);
+  const playWithFriends = useRef<HTMLButtonElement>(null);
+  const roster = useRef<HTMLDivElement>(null);
+  const switched = useRef(false);
+
+  // Focus follows the switch, so keyboard users land in what replaced the
+  // button they pressed.
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    (picking ? roster : playWithFriends).current?.focus();
+  }, [picking]);
+
+  function switchTo(next: boolean) {
+    setFailure(null);
+    setPicking(next);
+    switched.current = true;
+  }
+
+  async function start(invite?: Id<"users">[]) {
+    setFailure(null);
+    setBusy(true);
+    onOpeningChange("waiting");
+    // The new room opens on the game setup calendar.
+    preloadCalendar();
+    const result = await createRoom(invite);
+    if (result.kind === "created") {
+      markRoomCreated(result.code);
+      router.push(`/r/${result.code}`);
+    } else {
+      onOpeningChange(false);
+      setFailure(result);
+    }
+    setBusy(false);
+  }
+
   return (
     <section className="rounded-lg border p-6 flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Start a new room</h2>
       <p className="text-sm text-muted-foreground">
         You will be the host. Share the room code with friends to play together.
       </p>
-      <Button
-        disabled={busy}
-        onClick={async () => {
-          setFailure(null);
-          setBusy(true);
-          onOpeningChange("waiting");
-          // The new room opens on the game setup calendar.
-          preloadCalendar();
-          // A failure is shown inline.
-          const result = await createRoom();
-          if (result.kind === "created") {
-            markRoomCreated(result.code);
-            router.push(`/r/${result.code}`);
-          } else {
-            onOpeningChange(false);
-            setFailure(result);
-          }
-          setBusy(false);
-        }}
-      >
-        {busy ? "Creating…" : "Create room"}
-      </Button>
+      {picking ? (
+        <FriendRoster
+          ref={roster}
+          busy={busy}
+          onStart={start}
+          onCancel={() => switchTo(false)}
+        />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {/* A failure is shown inline. */}
+          <Button disabled={busy} onClick={() => start()}>
+            {busy ? "Creating…" : "Create room"}
+          </Button>
+          {isRegistered && (
+            <Button
+              ref={playWithFriends}
+              variant="outline"
+              disabled={busy}
+              onClick={() => switchTo(true)}
+            >
+              Play with friends
+            </Button>
+          )}
+        </div>
+      )}
       {failure?.kind === "guestLimit" ? (
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <GuestLimitPrompt redirectTo="/" buttonVariant="outline" />
         </div>
       ) : failure?.kind === "error" ? (
-        <p className="text-sm text-destructive">{failure.message}</p>
+        <p role="alert" className="text-sm text-destructive">
+          {failure.message}
+        </p>
       ) : null}
     </section>
+  );
+}
+
+type RosterFriend = NonNullable<
+  FunctionReturnType<typeof api.friends.overview>
+>["friends"][number];
+
+function createLabel(names: string[]) {
+  if (names.length === 0) return "Pick friends to invite";
+  if (names.length === 1) return `Create room with ${names[0]}`;
+  if (names.length === 2) return `Create room with ${names[0]} and ${names[1]}`;
+  return `Create room with ${names[0]}, ${names[1]} and ${names.length - 2} more`;
+}
+
+// Play with friends, in place of the Create room buttons: one searchable list
+// that stays the same height however many Friends there are.
+function FriendRoster({
+  ref,
+  busy,
+  onStart,
+  onCancel,
+}: {
+  ref: Ref<HTMLDivElement>;
+  busy: boolean;
+  onStart: (invite: Id<"users">[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const overview = useQuery(api.friends.overview, {});
+  const [picked, setPicked] = useState<ReadonlySet<Id<"users">>>(new Set());
+  const [query, setQuery] = useState("");
+  const [onlyPicked, setOnlyPicked] = useState(false);
+  const search = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const focusedFriend = useRef<string | null>(null);
+  const friends = overview?.friends ?? [];
+  // Friends removed since they were picked aren't invited.
+  const invited = friends.filter((friend) => picked.has(friend.id));
+  const atLimit = invited.length >= MAX_INVITES_AT_ONCE;
+  const showingPicked = onlyPicked && invited.length > 0;
+  const shown = friends.filter(
+    (friend) =>
+      matchesFriend(friend, query) && (!showingPicked || picked.has(friend.id)),
+  );
+  const groups = [
+    {
+      title: "Online",
+      friends: shown.filter((friend) => friend.status.kind !== "offline"),
+    },
+    {
+      title: "Offline",
+      friends: shown.filter((friend) => friend.status.kind === "offline"),
+    },
+  ].filter((group) => group.friends.length > 0);
+
+  // A Friend whose status changes moves to the other heading, which mounts a
+  // new row, so focus is put back on them.
+  useLayoutEffect(() => {
+    const id = focusedFriend.current;
+    if (id === null || document.activeElement !== document.body) return;
+    list.current
+      ?.querySelector<HTMLButtonElement>(`[data-friend="${id}"]`)
+      ?.focus();
+  });
+
+  function toggle(id: Id<"users">) {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div
+      ref={ref}
+      tabIndex={-1}
+      role="group"
+      aria-label="Play with friends"
+      aria-busy={overview === undefined}
+      className="flex flex-col gap-3 outline-none"
+    >
+      {overview === undefined ? null : friends.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Add Friends from the Friends panel to invite them here.
+        </p>
+      ) : (
+        <>
+          <div className="border" onKeyDown={moveBetweenFriends}>
+            <div className="flex h-11 items-center border-b sm:h-9">
+              <Input
+                ref={search}
+                type="search"
+                aria-label="Find a friend"
+                placeholder="Find a friend"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-full border-0 bg-transparent focus-visible:ring-0 dark:bg-transparent [&::-webkit-search-cancel-button]:appearance-none"
+              />
+              {query !== "" && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setQuery("");
+                    search.current?.focus();
+                  }}
+                  className="grid size-8 shrink-0 place-items-center text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  ×
+                </button>
+              )}
+              {invited.length > 0 && (
+                <button
+                  type="button"
+                  aria-pressed={showingPicked}
+                  onClick={() => setOnlyPicked(!showingPicked)}
+                  className="mr-2 shrink-0 px-1.5 py-0.5 text-xs text-muted-foreground tabular-nums outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-primary/15 aria-pressed:text-foreground"
+                >
+                  {invited.length} picked
+                </button>
+              )}
+            </div>
+            <div
+              ref={list}
+              className="max-h-64 overflow-y-auto pb-1"
+              onFocus={(e) => {
+                focusedFriend.current = e.target.dataset.friend ?? null;
+              }}
+              onBlur={(e) => {
+                // A row React removed may blur too; only one still on the page
+                // means focus moved away on purpose.
+                const row = e.target;
+                queueMicrotask(() => {
+                  if (
+                    row.isConnected &&
+                    focusedFriend.current === row.dataset.friend
+                  )
+                    focusedFriend.current = null;
+                });
+              }}
+            >
+              {groups.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  No friend matches “{query.trim()}”.
+                </p>
+              )}
+              {groups.map((group) => (
+                <section key={group.title} aria-label={group.title}>
+                  <h3 className="sticky top-0 z-10 flex h-6 items-center justify-between bg-card px-3 text-[11px] tracking-wide text-muted-foreground uppercase">
+                    <span>{group.title}</span>
+                    <span className="tabular-nums">{group.friends.length}</span>
+                  </h3>
+                  {group.friends.map((friend) => (
+                    <RosterRow
+                      key={friend.id}
+                      friend={friend}
+                      picked={picked.has(friend.id)}
+                      disabled={busy || (atLimit && !picked.has(friend.id))}
+                      onToggle={() => toggle(friend.id)}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
+          </div>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You can invite up to {MAX_INVITES_AT_ONCE} friends at once.
+            </p>
+          )}
+        </>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {friends.length > 0 && (
+          <Button
+            className="h-11 w-full max-w-full sm:h-8 sm:w-auto"
+            disabled={busy || invited.length === 0}
+            onClick={() => onStart(invited.map((friend) => friend.id))}
+          >
+            <span className="truncate">
+              {busy
+                ? "Creating…"
+                : createLabel(invited.map((friend) => friend.name))}
+            </span>
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          className="h-11 w-full sm:h-8 sm:w-auto"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function matchesFriend(friend: RosterFriend, query: string) {
+  const needle = query.trim().toLowerCase();
+  return (
+    friend.name.toLowerCase().includes(needle) ||
+    (friend.username ?? "").includes(needle)
+  );
+}
+
+function moveBetweenFriends(e: KeyboardEvent<HTMLElement>) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const rows = [
+    ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+      "[data-friend]:not(:disabled)",
+    ),
+  ];
+  if (rows.length === 0) return;
+  e.preventDefault();
+  const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+  const step = e.key === "ArrowDown" ? 1 : -1;
+  const next =
+    at === -1
+      ? step === 1
+        ? 0
+        : rows.length - 1
+      : Math.min(Math.max(at + step, 0), rows.length - 1);
+  rows[next].focus();
+}
+
+function RosterRow({
+  friend,
+  picked,
+  disabled,
+  onToggle,
+}: {
+  friend: RosterFriend;
+  picked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const offline = friend.status.kind === "offline";
+  return (
+    <button
+      type="button"
+      data-friend={friend.id}
+      aria-pressed={picked}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        "flex h-11 w-full scroll-my-6 items-center gap-2.5 px-3 text-left text-sm outline-none hover:bg-input/30 focus-visible:bg-input/50 disabled:opacity-40 sm:h-8",
+        picked && "bg-primary/10",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "grid size-4 shrink-0 place-items-center border text-[10px] leading-none",
+          picked
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-input",
+        )}
+      >
+        {picked && "✓"}
+      </span>
+      <span aria-hidden="true" className="relative shrink-0">
+        <Avatar size="sm">
+          {friend.image && <AvatarImage src={friend.image} alt="" />}
+          <AvatarFallback>
+            {friend.name.slice(0, 1).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <StatusDot
+          offline={offline}
+          className="absolute -right-0.5 -bottom-0.5 size-2.5 ring-2 ring-card"
+        />
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          offline && !picked && "text-muted-foreground",
+        )}
+      >
+        {friend.name}
+      </span>{" "}
+      <span
+        className={cn(
+          "shrink-0 text-xs text-muted-foreground",
+          friend.status.kind !== "inRoom" && "sr-only",
+        )}
+      >
+        {STATUS_LABELS[friend.status.kind]}
+      </span>
+    </button>
   );
 }
 
@@ -183,7 +536,7 @@ function CreateRoom({
 function JoinRoom({
   onOpeningChange,
 }: {
-  onOpeningChange: (opening: false | "waiting" | "unknown") => void;
+  onOpeningChange: (opening: OpeningRoom) => void;
 }) {
   const router = useRouter();
   const [code, setCode] = useState("");

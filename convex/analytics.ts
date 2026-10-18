@@ -15,7 +15,8 @@ export type FriendRequestSource =
   | "username";
 
 type EventCatalog = {
-  room_created: { room_id: Id<"rooms"> };
+  // `invited_count` is above zero for Play with friends.
+  room_created: { room_id: Id<"rooms">; invited_count: number };
   room_joined: {
     room_id: Id<"rooms">;
     member_count: number;

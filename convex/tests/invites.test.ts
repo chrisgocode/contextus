@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { MAX_INVITES_AT_ONCE } from "../lib/inviteLimits";
 import { depart } from "../lib/roomMembership";
 import { posthog } from "../posthog";
 import { asUser, seedUser, setupTest } from "../testHelpers.test";
@@ -253,6 +254,47 @@ test("ending the Room ends its Invites", async () => {
   ).rejects.toMatchObject({ data: { code: "inviteNotFound" } });
 });
 
+test("unfriending ends open Invites in both directions", async () => {
+  const t = setupTest();
+  const { host, friend, roomId } = await roomWithFriend(t);
+  const { roomId: friendRoomId } = await asUser(t, friend).mutation(
+    api.rooms.create,
+    {},
+  );
+  await sendInvite(t, host, roomId, friend);
+  await sendInvite(t, friend, friendRoomId, host);
+
+  await asUser(t, friend).mutation(api.friends.unfriend, { userId: host });
+
+  expect((await overview(t, friend)).invites).toEqual([]);
+  expect((await overview(t, host)).invites).toEqual([]);
+  expect((await overview(t, host, roomId)).room?.invited).toEqual([]);
+});
+
+test("unfriending leaves Invites from other Friends to the same Room", async () => {
+  const t = setupTest();
+  const { host, friend, roomId, code } = await roomWithFriend(t);
+  const other = await seedUser(t, { name: "Other" });
+  await befriend(t, host, other);
+  await befriend(t, other, friend);
+  await sendInvite(t, host, roomId, other);
+  await asUser(t, other).mutation(api.rooms.join, { code });
+  await sendInvite(t, host, roomId, friend);
+  await sendInvite(t, other, roomId, friend);
+  const third = await seedUser(t, { name: "Third" });
+  await befriend(t, host, third);
+  await sendInvite(t, host, roomId, third);
+
+  await asUser(t, host).mutation(api.friends.unfriend, { userId: friend });
+
+  expect((await overview(t, friend)).invites).toEqual([
+    expect.objectContaining({
+      sender: expect.objectContaining({ id: other }),
+    }),
+  ]);
+  expect((await overview(t, third)).invites).toHaveLength(1);
+});
+
 test("a Room that ends when its last member leaves ends its Invites", async () => {
   const t = setupTest();
   const { host, friend, roomId } = await roomWithFriend(t);
@@ -430,4 +472,100 @@ test("a Guest who signs in to an invited account ends that account's Invite to a
     invited: [],
     members: [friend],
   });
+});
+
+async function roomsHostedBy(t: Test, host: Id<"users">) {
+  return await t.run(async (ctx) =>
+    (await ctx.db.query("rooms").collect()).filter(
+      (room) => room.hostUserId === host,
+    ),
+  );
+}
+
+test("Play with friends creates the Room and Invites every picked Friend together, without starting a Game", async () => {
+  const t = setupTest();
+  const host = await seedUser(t, { name: "Host" });
+  const ana = await seedUser(t, { name: "Ana" });
+  const bo = await seedUser(t, { name: "Bo" });
+  await befriend(t, host, ana);
+  await befriend(t, host, bo);
+
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {
+    invite: [ana, bo, ana],
+  });
+
+  for (const friend of [ana, bo]) {
+    expect((await overview(t, friend)).invites).toEqual([
+      expect.objectContaining({ roomCode: code }),
+    ]);
+  }
+  const room = (await overview(t, host, roomId)).room;
+  expect(room?.invited.sort()).toEqual([ana, bo].sort());
+  expect(room?.members).toEqual([]);
+  expect(
+    await asUser(t, host).query(api.games.getActive, { roomId }),
+  ).toBeNull();
+});
+
+test("Play with friends with nobody picked creates no Room", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+
+  await expect(
+    asUser(t, host).mutation(api.rooms.create, { invite: [] }),
+  ).rejects.toMatchObject({ data: { code: "noFriendsPicked" } });
+  expect(await roomsHostedBy(t, host)).toEqual([]);
+});
+
+test("Play with friends picking someone who isn't a Friend creates no Room and sends no Invites", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const friend = await seedUser(t);
+  const stranger = await seedUser(t);
+  await befriend(t, host, friend);
+
+  await expect(
+    asUser(t, host).mutation(api.rooms.create, {
+      invite: [friend, stranger],
+    }),
+  ).rejects.toMatchObject({ data: { code: "notFriends" } });
+  expect(await roomsHostedBy(t, host)).toEqual([]);
+  expect((await overview(t, friend)).invites).toEqual([]);
+});
+
+test("Guests can't Play with friends", async () => {
+  const t = setupTest();
+  const guest = await seedUser(t, { isAnonymous: true });
+  const other = await seedUser(t);
+
+  await expect(
+    asUser(t, guest).mutation(api.rooms.create, { invite: [other] }),
+  ).rejects.toMatchObject({ data: { code: "friendsNeedAccount" } });
+  expect(await roomsHostedBy(t, guest)).toEqual([]);
+});
+
+test("Play with friends invites as many Friends as one go allows, and refuses more before creating a Room", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  const friends: Id<"users">[] = [];
+  for (let i = 0; i < MAX_INVITES_AT_ONCE; i++) {
+    const friend = await seedUser(t);
+    await befriend(t, friend, host);
+    friends.push(friend);
+  }
+  const oneTooMany = await seedUser(t);
+
+  await expect(
+    asUser(t, host).mutation(api.rooms.create, {
+      invite: [...friends, oneTooMany],
+    }),
+  ).rejects.toMatchObject({ data: { code: "tooManyFriendsPicked" } });
+  expect(await roomsHostedBy(t, host)).toEqual([]);
+
+  const { roomId } = await asUser(t, host).mutation(api.rooms.create, {
+    invite: friends,
+  });
+  expect((await overview(t, host, roomId)).room?.invited).toHaveLength(
+    MAX_INVITES_AT_ONCE,
+  );
 });
