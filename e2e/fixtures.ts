@@ -141,9 +141,7 @@ export function roomMemberItems(page: Page) {
 
 // A Guess's row in the list of all guesses, found by its Lemma.
 export function guessRow(page: Page, lemma: string) {
-  return page
-    .getByTestId(testIds.guessList)
-    .getByTestId(testIds.guessRow(lemma));
+  return page.getByTestId(testIds.guessRow(lemma));
 }
 
 export { expect } from "@playwright/test";

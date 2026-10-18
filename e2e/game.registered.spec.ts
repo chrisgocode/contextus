@@ -1,3 +1,4 @@
+import { testIds } from "../lib/test-ids";
 import {
   createRoom,
   expect,
@@ -7,7 +8,6 @@ import {
   roomMemberItems,
   test,
 } from "./fixtures";
-import { testIds } from "../lib/test-ids";
 
 test("two registered players complete a cooperative game", async ({
   createRegisteredUser,

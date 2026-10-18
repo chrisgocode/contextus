@@ -8,7 +8,8 @@
 export const testIds = {
   // The list of all guesses in a Game, closest first.
   guessList: "guess-list",
-  // One Guess row, keyed by its Lemma.
+  // One Guess row in the list of all guesses, keyed by its Lemma. Only that
+  // list sets it, so it is unique on the page.
   guessRow: (lemma: string) => `guess-row-${lemma}`,
   // The Room's member list in the sidebar.
   roomMembers: "room-members",

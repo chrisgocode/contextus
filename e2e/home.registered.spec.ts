@@ -1,5 +1,5 @@
-import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
 import { testIds } from "../lib/test-ids";
+import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
 
 test("makes Home inert while a room opens", async ({
   createRegisteredUser,
@@ -27,7 +27,10 @@ test("makes Home inert while a room opens", async ({
   // Create button has its handler.
   await expect(page.getByRole("button", { name: "Profile" })).toBeVisible();
 
-  const createButton = page.getByRole("button", { name: "Create room" });
+  const createButton = page.getByRole("button", {
+    name: "Create room",
+    exact: true,
+  });
   await createButton.focus();
   await page.keyboard.press("Enter");
 
