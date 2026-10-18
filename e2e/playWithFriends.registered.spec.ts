@@ -12,7 +12,7 @@ test("a Friend invited with Play with friends joins from the Invite toast", asyn
   const bUsername = new URL(b.page.url()).pathname.split("/").pop()!;
 
   await a.page.goto("/");
-  await a.page.getByRole("button", { name: "Friends" }).click();
+  await a.page.getByRole("button", { name: "Friends", exact: true }).click();
   await a.page.getByRole("textbox", { name: "Username" }).fill(bUsername);
   await a.page.getByRole("button", { name: "Add friend" }).click();
   await expect(a.page.getByText("Friend request sent.")).toBeVisible();
@@ -34,11 +34,7 @@ test("a Friend invited with Play with friends joins from the Invite toast", asyn
   await a.page.getByRole("button", { name: "Play with friends" }).click();
   const roster = a.page.getByRole("group", { name: "Play with friends" });
   await roster.getByRole("searchbox", { name: "Find a friend" }).fill(b.name);
-  await roster
-    .getByRole("button", {
-      name: new RegExp(`^${RegExp.escape(b.name)} (Online|Offline)$`),
-    })
-    .click();
+  await roster.getByRole("button", { name: b.name, pressed: false }).click();
   await roster
     .getByRole("button", { name: `Create room with ${b.name}` })
     .click();
