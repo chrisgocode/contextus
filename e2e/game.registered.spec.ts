@@ -1,6 +1,8 @@
+import { testIds } from "../lib/test-ids";
 import {
   createRoom,
   expect,
+  guessRow,
   leaveRoom,
   openAssist,
   roomMemberItems,
@@ -43,13 +45,10 @@ test("two registered players complete a cooperative game", async ({
     await expect(
       partner.page.getByRole("status", { name: "Already guessed" }),
     ).toContainText(/\d+/);
-    await expect(
-      partner.page
-        .getByText("All guesses (closest first)")
-        .locator("..")
-        .getByText("house", { exact: true })
-        .locator("../.."),
-    ).toHaveClass(/ring-foreground/);
+    await expect(guessRow(partner.page, "house")).toHaveAttribute(
+      "data-highlighted",
+      "true",
+    );
   });
 
   await test.step("leave and resume the active puzzle", async () => {
@@ -92,8 +91,7 @@ test("two registered players complete a cooperative game", async ({
     await expect(partner.page.getByText("Hint approved")).toBeVisible();
     await expect(
       host.page
-        .getByText("All guesses (closest first)")
-        .locator("..")
+        .getByTestId(testIds.guessList)
         .getByText("hint", { exact: true }),
     ).toHaveCount(1);
 

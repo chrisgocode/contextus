@@ -7,11 +7,12 @@ import { createRoom, expect, roomMemberItems, test } from "./fixtures";
 // failing anywhere else still fails. Delete an entry once it is fixed.
 const KNOWN_VIOLATIONS: { id: string; target: RegExp }[] = [
   // Guess rows put white lemma text over the green, orange or red distance
-  // bar, which is below 4.5:1 for green.
+  // bar, which is below 4.5:1 for green. axe names a row by its test id when
+  // that is unique, and by its classes otherwise.
   {
     id: "color-contrast",
     target:
-      /bg-neutral-900\\\/60.*\.font-semibold(\.[\w-]+)*\.truncate(\.[\w-]+)*$/,
+      /(bg-neutral-900\\\/60|\[data-testid="guess-row-[^"]+"\]).*\.font-semibold(\.[\w-]+)*\.truncate(\.[\w-]+)*$/,
   },
   // The profile's contribution graph scrolls sideways on narrow screens but
   // can't take keyboard focus.

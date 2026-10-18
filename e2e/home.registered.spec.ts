@@ -1,3 +1,4 @@
+import { testIds } from "../lib/test-ids";
 import { createRoom, endRoom, expect, roomMemberItems, test } from "./fixtures";
 
 test("makes Home inert while a room opens", async ({
@@ -26,9 +27,10 @@ test("makes Home inert while a room opens", async ({
   // Create button has its handler.
   await expect(page.getByRole("button", { name: "Profile" })).toBeVisible();
 
-  const createButton = page
-    .locator("button")
-    .filter({ hasText: "Create room" });
+  const createButton = page.getByRole("button", {
+    name: "Create room",
+    exact: true,
+  });
   await createButton.focus();
   await page.keyboard.press("Enter");
 
@@ -37,8 +39,8 @@ test("makes Home inert while a room opens", async ({
   ).toBeVisible();
   await expect.poll(() => createRequestBlocked).toBe(true);
   await expect(page).toHaveURL("/");
-  const inertHome = page.locator("main > [inert]");
-  await expect(inertHome).toHaveCount(1);
+  const inertHome = page.getByTestId(testIds.homeContent);
+  await expect(inertHome).toHaveAttribute("inert");
   await expect
     .poll(() =>
       inertHome.evaluate((home) => !home.contains(document.activeElement)),

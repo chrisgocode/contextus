@@ -6,6 +6,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { api } from "../convex/_generated/api";
+import { testIds } from "../lib/test-ids";
 import { e2eAccountEmail, REGISTERED_USERS_PER_TEST } from "./accounts";
 import { clientFor, endHostedRooms, purgeAccount } from "./convex";
 
@@ -135,11 +136,12 @@ export async function openAssist(page: Page) {
 }
 
 export function roomMemberItems(page: Page) {
-  return page
-    .getByRole("complementary")
-    .getByRole("list")
-    .first()
-    .getByRole("listitem");
+  return page.getByTestId(testIds.roomMembers).getByRole("listitem");
+}
+
+// A Guess's row in the list of all guesses, found by its Lemma.
+export function guessRow(page: Page, lemma: string) {
+  return page.getByTestId(testIds.guessRow(lemma));
 }
 
 export { expect } from "@playwright/test";

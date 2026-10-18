@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { testIds } from "@/lib/test-ids";
 import { GuessListSkeleton } from "./RoomSkeleton";
 
 type Guess = NonNullable<
@@ -73,7 +74,7 @@ export function GuessList({
           <Row g={latest} highlight />
         </div>
       )}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-testid={testIds.guessList}>
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           All guesses (closest first)
         </p>
@@ -81,6 +82,7 @@ export function GuessList({
           <Row
             key={g._id}
             g={g}
+            inList
             highlight={g._id === latest?._id || g._id === repeated?._id}
           />
         ))}
@@ -104,16 +106,25 @@ function Row({
   g,
   highlight,
   duplicate,
+  inList,
 }: {
   g: Guess;
   highlight?: boolean;
   duplicate?: boolean;
+  // Only rows in the list of all guesses carry the row test id, so it is
+  // unique on the page; the Latest and Earlier copies repeat a Guess.
+  inList?: boolean;
 }) {
   const rank = g.distance + 1;
   const width = barWidthPct(g.distance);
   const color = barColor(g.distance);
   return (
     <div
+      data-testid={inList ? testIds.guessRow(g.lemma) : undefined}
+      // A data attribute, not ARIA: aria-current and aria-selected mean the
+      // current item or a selection, and these rows aren't selectable; the
+      // highlight marks the latest or an already-guessed Guess.
+      data-highlighted={highlight ? "true" : undefined}
       className={`relative rounded-md overflow-hidden bg-neutral-900/60 ${
         highlight ? "ring-2 ring-foreground" : ""
       }`}

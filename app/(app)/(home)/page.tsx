@@ -34,6 +34,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
 import { roomPath } from "@/lib/room-code";
 import { runMutation } from "@/lib/report-error";
+import { testIds } from "@/lib/test-ids";
 import { cn } from "@/lib/utils";
 import { preloadCalendar } from "../r/[code]/_components/calendar-loader";
 import { markRoomCreated } from "../r/[code]/_components/created-room";
@@ -101,7 +102,11 @@ export default function Home() {
   return (
     <>
       {loadingOverlay}
-      <div inert={Boolean(openingRoom)} className="contents">
+      <div
+        inert={Boolean(openingRoom)}
+        className="contents"
+        data-testid={testIds.homeContent}
+      >
         {header}
         <HomeIntro />
         <CreateRoom
