@@ -75,7 +75,7 @@ test("plays again with the same registered group", async ({
   await expect(host.page).toHaveURL(/\/r\/[A-Z0-9]{6}$/);
   expect(host.page.url()).not.toBe(originalUrl);
 
-  await partner.page.getByRole("link", { name: "Join" }).click();
+  await partner.page.getByRole("link", { name: "Join", exact: true }).click();
   await expect(partner.page).toHaveURL(host.page.url());
   await expect(members).toHaveCount(2);
 });
