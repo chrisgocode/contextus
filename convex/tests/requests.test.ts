@@ -280,6 +280,19 @@ async function createRequest(
   return req!._id;
 }
 
+// When the request's own deadline passes. Read it rather than adding a minute
+// to the test's clock: convex-test, like Convex, can run a function a moment
+// after the clock its caller sees.
+async function deadlineOf(
+  t: ReturnType<typeof setupTest>,
+  requestId: Id<"pendingRequests">,
+) {
+  const request = await t.run(async (ctx) =>
+    ctx.db.get("pendingRequests", requestId),
+  );
+  return request!.expiresAt!;
+}
+
 // Seeded sessions last a minute; keep everyone signed in past that.
 async function extendSessions(t: ReturnType<typeof setupTest>) {
   await t.run(async (ctx) => {
@@ -662,7 +675,7 @@ test("a Pending request expires after a minute without an answer", async () => {
     expect(created.hint?.expiresAt).toBe(created.hint!.createdAt + 60_000);
     capture.mockClear();
 
-    vi.advanceTimersByTime(59_000);
+    vi.advanceTimersByTime(created.hint!.expiresAt! - Date.now() - 1_000);
     await t.finishInProgressScheduledFunctions();
     expect(
       await asUser(t, host).query(api.requests.listPending, { gameId }),
@@ -832,7 +845,7 @@ test("an overdue request doesn't block a new one", async () => {
     const staleId = await createRequest(t, other, gameId, "hint");
 
     // Moves the clock without running the scheduled expiry.
-    vi.setSystemTime(Date.now() + 60_000);
+    vi.setSystemTime(await deadlineOf(t, staleId));
 
     expect(
       await asUser(t, third).query(api.requests.pendingFromOthers, { gameId }),
@@ -860,7 +873,7 @@ test("approve rejects a request that is past its deadline", async () => {
     const staleId = await createRequest(t, other, gameId, "hint");
 
     // Moves the clock without running the scheduled expiry.
-    vi.setSystemTime(Date.now() + 60_000);
+    vi.setSystemTime(await deadlineOf(t, staleId));
 
     await expect(
       asUser(t, host).action(api.requests.approve, { requestId: staleId }),
@@ -885,7 +898,7 @@ test("latestMine reports an overdue request as expired", async () => {
     const staleId = await createRequest(t, other, gameId, "hint");
 
     // Moves the clock without running the scheduled expiry.
-    vi.setSystemTime(Date.now() + 60_000);
+    vi.setSystemTime(await deadlineOf(t, staleId));
 
     const latest = await asUser(t, other).query(api.requests.latestMine, {
       gameId,
@@ -922,10 +935,10 @@ test("listPending hides a request past its deadline before its expiry runs", asy
     const t = setupTest();
     const { host, other, gameId } = await startedGame(t);
     await extendSessions(t);
-    await createRequest(t, other, gameId, "hint");
+    const staleId = await createRequest(t, other, gameId, "hint");
 
     // Moves the clock without running the scheduled expiry.
-    vi.setSystemTime(Date.now() + 60_000);
+    vi.setSystemTime(await deadlineOf(t, staleId));
 
     expect(
       await asUser(t, host).query(api.requests.listPending, { gameId }),
