@@ -192,9 +192,14 @@ test("solve-time achievements credit each active guesser in their own time zone"
 test("Early Bird unlocks for today's puzzle within 10 minutes of local midnight", async () => {
   const t = setup();
   const host = await seedUser(t);
-  await asUser(t, host).mutation(api.users.setTimeZone, {
-    timeZone: "Asia/Tokyo",
-  });
+  // A second player for the late solve, since a solve only reports new
+  // awards and `host` already holds Early Bird by then.
+  const late = await seedUser(t, { name: "Late" });
+  for (const userId of [host, late]) {
+    await asUser(t, userId).mutation(api.users.setTimeZone, {
+      timeZone: "Asia/Tokyo",
+    });
+  }
   // Puzzle 1337 is 2026-05-17, released at 2026-05-17T00:00 in Tokyo.
   const todaysPuzzle = 1337;
 
@@ -208,13 +213,14 @@ test("Early Bird unlocks for today's puzzle within 10 minutes of local midnight"
   const tenMinutesIn = await solveAt(
     t,
     "2026-05-16T15:10:00Z",
-    { host },
+    { host: late },
     todaysPuzzle,
   );
 
   expect(archive.unlockedAchievementIds).not.toContain("early_bird");
-  expect(tenMinutesIn.unlockedAchievementIds).not.toContain("early_bird");
   expect(fiveMinutesIn.unlockedAchievementIds).toContain("early_bird");
+  expect(tenMinutesIn.unlockedAchievementIds).not.toContain("early_bird");
+  await expect(achievementIds(t, late)).resolves.not.toContain("early_bird");
 });
 
 test("profile progress shows the best streak toward each streak achievement", async () => {
