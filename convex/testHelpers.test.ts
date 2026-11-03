@@ -14,7 +14,9 @@ export const E2E_DEPLOYMENT_URL = "http://127.0.0.1:3210";
 export function setupTest(
   options: Pick<Parameters<typeof convexTest>[0], "transactionLimits"> = {},
 ) {
-  const modules = import.meta.glob("./**/!(*.test).*s");
+  // Vite 8 no longer matches extglobs like `!(*.test)`, so exclude test
+  // files with a negated pattern instead.
+  const modules = import.meta.glob(["./**/*.*s", "!./**/*.test.*s"]);
   const t = convexTest({ schema, modules, ...options });
   registerPresence(t);
   registerRateLimiter(t);

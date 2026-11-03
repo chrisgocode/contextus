@@ -49,6 +49,15 @@ async function openInviteId(t: Test, recipient: Id<"users">) {
   return invite._id;
 }
 
+// How long the recipient's open Invite has left. Read it rather than assuming
+// 5 minutes from the test's clock: convex-test, like Convex, can run a
+// function a moment after the clock its caller sees.
+async function timeLeft(t: Test, recipient: Id<"users">) {
+  const [invite] = (await overview(t, recipient)).invites;
+  if (invite === undefined) throw new Error("expected an open Invite");
+  return invite.expiresAt - Date.now();
+}
+
 // Seeded sessions last a minute; these tests wait for longer.
 async function keepSignedIn(t: Test) {
   await t.run(async (ctx) => {
@@ -311,8 +320,11 @@ test("an Invite ends after 5 minutes", async () => {
   const { host, friend, roomId } = await roomWithFriend(t);
   await keepSignedIn(t);
   await sendInvite(t, host, roomId, friend);
+  const left = await timeLeft(t, friend);
+  expect(left).toBeGreaterThanOrEqual(5 * 60_000);
+  expect(left).toBeLessThan(5 * 60_000 + 1_000);
 
-  await advance(t, 5 * 60_000 - 1);
+  await advance(t, left - 1);
   expect((await overview(t, friend)).invites).toHaveLength(1);
 
   await advance(t, 1);
@@ -329,7 +341,7 @@ test("an Invite past its 5 minutes is ended even before its expiry runs", async 
   await sendInvite(t, host, roomId, friend);
   const inviteId = await openInviteId(t, friend);
 
-  vi.advanceTimersByTime(5 * 60_000);
+  vi.advanceTimersByTime(await timeLeft(t, friend));
 
   expect((await overview(t, friend)).invites).toEqual([]);
   expect((await overview(t, host, roomId)).room?.invited).toEqual([]);

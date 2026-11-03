@@ -42,10 +42,7 @@ vi.mock("convex/react", () => ({
     if (name === "friends:unfriend") return mocks.unfriend;
     throw new Error(`Unexpected mutation: ${name}`);
   },
-  useQuery: (
-    reference: Parameters<typeof getFunctionName>[0],
-    args: unknown,
-  ) =>
+  useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) =>
     getFunctionName(reference) === "users:getUser"
       ? { player: { name: "Alice" }, image: null }
       : mocks.useQuery(reference, args),

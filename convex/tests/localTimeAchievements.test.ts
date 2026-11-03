@@ -4,7 +4,6 @@ import type { Id } from "../_generated/dataModel";
 import {
   asUser,
   fakeWordOracle,
-  resetRateLimit,
   seedUser,
   setupTest,
 } from "../testHelpers.test";
@@ -17,6 +16,17 @@ afterEach(() => {
 
 const ARCHIVE_PUZZLE = 1336;
 
+// Seeded sessions last a minute; solves here are days apart.
+async function keepSignedIn(t: ReturnType<typeof setupTest>) {
+  await t.run(async (ctx) => {
+    for (const session of await ctx.db.query("authSessions").collect()) {
+      await ctx.db.patch("authSessions", session._id, {
+        expirationTime: Date.now() + 60 * 60_000,
+      });
+    }
+  });
+}
+
 async function solveAt(
   t: ReturnType<typeof setupTest>,
   instant: string,
@@ -24,6 +34,7 @@ async function solveAt(
   contextoGameId = ARCHIVE_PUZZLE,
 ) {
   vi.setSystemTime(new Date(instant));
+  await keepSignedIn(t);
   const { roomId, code } = await asUser(t, players.host).mutation(
     api.rooms.create,
     {},
@@ -62,6 +73,10 @@ async function achievementIds(
 
 function setup() {
   vi.useFakeTimers();
+  // Start before every solve below. convex-test, like Convex, never lets a
+  // function see time go backwards, so seeding at today's date would pin
+  // every earlier solve to today.
+  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
   const t = setupTest();
   const answers: Record<string, number> = { opener: 500, answer: 0 };
   fakeWordOracle({
@@ -184,17 +199,15 @@ test("Early Bird unlocks for today's puzzle within 10 minutes of local midnight"
   const todaysPuzzle = 1337;
 
   const archive = await solveAt(t, "2026-05-16T15:05:00Z", { host }, 1336);
-  const tenMinutesIn = await solveAt(
-    t,
-    "2026-05-16T15:10:00Z",
-    { host },
-    todaysPuzzle,
-  );
-  // Refills the bucket the clock drained by moving backwards.
-  await resetRateLimit(t, "guess", host);
   const fiveMinutesIn = await solveAt(
     t,
     "2026-05-16T15:05:00Z",
+    { host },
+    todaysPuzzle,
+  );
+  const tenMinutesIn = await solveAt(
+    t,
+    "2026-05-16T15:10:00Z",
     { host },
     todaysPuzzle,
   );
