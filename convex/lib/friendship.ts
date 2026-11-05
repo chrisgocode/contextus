@@ -35,14 +35,107 @@ async function findPair(ctx: ReadCtx, a: UserId, b: UserId) {
     .unique();
 }
 
+// Stored state is independent of the viewer. In particular, a declined
+// request still belongs to its requester and consumes their outgoing allowance.
+type RelationshipState =
+  | { kind: "absent" }
+  | { kind: "friends"; row: Doc<"friendships"> }
+  | { kind: "pending" | "declined"; row: Doc<"friendships"> };
+
+function relationshipState(row: Doc<"friendships"> | null): RelationshipState {
+  if (row === null) return { kind: "absent" };
+  if (row.status === "friends") return { kind: "friends", row };
+  return { kind: row.declined ? "declined" : "pending", row };
+}
+
 function relationshipFrom(
   row: Doc<"friendships"> | null,
   viewer: UserId,
 ): Relationship {
-  if (row === null) return "none";
-  if (row.status === "friends") return "friends";
-  if (row.requesterUserId === viewer) return "requested";
-  return row.declined ? "none" : "incoming";
+  const state = relationshipState(row);
+  switch (state.kind) {
+    case "absent":
+      return "none";
+    case "friends":
+      return "friends";
+    case "pending":
+    case "declined":
+      if (state.row.requesterUserId === viewer) return "requested";
+      return state.kind === "declined" ? "none" : "incoming";
+  }
+}
+
+type RelationshipCommand =
+  | "send"
+  | "accept"
+  | "decline"
+  | "cancel"
+  | "unfriend";
+type RelationshipDecision =
+  | { kind: "unchanged"; status: "requested" | "friends" }
+  | { kind: "request" }
+  | { kind: "befriend" | "decline" | "delete"; row: Doc<"friendships"> }
+  | { kind: "reject"; code: "notFriends" | "friendRequestNotFound" };
+
+// Limits, account eligibility, rate limiting and writes remain in the command
+// handlers. Decisions here describe only the relationship transition.
+function decideRelationship(
+  state: RelationshipState,
+  actor: UserId,
+  command: "send",
+):
+  | { kind: "unchanged"; status: "requested" | "friends" }
+  | { kind: "request" }
+  | { kind: "befriend"; row: Doc<"friendships"> };
+function decideRelationship(
+  state: RelationshipState,
+  actor: UserId,
+  command: "accept" | "decline",
+):
+  | { kind: "befriend" | "decline"; row: Doc<"friendships"> }
+  | { kind: "reject"; code: "friendRequestNotFound" };
+function decideRelationship(
+  state: RelationshipState,
+  actor: UserId,
+  command: "cancel" | "unfriend",
+):
+  | { kind: "delete"; row: Doc<"friendships"> }
+  | { kind: "reject"; code: "notFriends" | "friendRequestNotFound" };
+function decideRelationship(
+  state: RelationshipState,
+  actor: UserId,
+  command: RelationshipCommand,
+): RelationshipDecision {
+  switch (command) {
+    case "send":
+      if (state.kind === "absent") return { kind: "request" };
+      if (state.kind === "friends")
+        return { kind: "unchanged", status: "friends" };
+      if (state.row.requesterUserId === actor)
+        return { kind: "unchanged", status: "requested" };
+      return { kind: "befriend", row: state.row };
+    case "accept":
+    case "decline":
+      if (state.kind === "pending" && state.row.requesterUserId !== actor) {
+        return {
+          kind: command === "accept" ? "befriend" : "decline",
+          row: state.row,
+        };
+      }
+      return { kind: "reject", code: "friendRequestNotFound" };
+    case "cancel":
+      if (
+        (state.kind === "pending" || state.kind === "declined") &&
+        state.row.requesterUserId === actor
+      ) {
+        return { kind: "delete", row: state.row };
+      }
+      return { kind: "reject", code: "friendRequestNotFound" };
+    case "unfriend":
+      return state.kind === "friends"
+        ? { kind: "delete", row: state.row }
+        : { kind: "reject", code: "notFriends" };
+  }
 }
 
 async function hasMaxFriends(ctx: ReadCtx, userId: UserId) {
@@ -111,13 +204,16 @@ export async function sendRequest(
   if (senderUser?.isAnonymous === true || targetUser.isAnonymous === true) {
     throw appError("friendsNeedAccount");
   }
-  const existing = await findPair(ctx, sender, target);
-  if (existing?.status === "friends") return "friends";
-  if (existing?.requesterUserId === sender) return "requested";
+  const decision = decideRelationship(
+    relationshipState(await findPair(ctx, sender, target)),
+    sender,
+    "send",
+  );
+  if (decision.kind === "unchanged") return decision.status;
   await enforceRateLimit(ctx, "friendRequest", sender);
   await assertRoomForFriend(ctx, sender, target);
-  if (existing !== null) {
-    await ctx.db.patch("friendships", existing._id, {
+  if (decision.kind === "befriend") {
+    await ctx.db.patch("friendships", decision.row._id, {
       status: "friends",
       declined: false,
     });
@@ -160,11 +256,14 @@ export async function answerRequest(
   sender: UserId,
   answer: "accept" | "decline",
 ) {
-  const row = await findPair(ctx, recipient, sender);
-  if (row === null || relationshipFrom(row, recipient) !== "incoming") {
-    throw appError("friendRequestNotFound");
-  }
-  if (answer === "accept") {
+  const decision = decideRelationship(
+    relationshipState(await findPair(ctx, recipient, sender)),
+    recipient,
+    answer,
+  );
+  if (decision.kind === "reject") throw appError(decision.code);
+  const { row } = decision;
+  if (decision.kind === "befriend") {
     await assertRoomForFriend(ctx, recipient, sender);
     await ctx.db.patch("friendships", row._id, { status: "friends" });
     await track(ctx, recipient, {
@@ -185,11 +284,13 @@ export async function cancelRequest(
   sender: UserId,
   target: UserId,
 ) {
-  const row = await findPair(ctx, sender, target);
-  if (row === null || relationshipFrom(row, sender) !== "requested") {
-    throw appError("friendRequestNotFound");
-  }
-  await ctx.db.delete("friendships", row._id);
+  const decision = decideRelationship(
+    relationshipState(await findPair(ctx, sender, target)),
+    sender,
+    "cancel",
+  );
+  if (decision.kind === "reject") throw appError(decision.code);
+  await ctx.db.delete("friendships", decision.row._id);
   await track(ctx, sender, {
     name: "friend_request_cancelled",
     properties: { recipient_user_id: target },
@@ -197,9 +298,13 @@ export async function cancelRequest(
 }
 
 export async function unfriend(ctx: WriteCtx, userId: UserId, friend: UserId) {
-  const row = await findPair(ctx, userId, friend);
-  if (row?.status !== "friends") throw appError("notFriends");
-  await ctx.db.delete("friendships", row._id);
+  const decision = decideRelationship(
+    relationshipState(await findPair(ctx, userId, friend)),
+    userId,
+    "unfriend",
+  );
+  if (decision.kind === "reject") throw appError(decision.code);
+  await ctx.db.delete("friendships", decision.row._id);
   await track(ctx, userId, {
     name: "friend_removed",
     properties: { friend_user_id: friend },
