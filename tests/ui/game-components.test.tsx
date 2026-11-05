@@ -1264,6 +1264,28 @@ describe("GameSetupCalendar", () => {
     }
   });
 
+  it("does not show a previous Room's start failure in the next setup", async () => {
+    let rejectOld!: (error: Error) => void;
+    convex.useMutation.mockReturnValue(
+      () =>
+        new Promise((_, reject) => {
+          rejectOld = reject;
+        }),
+    );
+    convex.useQuery.mockReturnValue([]);
+    const user = userEvent.setup();
+    const page = render(
+      <GameSetupCalendar roomId={"old-room" as never} isHost />,
+    );
+    await user.click(screen.getByRole("button", { name: "Start game" }));
+    page.rerender(<GameSetupCalendar roomId={"new-room" as never} isHost />);
+    await act(async () => rejectOld(new Error("offline")));
+    expect(
+      screen.queryByText("Could not start the game. Try again."),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Start game" })).toBeEnabled();
+  });
+
   it("shows a failed attempt to start the selected puzzle", async () => {
     const start = vi.fn().mockRejectedValue(new Error("offline"));
     convex.useMutation.mockReturnValue(start);

@@ -8,6 +8,7 @@ import {
 } from "@/app/(app)/r/[code]/_components/created-room";
 import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -70,6 +71,22 @@ describe("Home", () => {
 
     expect(html).toContain("Start a new room");
     expect(html).toContain("Join a room");
+  });
+
+  it("does not navigate or mark a created Room after Home unmounts", async () => {
+    let finish!: (value: { kind: "created"; code: string }) => void;
+    mocks.createRoom.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const page = render(<Home />);
+    fireEvent.click(screen.getByRole("button", { name: "Create room" }));
+    page.unmount();
+    await act(async () => finish({ kind: "created", code: "ABCDEF" }));
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(isCreatedRoom("ABCDEF")).toBe(false);
   });
 
   it("opens a room it creates on game setup", async () => {

@@ -14,7 +14,14 @@ import {
 import type { Id } from "@/convex/_generated/dataModel";
 import { appError } from "@/convex/lib/errors";
 import { captureException } from "@/lib/sentry-client";
-import { act, renderHook, waitFor } from "./test-utils";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  renderHook,
+  waitFor,
+} from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -49,6 +56,7 @@ let queries: {
   getByCode: (args: { code: string }) => unknown;
   getActive: unknown;
   listFinished: unknown;
+  viewer: unknown;
 };
 
 // The fake auth adapter: change a field, then rerender, to model an auth
@@ -81,6 +89,7 @@ beforeEach(() => {
     getByCode: () => room,
     getActive: game,
     listFinished: [],
+    viewer: { _id: "user" },
   };
   mocks.join.mockResolvedValue(null);
   mocks.leave.mockResolvedValue(null);
@@ -94,6 +103,7 @@ beforeEach(() => {
   mocks.useQuery.mockImplementation((reference, args) => {
     const name = getFunctionName(reference);
     if (args === "skip") return undefined;
+    if (name === "users:getUser") return queries.viewer;
     if (name === "rooms:getByCode") return queries.getByCode(args);
     if (name === "games:getActive") return queries.getActive;
     if (name === "games:listFinished") return queries.listFinished;
@@ -102,6 +112,180 @@ beforeEach(() => {
 });
 
 afterEach(() => clearCreatedRoom("ABCDEF"));
+
+// Exercise coordination through rendered output and user actions.
+function EntryScreen({ code }: { code: string }) {
+  const entry = useRoomEntry(code);
+  return (
+    <>
+      <output>{entry.kind}</output>
+      {entry.kind === "member" && (
+        <button onClick={() => void entry.leave()}>
+          Leave {entry.view.data.room.code}
+        </button>
+      )}
+    </>
+  );
+}
+
+it("leaving one Room cannot freeze the next destination", async () => {
+  mocks.leave.mockImplementation(() => new Promise(() => {}));
+  queries.getByCode = ({ code }) => ({ ...room, room: { ...room.room, code } });
+  const page = render(<EntryScreen code="ABCDEF" />, { wrapper });
+  fireEvent.click(screen.getByText("Leave ABCDEF"));
+  expect(screen.getByRole("status")).toHaveTextContent("leaving");
+  page.rerender(<EntryScreen code="GHIJKL" />);
+  expect(screen.getByText("Leave GHIJKL")).toBeVisible();
+});
+
+it("a join failure from an abandoned visit cannot poison a return to the same Room", async () => {
+  let rejectOld!: (error: Error) => void;
+  mocks.join
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectOld = reject;
+        }),
+    )
+    .mockImplementation(() => new Promise(() => {}));
+  queries.getByCode = ({ code }) => ({
+    ...room,
+    room: { ...room.room, code },
+    members: [],
+  });
+  const page = render(<EntryScreen code="ABCDEF" />, { wrapper });
+  page.rerender(<EntryScreen code="GHIJKL" />);
+  page.rerender(<EntryScreen code="ABCDEF" />);
+  await act(async () => rejectOld(new Error("old failure")));
+  expect(screen.getByRole("status")).toHaveTextContent("joining");
+  expect(captureException).not.toHaveBeenCalled();
+});
+
+function CreateScreen() {
+  const create = useCreateRoom();
+  return <button onClick={() => void create()}>Create</button>;
+}
+
+it("an abandoned anonymous sign-in cannot create a Room", async () => {
+  let signedIn!: () => void;
+  auth.isAuthenticated = false;
+  auth.signIn = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        signedIn = resolve;
+      }),
+  );
+  const page = render(<CreateScreen />, { wrapper });
+  fireEvent.click(screen.getByText("Create"));
+  await waitFor(() => expect(auth.signIn).toHaveBeenCalled());
+  page.unmount();
+  await act(async () => signedIn());
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("duplicate creation submits share the auth and mutation attempt", async () => {
+  mocks.create.mockImplementation(() => new Promise(() => {}));
+  render(<CreateScreen />, { wrapper });
+  fireEvent.click(screen.getByText("Create"));
+  fireEvent.click(screen.getByText("Create"));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+});
+
+it("joins only after token readiness even if Room display data is ready", () => {
+  auth.isLoading = true;
+  queries.getByCode = () => ({ ...room, members: [] });
+  const page = render(<EntryScreen code="ABCDEF" />, { wrapper });
+  expect(mocks.join).not.toHaveBeenCalled();
+  auth.isLoading = false;
+  page.rerender(<EntryScreen code="ABCDEF" />);
+  expect(mocks.join).toHaveBeenCalledWith({ code: "ABCDEF" });
+});
+
+it("an old leave failure cannot replace the next Room's leaving view", async () => {
+  let rejectOld!: (error: Error) => void;
+  mocks.leave
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectOld = reject;
+        }),
+    )
+    .mockImplementation(() => new Promise(() => {}));
+  queries.getByCode = ({ code }) => ({ ...room, room: { ...room.room, code } });
+  const page = render(<EntryScreen code="ABCDEF" />, { wrapper });
+  fireEvent.click(screen.getByText("Leave ABCDEF"));
+  page.rerender(<EntryScreen code="GHIJKL" />);
+  fireEvent.click(screen.getByText("Leave GHIJKL"));
+  await act(async () => rejectOld(new Error("old failure")));
+  expect(screen.getByRole("status")).toHaveTextContent("leaving");
+});
+
+it("an abandoned destination cannot keep its created-Room setup handoff", () => {
+  markRoomCreated("ABCDEF");
+  queries.getActive = undefined;
+  const page = render(<EntryScreen code="GHIJKL" />, { wrapper });
+  page.unmount();
+  auth.isLoading = true;
+  const next = renderEntry("ABCDEF");
+  expect(next.result.current).toEqual({ kind: "loading", waiting: false });
+});
+
+it("a previous viewer's create failure is ignored after account changes", async () => {
+  let rejectOld!: (error: Error) => void;
+  mocks.create.mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        rejectOld = reject;
+      }),
+  );
+  const page = render(<CreateScreen />, { wrapper });
+  fireEvent.click(screen.getByText("Create"));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+  queries.viewer = { _id: "other-user" };
+  page.rerender(<CreateScreen />);
+  await act(async () => rejectOld(new Error("old failure")));
+  expect(captureException).not.toHaveBeenCalled();
+});
+
+it("Friend attribution is used only by the first join attempt at a destination", async () => {
+  let viewerUserId = "old-user";
+  queries.getByCode = () => ({ ...room, viewerUserId, members: [] });
+  mocks.join
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockImplementation(() => new Promise(() => {}));
+  markFriendStatusJoin("ABCDEF");
+  const page = render(<EntryScreen code="ABCDEF" />, { wrapper });
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent("joinFailed"),
+  );
+  expect(mocks.join).toHaveBeenNthCalledWith(1, {
+    code: "ABCDEF",
+    via: "friend_status",
+  });
+  viewerUserId = "new-user";
+  page.rerender(<EntryScreen code="ABCDEF" />);
+  expect(mocks.join).toHaveBeenNthCalledWith(2, { code: "ABCDEF" });
+});
+
+it("signing out through auth loading invalidates an in-flight create", async () => {
+  let rejectOld!: (error: Error) => void;
+  mocks.create.mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        rejectOld = reject;
+      }),
+  );
+  const page = render(<CreateScreen />, { wrapper });
+  fireEvent.click(screen.getByText("Create"));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+  auth.isLoading = true;
+  page.rerender(<CreateScreen />);
+  auth.isLoading = false;
+  auth.isAuthenticated = false;
+  page.rerender(<CreateScreen />);
+  await act(async () => rejectOld(new Error("old failure")));
+  expect(captureException).not.toHaveBeenCalled();
+});
 
 describe("useRoomEntry", () => {
   it("is loading until auth and the Room load", () => {
