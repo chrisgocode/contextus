@@ -18,11 +18,11 @@ import {
 import { appError } from "./lib/errors";
 import { performTurn } from "./turns";
 import {
-  deadlineOf,
+  effectiveState,
   isLive,
   livePendingFor,
   livePendingOfType,
-  liveUntil,
+  publicStatus,
   markExpired,
   pendingOfType,
   REQUEST_TTL_MS,
@@ -63,6 +63,7 @@ export const latestMine = query({
   handler: async (ctx, { gameId }) => {
     const access = await tryMemberByGame(ctx, { gameId });
     if (access === null) return { hint: null, giveup: null };
+    const now = Date.now();
     const latest = async (type: RequestType) => {
       // A pending row wins even when it isn't the newest: guest merge can
       // leave one behind a newer handled row, and create still sees it.
@@ -89,13 +90,11 @@ export const latestMine = query({
           .order("desc")
           .first());
       if (row === null) return null;
-      const { _id, status, createdAt, expiresAt, hint } = row;
-      // Only create and the scheduled expiry write the status, so one that
-      // is overdue can still read pending here.
-      const overdue = status === "pending" && !isLive(row, Date.now());
+      const { _id, createdAt, expiresAt, hint } = row;
+      // Project expiry even when its scheduled mutation has not run.
       return {
         _id,
-        status: overdue ? ("expired" as const) : status,
+        status: publicStatus(row, now),
         createdAt,
         ...(expiresAt === undefined ? {} : { expiresAt }),
         ...(hint === undefined ? {} : { hint }),
@@ -237,11 +236,11 @@ export const _expire = internalMutation({
   args: { requestId: v.id("pendingRequests") },
   handler: async (ctx, { requestId }) => {
     const req = await ctx.db.get("pendingRequests", requestId);
-    if (req === null || req.status !== "pending") return null;
     const now = Date.now();
-    if (isLive(req, now)) {
+    const state = effectiveState(req, now);
+    if ("until" in state) {
       await ctx.scheduler.runAfter(
-        liveUntil(req) - now,
+        state.until - now,
         internal.requests._expire,
         {
           requestId,
@@ -249,7 +248,7 @@ export const _expire = internalMutation({
       );
       return null;
     }
-    await markExpired(ctx, req);
+    if (req !== null && state.kind === "overdue") await markExpired(ctx, req);
     return null;
   },
 });
@@ -265,20 +264,24 @@ export const _startApproval = internalMutation({
       throw appError("requestHandled");
     }
     await requireHostByRoom(ctx, { roomId: req.roomId });
-    if (req.status !== "pending") {
-      throw appError("requestHandled");
-    }
     const now = Date.now();
-    if (!isLive(req, now)) {
-      await markExpired(ctx, req);
-      return false;
-    }
-    // Another approval already in its grace period keeps its start, so
-    // pressing again can't stretch the request past it.
-    if (now < deadlineOf(req)) {
-      await ctx.db.patch("pendingRequests", requestId, {
-        approvalStartedAt: now,
-      });
+    const state = effectiveState(req, now);
+    switch (state.kind) {
+      case "overdue":
+        await markExpired(ctx, req);
+        return false;
+      case "waiting":
+      case "approval-started":
+        // Preserve retries before the original deadline. After it, retries
+        // share the existing grace period and cannot extend it.
+        await ctx.db.patch("pendingRequests", requestId, {
+          approvalStartedAt: now,
+        });
+        break;
+      case "approval-grace":
+        break;
+      default:
+        throw appError("requestHandled");
     }
     return true;
   },
