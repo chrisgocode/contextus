@@ -238,3 +238,38 @@ test("turning Appear offline on or off records the choice", async () => {
     }),
   ]);
 });
+
+test("a Friend stays Online until their last tab disconnects", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  await befriend(t, alice, bob);
+  const first = await appHeartbeat(t, bob, "first-tab");
+  const second = await appHeartbeat(t, bob, "second-tab");
+  await t.mutation(api.presence.disconnect, {
+    sessionToken: first!.sessionToken,
+  });
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "online" });
+  await t.mutation(api.presence.disconnect, {
+    sessionToken: second!.sessionToken,
+  });
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "offline" });
+});
+
+test("stale Room presence cannot expose a Room after the Friend leaves its membership", async () => {
+  const t = setupTest();
+  const alice = await seedUser(t);
+  const bob = await seedUser(t);
+  await befriend(t, alice, bob);
+  const { roomId, code } = await asUser(t, bob).mutation(api.rooms.create, {});
+  await asUser(t, alice).mutation(api.rooms.join, { code });
+  await roomHeartbeat(t, bob, roomId);
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "inRoom", code });
+  // The Room remains active with Alice, but Bob is no longer a live member.
+  await asUser(t, bob).mutation(api.rooms.leave, { roomId });
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "offline" });
+  await appHeartbeat(t, bob);
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "online" });
+  await asUser(t, bob).mutation(api.rooms.join, { code });
+  expect(await statusOf(t, alice, bob)).toEqual({ kind: "inRoom", code });
+});
