@@ -5,7 +5,9 @@ import {
   type MergePhase,
   USER_KEYED_TABLES,
   deleteMergedGuest,
+  removeMergedGuestData,
 } from "./accountLifecycle";
+import { guestLifecycle, ownsGuestMerge } from "./guestLifecycle";
 import { GUEST_LIFETIME_MS } from "./guestEngagement";
 import {
   type MergeState,
@@ -50,19 +52,13 @@ export async function startGuestMerge(
     ctx.db.get("users", guestUserId),
     ctx.db.get("users", targetUserId),
   ]);
-  // Expiry cleanup and merge never both work on the same guest.
+  const lifecycle = await guestLifecycle(ctx, guest, Date.now());
   if (
-    guest?.isAnonymous !== true ||
-    guest.guestCleanupStarted === true ||
-    target === null
+    target === null ||
+    (lifecycle.kind !== "active" && lifecycle.kind !== "expired")
   ) {
     return null;
   }
-  const existing = await ctx.db
-    .query("guestMerges")
-    .withIndex("by_guest_user", (q) => q.eq("guestUserId", guestUserId))
-    .first();
-  if (existing !== null) return null;
 
   const mergeId = await ctx.db.insert("guestMerges", {
     guestUserId,
@@ -87,6 +83,9 @@ export async function runGuestMergeBatch(
 ) {
   const job = await ctx.db.get("guestMerges", mergeId);
   if (job === null) return;
+  // A repeated delivery must still own this Guest. Cleanup's persisted claim
+  // takes precedence; an obsolete worker must never move or delete its rows.
+  if (!(await ownsGuestMerge(ctx, job))) return;
   if (job.phase === "finalize") {
     await finalizeMerge(ctx, job);
     return;
@@ -139,6 +138,14 @@ async function finalizeMerge(ctx: MutationCtx, job: MergeJob) {
       streakRun: 0,
       streakBest: 0,
     });
+    await ctx.scheduler.runAfter(0, internal.guestMerge.runBatch, {
+      mergeId: job._id,
+    });
+    return;
+  }
+  if (
+    !(await removeMergedGuestData(ctx, job.guestUserId, GUEST_MERGE_BATCH_SIZE))
+  ) {
     await ctx.scheduler.runAfter(0, internal.guestMerge.runBatch, {
       mergeId: job._id,
     });
