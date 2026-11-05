@@ -308,6 +308,11 @@ test("guest expiry deletes private rows and keeps shared room history", async ()
     guestExpiresAt: Date.now() - 1,
   });
   await seedEveryTable(t, guest, fixture);
+  // This registry fixture includes every reference, even an obsolete merge
+  // job. Arrange cleanup ownership so that job cannot claim the Guest.
+  await t.run((ctx) =>
+    ctx.db.patch("users", guest, { guestCleanupStarted: true }),
+  );
 
   await t.mutation(internal.cleanup.removeExpiredGuests, { now: Date.now() });
 
