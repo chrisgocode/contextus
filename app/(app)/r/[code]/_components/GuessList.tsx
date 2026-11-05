@@ -10,6 +10,9 @@ import { GuessListSkeleton } from "./RoomSkeleton";
 type Guess = NonNullable<
   ReturnType<typeof useQuery<typeof api.guesses.listForGame>>
 >["sorted"][number];
+type Player = NonNullable<
+  ReturnType<typeof useQuery<typeof api.guesses.listForGame>>
+>["players"][string];
 
 export function GuessList({
   gameId,
@@ -34,6 +37,9 @@ export function GuessList({
   if (data === undefined) return <GuessListSkeleton />;
   const { sorted, latest } = data;
   const repeated = inList ?? outsideList ?? null;
+  const repeatedPlayer = inList
+    ? data.players[inList.userId]
+    : outsideList?.player;
   // Confirm the duplicate while findByLemma loads; the lemma is all we know.
   const repeatedLoading =
     duplicate !== null && inList === undefined && outsideList === undefined;
@@ -47,7 +53,7 @@ export function GuessList({
       {(repeated || repeatedLoading) && (
         <div role="status" aria-label="Already guessed">
           {repeated ? (
-            <Row g={repeated} duplicate />
+            <Row g={repeated} player={repeatedPlayer!} duplicate />
           ) : (
             <div className="rounded-md bg-neutral-900/60 px-3 py-2.5 font-semibold text-white">
               {duplicate}
@@ -63,7 +69,7 @@ export function GuessList({
           <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
             Earlier guess
           </p>
-          <Row g={repeated} highlight />
+          <Row g={repeated} player={repeatedPlayer!} highlight />
         </div>
       )}
       {latest && (
@@ -71,7 +77,7 @@ export function GuessList({
           <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
             Latest
           </p>
-          <Row g={latest} highlight />
+          <Row g={latest} player={data.players[latest.userId]} highlight />
         </div>
       )}
       <div className="flex flex-col gap-1" data-testid={testIds.guessList}>
@@ -82,6 +88,7 @@ export function GuessList({
           <Row
             key={g._id}
             g={g}
+            player={data.players[g.userId]}
             inList
             highlight={g._id === latest?._id || g._id === repeated?._id}
           />
@@ -104,11 +111,13 @@ export function barColor(distance: number): string {
 
 function Row({
   g,
+  player,
   highlight,
   duplicate,
   inList,
 }: {
   g: Guess;
+  player: Player;
   highlight?: boolean;
   duplicate?: boolean;
   // Only rows in the list of all guesses carry the row test id, so it is
@@ -147,11 +156,11 @@ function Row({
         )}
         {!duplicate && (
           <Avatar className="h-5 w-5 ring-1 ring-black/30">
-            {g.player.image && (
-              <AvatarImage src={g.player.image} alt={g.player.name} />
+            {player.image && (
+              <AvatarImage src={player.image} alt={player.name} />
             )}
             <AvatarFallback className="text-[10px]">
-              {g.player.name.slice(0, 1).toUpperCase()}
+              {player.name.slice(0, 1).toUpperCase()}
             </AvatarFallback>
           </Avatar>
         )}

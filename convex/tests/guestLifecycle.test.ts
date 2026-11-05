@@ -247,9 +247,8 @@ test("interrupted cleanup retains shared history, transfers the Host, and exclud
   expect(
     await asUser(t, member).query(api.guesses.listForGame, { gameId }),
   ).toMatchObject({
-    sorted: [
-      { lemma: "kept", userId: guest, player: { name: "Former Guest" } },
-    ],
+    sorted: [{ lemma: "kept", userId: guest }],
+    players: { [guest]: { name: "Former Guest" } },
   });
   expect(
     await asUser(t, member).query(api.users.getUser, { userId: guest }),

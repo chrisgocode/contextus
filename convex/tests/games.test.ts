@@ -169,7 +169,10 @@ test("uploaded avatar appears on guesses and requests", async () => {
   const requests = await asUser(t, host).query(api.requests.listPending, {
     gameId,
   });
-  for (const player of [guesses.sorted[0].player, requests[0].requester]) {
+  for (const player of [
+    guesses.players[guesses.sorted[0].userId],
+    requests[0].requester,
+  ]) {
     expect(player).toMatchObject({
       id: other,
       name: "Other",

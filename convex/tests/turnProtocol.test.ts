@@ -38,7 +38,7 @@ test("a departing member cannot commit a prepared Guess", async () => {
   ).rejects.toMatchObject({ data: { code: "notMember" } });
   expect(
     await asUser(t, host).query(api.guesses.listForGame, { gameId }),
-  ).toEqual({ sorted: [], latest: null });
+  ).toEqual({ sorted: [], latest: null, players: {} });
 });
 
 test("Host succession invalidates an in-flight Hint", async () => {
@@ -53,7 +53,7 @@ test("Host succession invalidates an in-flight Hint", async () => {
   ).rejects.toMatchObject({ data: { code: "hostOnly" } });
   expect(
     await asUser(t, member).query(api.guesses.listForGame, { gameId }),
-  ).toEqual({ sorted: [], latest: null });
+  ).toEqual({ sorted: [], latest: null, players: {} });
   expect(
     await asUser(t, member).query(api.rooms.getByCode, { code }),
   ).toMatchObject({ isViewerHost: true, room: { hostUserId: member } });
@@ -175,5 +175,5 @@ test("cached unknown words bypass production network without recording a Guess",
   expect(fetch).toHaveBeenCalledOnce();
   expect(
     await asUser(t, host).query(api.guesses.listForGame, { gameId }),
-  ).toEqual({ sorted: [], latest: null });
+  ).toEqual({ sorted: [], latest: null, players: {} });
 });

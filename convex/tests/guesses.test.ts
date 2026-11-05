@@ -283,7 +283,7 @@ test("listForGame returns empty for ex-member after leaving room", async () => {
   const res = await asUser(t, other).query(api.guesses.listForGame, {
     gameId,
   });
-  expect(res).toEqual({ sorted: [], latest: null });
+  expect(res).toEqual({ sorted: [], latest: null, players: {} });
 });
 
 test("findByLemma returns null for ex-member after leaving room", async () => {
@@ -349,13 +349,13 @@ test("listForGame returns the newest guess as latest beyond the 500 closest", as
     }
   });
 
-  const { sorted, latest } = await asUser(t, host).query(
+  const { sorted, latest, players } = await asUser(t, host).query(
     api.guesses.listForGame,
     { gameId },
   );
   expect(sorted.some((g) => g.lemma === "newest")).toBe(false);
   expect(latest).toMatchObject({ lemma: "newest", distance: 500 });
-  expect(latest?.player.name).toBe("Other");
+  expect(players[other].name).toBe("Other");
 });
 
 test("listForGame returns sorted asc + latest", async () => {
@@ -494,4 +494,117 @@ test("unknown words are forgotten after a week", async () => {
     (await ctx.db.query("unknownWords").collect()).map((row) => row.word),
   );
   expect(words).toEqual(["recent"]);
+});
+
+test("listForGame shares player metadata across guesses", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 3; i++)
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: i === 2 ? other : host,
+        lemma: `word${i}`,
+        distance: i,
+        source: "guess",
+        createdAt: i,
+      });
+  });
+  const result = await asUser(t, host).query(api.guesses.listForGame, {
+    gameId,
+  });
+  expect(result).toMatchObject({
+    players: {
+      [host]: { name: "Host" },
+      [other]: { name: "Other" },
+    },
+  });
+  expect(result.sorted).toHaveLength(3);
+  expect(result.sorted.every((g) => !("player" in g))).toBe(true);
+  expect(result.latest).not.toHaveProperty("player");
+});
+
+test("shared players reflect profile changes, guests and deleted users", async () => {
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  const u = asUser(t, host);
+  expect(await u.query(api.guesses.listForGame, { gameId })).toEqual({
+    sorted: [],
+    latest: null,
+    players: {},
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch("users", other, { isAnonymous: true });
+    await ctx.db.insert("gameGuesses", {
+      gameId,
+      userId: other,
+      lemma: "guest",
+      distance: 1,
+      source: "guess",
+      createdAt: 1,
+    });
+  });
+  expect(
+    (await u.query(api.guesses.listForGame, { gameId })).players[other],
+  ).toMatchObject({ name: "Other", isGuest: true });
+  await t.run(async (ctx) => {
+    await ctx.db.patch("users", other, {
+      name: "Renamed",
+      image: "https://example.com/avatar.png",
+    });
+  });
+  expect(
+    (await u.query(api.guesses.listForGame, { gameId })).players[other],
+  ).toMatchObject({ name: "Renamed", image: "https://example.com/avatar.png" });
+  await t.run(async (ctx) => {
+    await ctx.db.delete("users", other);
+  });
+  expect(
+    (await u.query(api.guesses.listForGame, { gameId })).players[other],
+  ).toMatchObject({
+    name: "Player",
+    image: null,
+    exists: false,
+    isGuest: false,
+  });
+});
+
+test("349 guesses share two players with substantially smaller serialized JSON", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  const t = setupTest();
+  const { host, other, gameId } = await startedGame(t);
+  await t.run(async (ctx) => {
+    for (const id of [host, other])
+      await ctx.db.patch("users", id, {
+        image: `https://example.com/avatars/${"a".repeat(100)}.png`,
+      });
+    for (let i = 0; i < 349; i++)
+      await ctx.db.insert("gameGuesses", {
+        gameId,
+        userId: i % 2 ? host : other,
+        lemma: `word${i}`,
+        distance: i,
+        source: "guess",
+        createdAt: i,
+      });
+  });
+  const result = await asUser(t, host).query(api.guesses.listForGame, {
+    gameId,
+  });
+  const hydrate = (g: (typeof result.sorted)[number]) => ({
+    ...g,
+    player: result.players[g.userId],
+  });
+  const oldSize = JSON.stringify({
+    sorted: result.sorted.map(hydrate),
+    latest: result.latest && hydrate(result.latest),
+  }).length;
+  const newSize = JSON.stringify(result).length;
+  expect(result.sorted).toHaveLength(349);
+  expect(Object.keys(result.players)).toHaveLength(2);
+  expect(newSize / oldSize).toBeLessThan(0.6);
+  process.stdout.write(
+    `349-guess JSON characters: ${oldSize} -> ${newSize} (${((1 - newSize / oldSize) * 100).toFixed(1)}% reduction)\n`,
+  );
 });

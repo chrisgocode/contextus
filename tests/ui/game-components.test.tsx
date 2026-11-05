@@ -1136,6 +1136,7 @@ describe("GuessList", () => {
     lemma,
     distance,
     source: "guess",
+    userId: "alex",
     player: { name: "Alex", image: null },
   });
 
@@ -1153,7 +1154,11 @@ describe("GuessList", () => {
       const name = getFunctionName(reference);
       if (name === "guesses:listForGame") {
         return Object.keys(args).length === 1
-          ? { sorted, latest: null }
+          ? {
+              sorted: sorted.map(({ player: _player, ...g }) => g),
+              latest: null,
+              players: { alex: { name: "Alex", image: null } },
+            }
           : undefined;
       }
       if (name === "guesses:findByLemma") {
@@ -1162,6 +1167,58 @@ describe("GuessList", () => {
       throw new Error(`Unexpected query: ${name}`);
     });
   }
+
+  it("renders shared player updates and Latest from the player map", async () => {
+    vi.stubGlobal(
+      "Image",
+      class extends EventTarget {
+        complete = false;
+        naturalWidth = 100;
+        set src(_value: string) {
+          this.complete = true;
+          queueMicrotask(() => this.dispatchEvent(new Event("load")));
+        }
+      },
+    );
+    const sorted = [
+      guess("one", "apple", 1),
+      guess("two", "pear", 2),
+      { ...guess("three", "peach", 3), userId: "guest" },
+    ];
+    let name = "Alex";
+    let image: string | null = null;
+    convex.useQuery.mockImplementation((reference, args) => {
+      if (args === "skip") return undefined;
+      if (getFunctionName(reference) === "guesses:listForGame")
+        return {
+          sorted: sorted.map(({ player: _player, ...g }) => g),
+          latest: { ...guess("latest", "distant", 501), userId: "deleted" },
+          players: {
+            alex: { name, image },
+            guest: { name: "Guest", image: null },
+            deleted: { name: "Player", image: null },
+          },
+        };
+      return null;
+    });
+    const page = render(
+      <GuessList gameId={"game" as never} duplicate={null} />,
+    );
+    expect(screen.getAllByText("A", { exact: true })).toHaveLength(2);
+    expect(screen.getByText("G", { exact: true })).toBeVisible();
+    expect(screen.getByText("P", { exact: true })).toBeVisible();
+    expect(screen.getByText("Latest")).toBeVisible();
+    name = "Renamed";
+    page.rerender(<GuessList gameId={"game" as never} duplicate={null} />);
+    expect(screen.getAllByText("R", { exact: true })).toHaveLength(2);
+    image = "https://example.com/avatar.png";
+    page.rerender(<GuessList gameId={"game" as never} duplicate={null} />);
+    await waitFor(() =>
+      expect(screen.getAllByRole("img", { name: "Renamed" })).toHaveLength(2),
+    );
+    for (const avatar of screen.getAllByRole("img", { name: "Renamed" }))
+      expect(avatar).toHaveAttribute("src", image);
+  });
 
   it("prompts for a first guess when there are none", () => {
     mockGuessQueries({ sorted: [] });
