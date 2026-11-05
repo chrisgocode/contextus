@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserId, requireHostByRoom, tryMemberByRoom } from "./access";
+import { getOrCreateHistory } from "./lib/playerHistory";
 import { appError } from "./lib/errors";
 import { touchRoomActivity } from "./lib/roomMembership";
 import { track } from "./analytics";
@@ -99,17 +100,5 @@ export async function upsertHistory(
   userId: Id<"users">,
   contextoGameId: number,
 ): Promise<void> {
-  const existing = await ctx.db
-    .query("userGameHistory")
-    .withIndex("by_user_game", (q) =>
-      q.eq("userId", userId).eq("contextoGameId", contextoGameId),
-    )
-    .unique();
-  if (existing === null) {
-    await ctx.db.insert("userGameHistory", {
-      userId,
-      contextoGameId,
-      firstPlayedAt: Date.now(),
-    });
-  }
+  await getOrCreateHistory(ctx, userId, contextoGameId, Date.now());
 }
