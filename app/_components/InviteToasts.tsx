@@ -93,8 +93,11 @@ export function InviteToasts() {
                 invite={invite}
                 onAnswer={(response) => {
                   if (!current() || version.kind !== "shown") return;
-                  dismiss("dismissed");
-                  void currentAnswer.current(invite, response);
+                  void currentAnswer
+                    .current(invite, response)
+                    .then((handled) => {
+                      if (handled) dismiss("dismissed");
+                    });
                 }}
                 onDismiss={() => dismiss("dismissed")}
               />

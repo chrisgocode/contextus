@@ -64,6 +64,34 @@ beforeEach(() => {
 });
 
 describe("InviteToasts", () => {
+  it("keeps a second Invite actionable when its answer is skipped while busy", async () => {
+    const second = { ...invite(), _id: "i2", roomCode: "SECOND" };
+    mocks.useQuery.mockReturnValue([invite(), second]);
+    const first = Promise.withResolvers<null>();
+    mocks.answerInvite
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValue(null);
+    render(<InviteToasts />);
+    await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(2));
+    for (const [content] of vi.mocked(toast.custom).mock.calls) {
+      render(content("invite") as ReactElement);
+    }
+    const declines = screen.getAllByRole("button", { name: "Decline" });
+    await userEvent.click(declines[0]);
+    await userEvent.click(declines[1]);
+    expect(mocks.answerInvite).toHaveBeenCalledTimes(1);
+    expect(toast.dismiss).not.toHaveBeenCalledWith("invite-i2");
+    await act(async () => first.resolve(null));
+    await userEvent.click(declines[1]);
+    expect(mocks.answerInvite).toHaveBeenLastCalledWith({
+      inviteId: "i2",
+      answer: "decline",
+    });
+    await waitFor(() =>
+      expect(toast.dismiss).toHaveBeenCalledWith("invite-i2"),
+    );
+  });
+
   it("shows one toast per open Invite until it expires, again only when it is re-sent", async () => {
     const expiresAt = Date.now() + 60_000;
     mocks.useQuery.mockReturnValue([invite(expiresAt)]);

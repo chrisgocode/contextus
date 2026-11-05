@@ -461,6 +461,7 @@ export function useInviteAnswer(destination?: string) {
       if (answer === "join" && result?.ok && result.value !== null) {
         router.push(roomPath(result.value.code));
       }
+      return result !== undefined;
     },
     [answerInvite, router, run],
   );
