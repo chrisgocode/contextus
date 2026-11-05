@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.1](https://github.com/chrisgocode/contextus/compare/v0.4.0...v0.4.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** patch critical Next.js and DOMPurify advisories, update dependencies ([#265](https://github.com/chrisgocode/contextus/issues/265)) ([2bdd9d3](https://github.com/chrisgocode/contextus/commit/2bdd9d38266173dc98ed3d638abfe999bf7d66a8))
+* **telemetry:** guard deferred identity and model initialization ([#296](https://github.com/chrisgocode/contextus/issues/296)) ([c61b005](https://github.com/chrisgocode/contextus/commit/c61b005aaf023077b8b43ff00cab11a609c2cd9b))
+
+
+### Dependencies
+
+* bump the actions group with 2 updates ([#297](https://github.com/chrisgocode/contextus/issues/297)) ([7cbc55b](https://github.com/chrisgocode/contextus/commit/7cbc55b0a723941a603ba28bc01ffc75f5b28e77))
+* bump the actions group with 3 updates ([#261](https://github.com/chrisgocode/contextus/issues/261)) ([21361b2](https://github.com/chrisgocode/contextus/commit/21361b23586373b25a88a9ed7a41b5efca6d3047))
+
 ## [0.4.0](https://github.com/chrisgocode/contextus/compare/v0.3.3...v0.4.0) (2026-10-18)
 
 
