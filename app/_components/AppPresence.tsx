@@ -35,7 +35,8 @@ export function AppPresence() {
 
   useEffect(() => {
     if (registeredUserId === null) return;
-    const sessionId = crypto.randomUUID();
+    let sessionId = crypto.randomUUID();
+    let generation = 0;
     let connection: Connection = { kind: "disconnected" };
     let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -49,8 +50,13 @@ export function AppPresence() {
       if (connection.kind === "stopped") return interval;
       if (connection.kind === "disconnected")
         connection = { kind: "connecting" };
+      const startedIn = generation;
       heartbeat({ sessionId, interval })
         .then((result) => {
+          if (startedIn !== generation) {
+            if (result !== null) release(result.sessionToken);
+            return;
+          }
           if (result === null) {
             if (connection.kind === "connecting")
               connection = { kind: "disconnected" };
@@ -64,7 +70,7 @@ export function AppPresence() {
             };
         })
         .catch(() => {
-          if (connection.kind === "connecting")
+          if (startedIn === generation && connection.kind === "connecting")
             connection = { kind: "disconnected" };
         });
       return interval;
@@ -101,10 +107,23 @@ export function AppPresence() {
     };
 
     const unload = () => stop("unload");
+    const restore = () => {
+      if (connection.kind !== "stopped") return;
+      generation++;
+      sessionId = crypto.randomUUID();
+      connection = { kind: "disconnected" };
+      schedule();
+      document.addEventListener("visibilitychange", schedule);
+      window.addEventListener("beforeunload", unload);
+    };
     schedule();
     document.addEventListener("visibilitychange", schedule);
     window.addEventListener("beforeunload", unload);
-    return () => stop("unmount");
+    window.addEventListener("pageshow", restore);
+    return () => {
+      window.removeEventListener("pageshow", restore);
+      stop("unmount");
+    };
   }, [registeredUserId, heartbeat, disconnect, convexUrl]);
 
   return null;

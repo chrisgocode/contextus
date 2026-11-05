@@ -52,6 +52,67 @@ afterEach(() => {
 });
 
 describe("AppPresence", () => {
+  it("restores the heartbeat cadence and unload beacon after a connected page returns", async () => {
+    const sendBeacon = vi.fn();
+    Object.defineProperty(navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeacon,
+    });
+    signInAs({ _id: "alice", isAnonymous: false });
+    const { unmount } = render(<AppPresence />);
+    await act(async () => {});
+    act(() => window.dispatchEvent(new Event("beforeunload")));
+    await act(() => vi.advanceTimersByTimeAsync(VISIBLE_INTERVAL_MS));
+    expect(convex.heartbeat).toHaveBeenCalledTimes(1);
+    act(() => window.dispatchEvent(new Event("pageshow")));
+    await act(async () => {});
+    act(() => setHidden(true));
+    await act(() => vi.advanceTimersByTimeAsync(HIDDEN_INTERVAL_MS));
+    expect(convex.heartbeat).toHaveBeenCalledTimes(4);
+    expect(convex.heartbeat).toHaveBeenLastCalledWith({
+      sessionId: expect.any(String),
+      interval: HIDDEN_INTERVAL_MS,
+    });
+    act(() => window.dispatchEvent(new Event("beforeunload")));
+    expect(sendBeacon).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(HIDDEN_INTERVAL_MS));
+    expect(convex.heartbeat).toHaveBeenCalledTimes(4);
+    unmount();
+  });
+
+  it("restarts presence after unload and page restoration, without accepting an old token", async () => {
+    const old = Promise.withResolvers<{ sessionToken: string }>();
+    convex.heartbeat
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValue({ sessionToken: "restored-token" });
+    signInAs({ _id: "alice", isAnonymous: false });
+    const { unmount } = render(<AppPresence />);
+    act(() => window.dispatchEvent(new Event("beforeunload")));
+    act(() => window.dispatchEvent(new Event("pageshow")));
+    await act(async () => {});
+    expect(convex.heartbeat).toHaveBeenCalledTimes(2);
+    expect(convex.heartbeat.mock.calls[0][0].sessionId).not.toBe(
+      convex.heartbeat.mock.calls[1][0].sessionId,
+    );
+    await act(async () => old.resolve({ sessionToken: "old-token" }));
+    expect(convex.disconnect).toHaveBeenCalledWith({
+      sessionToken: "old-token",
+    });
+    expect(convex.disconnect).not.toHaveBeenCalledWith({
+      sessionToken: "restored-token",
+    });
+    act(() => window.dispatchEvent(new Event("pageshow")));
+    await act(() => vi.advanceTimersByTimeAsync(VISIBLE_INTERVAL_MS));
+    expect(convex.heartbeat).toHaveBeenCalledTimes(3);
+    unmount();
+    expect(convex.disconnect).toHaveBeenCalledWith({
+      sessionToken: "restored-token",
+    });
+    act(() => window.dispatchEvent(new Event("pageshow")));
+    await act(() => vi.advanceTimersByTimeAsync(VISIBLE_INTERVAL_MS));
+    expect(convex.heartbeat).toHaveBeenCalledTimes(3);
+  });
+
   it("stops scheduling on unload before token acquisition and disconnects the late token", async () => {
     let resolve!: (result: { sessionToken: string }) => void;
     convex.heartbeat.mockImplementationOnce(
