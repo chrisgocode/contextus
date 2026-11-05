@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
 import { action, query } from "./_generated/server";
 import { tryMemberByGame } from "./access";
 import { loadPlayers } from "./lib/player";
@@ -16,7 +15,7 @@ export const listForGame = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, { gameId }) => {
     const access = await tryMemberByGame(ctx, { gameId });
-    if (access === null) return { sorted: [], latest: null };
+    if (access === null) return { sorted: [], latest: null, players: {} };
     const sortedRaw = await ctx.db
       .query("gameGuesses")
       .withIndex("by_game_distance", (q) => q.eq("gameId", gameId))
@@ -32,13 +31,10 @@ export const listForGame = query({
       ...sortedRaw.map((g) => g.userId),
       ...(latestRaw ? [latestRaw.userId] : []),
     ]);
-    const hydrate = (g: Doc<"gameGuesses">) => ({
-      ...g,
-      player: players.get(g.userId)!,
-    });
     return {
-      sorted: sortedRaw.map(hydrate),
-      latest: latestRaw === null ? null : hydrate(latestRaw),
+      sorted: sortedRaw,
+      latest: latestRaw,
+      players: Object.fromEntries(players),
     };
   },
 });
