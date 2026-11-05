@@ -1,8 +1,7 @@
 // Invite module: the whole Invite lifecycle. Nothing else writes `invites`.
 //
-// A row exists only while its Invite is open, so every way an Invite ends
-// deletes it. Reads also check `isOpen`, so an expiry that runs late never
-// shows a dead Invite.
+// Terminal transitions delete the row. An overdue row can remain until its
+// expiry job runs, so decisions and projections always use a supplied clock.
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -20,8 +19,71 @@ export const INVITE_TTL_MS = 5 * 60 * 1000;
 
 const MAX_INVITES_LISTED = 50;
 
+type InviteState =
+  | { kind: "absent" }
+  | { kind: "open" | "expired"; row: Doc<"invites"> };
+
+function inviteState(row: Doc<"invites"> | null, now: number): InviteState {
+  if (row === null) return { kind: "absent" };
+  return { kind: now < row.expiresAt ? "open" : "expired", row };
+}
+
+type InviteCommand = "send" | "join" | "decline" | "expire" | "close";
+type InviteDecision =
+  | { kind: "create" | "ignore" | "reject" }
+  | { kind: "refresh" | "join" | "delete"; row: Doc<"invites"> };
+
+function decideInvite(
+  state: InviteState,
+  command: "send",
+): { kind: "create" } | { kind: "refresh"; row: Doc<"invites"> };
+function decideInvite(
+  state: InviteState,
+  command: "join" | "decline",
+): { kind: "reject" } | { kind: "join" | "delete"; row: Doc<"invites"> };
+function decideInvite(
+  state: InviteState,
+  command: "expire" | "close",
+): { kind: "ignore" } | { kind: "delete"; row: Doc<"invites"> };
+function decideInvite(
+  state: InviteState,
+  command: InviteCommand,
+): InviteDecision {
+  switch (command) {
+    case "send":
+      return state.kind === "absent"
+        ? { kind: "create" }
+        : { kind: "refresh", row: state.row };
+    case "join":
+    case "decline":
+      return state.kind === "open"
+        ? { kind: command === "join" ? "join" : "delete", row: state.row }
+        : { kind: "reject" };
+    case "expire":
+      return state.kind === "expired"
+        ? { kind: "delete", row: state.row }
+        : { kind: "ignore" };
+    case "close":
+      return state.kind === "absent"
+        ? { kind: "ignore" }
+        : { kind: "delete", row: state.row };
+  }
+}
+
 export function isOpen(invite: Doc<"invites">, now: number) {
-  return now < invite.expiresAt;
+  return inviteState(invite, now).kind === "open";
+}
+
+// Shared terminal transition for admission, Room end and former-Friend cleanup.
+// Closing is unconditional: unlike expiry, it does not depend on the clock.
+async function closeInvite(
+  ctx: WriteCtx,
+  row: Doc<"invites"> | null,
+  now = Date.now(),
+) {
+  const decision = decideInvite(inviteState(row, now), "close");
+  if (decision.kind === "delete")
+    await ctx.db.delete("invites", decision.row._id);
 }
 
 async function findInvite(
@@ -57,16 +119,17 @@ export async function invite(
   await enforceRateLimit(ctx, "invite", sender);
   const expiresAt = now + INVITE_TTL_MS;
   const existing = await findInvite(ctx, roomId, recipient);
+  const decision = decideInvite(inviteState(existing, now), "send");
   const inviteId =
-    existing === null
+    decision.kind === "create"
       ? await ctx.db.insert("invites", {
           roomId,
           recipientUserId: recipient,
           senderUserId: sender,
           expiresAt,
         })
-      : existing._id;
-  if (existing !== null) {
+      : decision.row._id;
+  if (decision.kind === "refresh") {
     await ctx.db.patch("invites", inviteId, {
       senderUserId: sender,
       expiresAt,
@@ -95,11 +158,16 @@ export async function answer(
   now: number,
 ): Promise<string | null> {
   const row = await ctx.db.get("invites", inviteId);
-  if (row === null || row.recipientUserId !== recipient || !isOpen(row, now)) {
+  const decision = decideInvite(inviteState(row, now), response);
+  if (
+    row === null ||
+    row.recipientUserId !== recipient ||
+    decision.kind === "reject"
+  ) {
     throw appError("inviteNotFound");
   }
-  if (response === "decline") {
-    await ctx.db.delete("invites", inviteId);
+  if (decision.kind === "delete") {
+    await closeInvite(ctx, row, now);
     return null;
   }
   const room = await ctx.db.get("rooms", row.roomId);
@@ -121,9 +189,8 @@ export async function expire(
   now: number,
 ) {
   const row = await ctx.db.get("invites", inviteId);
-  if (row !== null && !isOpen(row, now)) {
-    await ctx.db.delete("invites", inviteId);
-  }
+  const decision = decideInvite(inviteState(row, now), "expire");
+  if (decision.kind === "delete") await closeInvite(ctx, decision.row, now);
 }
 
 export async function endInvite(
@@ -132,7 +199,7 @@ export async function endInvite(
   recipient: UserId,
 ) {
   const row = await findInvite(ctx, roomId, recipient);
-  if (row !== null) await ctx.db.delete("invites", row._id);
+  await closeInvite(ctx, row);
 }
 
 export async function endInvitesForRoom(ctx: WriteCtx, roomId: Id<"rooms">) {
@@ -141,7 +208,7 @@ export async function endInvitesForRoom(ctx: WriteCtx, roomId: Id<"rooms">) {
     .withIndex("by_roomId_and_recipientUserId", (q) =>
       q.eq("roomId", roomId),
     )) {
-    await ctx.db.delete("invites", row._id);
+    await closeInvite(ctx, row);
   }
 }
 
@@ -155,7 +222,7 @@ export async function endInvitesBetween(ctx: WriteCtx, a: UserId, b: UserId) {
       .withIndex("by_senderUserId_and_recipientUserId", (q) =>
         q.eq("senderUserId", sender).eq("recipientUserId", recipient),
       )) {
-      await ctx.db.delete("invites", row._id);
+      await closeInvite(ctx, row);
     }
   }
 }
