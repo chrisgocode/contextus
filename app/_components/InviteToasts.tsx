@@ -4,7 +4,8 @@ import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useConvexAuth, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { lazyToast } from "@/lib/toast";
@@ -27,7 +28,16 @@ export function InviteToasts() {
     isAuthenticated ? {} : "skip",
   );
   const viewer = useQuery(api.users.getUser, {});
-  const answer = useInviteAnswer(`${isAuthenticated}:${viewer?._id}`);
+  const pathname = usePathname();
+  const answer = useInviteAnswer(
+    `${isAuthenticated}:${viewer?._id}:${pathname}`,
+  );
+  // Toast content can survive a navigation. Its next click belongs to the
+  // current route, while a command already running keeps its original scope.
+  const currentAnswer = useRef(answer);
+  useLayoutEffect(() => {
+    currentAnswer.current = answer;
+  }, [answer]);
   const delivery = useRef(
     new Map<
       string,
@@ -84,7 +94,7 @@ export function InviteToasts() {
                 onAnswer={(response) => {
                   if (!current() || version.kind !== "shown") return;
                   dismiss("dismissed");
-                  void answer(invite, response);
+                  void currentAnswer.current(invite, response);
                 }}
                 onDismiss={() => dismiss("dismissed")}
               />

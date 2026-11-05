@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   answerInvite: vi.fn(),
   push: vi.fn(),
   useQuery: vi.fn(),
+  pathname: "/",
   viewer: "alice",
   authenticated: true,
 }));
@@ -26,6 +27,7 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
+  usePathname: () => mocks.pathname,
 }));
 vi.mock("sonner", () => ({
   toast: { custom: vi.fn(), dismiss: vi.fn(), error: vi.fn() },
@@ -56,6 +58,7 @@ function renderLastToast() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.pathname = "/";
   mocks.viewer = "alice";
   mocks.authenticated = true;
 });
@@ -181,7 +184,7 @@ describe("InviteToasts", () => {
     expect(toast.custom).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["viewer", "sign-out"])(
+  it.each(["viewer", "sign-out", "room", "profile", "return"])(
     "ignores a pending join after changing %s",
     async (change) => {
       mocks.useQuery.mockReturnValue([invite()]);
@@ -194,12 +197,32 @@ describe("InviteToasts", () => {
         screen.getByRole("button", { name: "Join room ABCDEF" }),
       );
       if (change === "viewer") mocks.viewer = "bob";
-      else mocks.authenticated = false;
+      else if (change === "sign-out") mocks.authenticated = false;
+      else mocks.pathname = change === "profile" ? "/user/bob" : "/r/OTHERX";
       rerender(<InviteToasts />);
+      if (change === "return") {
+        mocks.pathname = "/";
+        rerender(<InviteToasts />);
+      }
       await act(async () => pending.resolve({ code: "ABCDEF" }));
       expect(mocks.push).not.toHaveBeenCalled();
     },
   );
+
+  it("lets a toast delivered on the previous route join from the current route", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    mocks.answerInvite.mockResolvedValue({ code: "ABCDEF" });
+    const page = render(<InviteToasts />);
+    await act(async () => {});
+    renderLastToast();
+    mocks.pathname = "/user/bob";
+    page.rerender(<InviteToasts />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Join room ABCDEF" }),
+    );
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/r/ABCDEF"));
+    expect(toast.custom).toHaveBeenCalledTimes(1);
+  });
 
   it("joins the Room from the toast", async () => {
     mocks.useQuery.mockReturnValue([invite()]);
