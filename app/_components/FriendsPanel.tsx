@@ -10,6 +10,7 @@ import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Fragment,
   type ReactNode,
   useCallback,
   useState,
@@ -37,7 +38,7 @@ import { markFriendStatusJoin } from "@/app/(app)/r/[code]/_components/join-sour
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { roomPath } from "@/lib/room-code";
-import { runMutation } from "@/lib/report-error";
+import { useSocialCommand } from "./use-social-command";
 import { cn } from "@/lib/utils";
 
 type Overview = NonNullable<FunctionReturnType<typeof api.friends.overview>>;
@@ -73,6 +74,7 @@ function useIsPhone() {
 // invite Friends into it.
 export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
   const overview = useQuery(api.friends.overview, { roomId });
+  const viewer = useQuery(api.users.getUser, {});
   const phone = useIsPhone();
   const incoming = overview?.incoming.length ?? 0;
   const incomingCount = `${incoming}${overview?.moreIncoming ? "+" : ""}`;
@@ -119,13 +121,13 @@ export function FriendsPanel({ roomId }: { roomId?: Id<"rooms"> } = {}) {
         {overview === undefined ? null : overview === null ? (
           <GuestMessage />
         ) : (
-          <>
+          <Fragment key={`${viewer?._id}:${roomId}`}>
             <AddByUsername />
             <FriendLists overview={overview} roomId={roomId} />
             <SheetFooter className="sticky bottom-0 -mx-4 -mb-4 border-t bg-popover p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <YourPresence appearOffline={overview.appearOffline} />
             </SheetFooter>
-          </>
+          </Fragment>
         )}
       </SheetContent>
     </Sheet>
@@ -148,41 +150,40 @@ function GuestMessage() {
 function AddByUsername() {
   const sendRequest = useMutation(api.friends.sendRequestByUsername);
   const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{
-    ok: boolean;
-    message: string;
-  } | null>(null);
+  const { busy, run } = useSocialCommand();
+  const [result, setResult] = useState<
+    { kind: "idle" } | { kind: "success" | "failure"; message: string }
+  >({ kind: "idle" });
 
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
-        setBusy(true);
-        setResult(null);
-        const sent = await runMutation(() => sendRequest({ username }), {
+        setResult({ kind: "idle" });
+        const sent = await run("add", () => sendRequest({ username }), {
           context: "friends.sendRequestByUsername",
           fallback: "Could not send a friend request. Try again.",
           showToast: false,
         });
+        if (sent === undefined) return;
         if (sent.ok) {
           setUsername("");
           setResult({
-            ok: true,
+            kind: "success",
             message:
               sent.value.status === "friends"
                 ? "You're now friends."
                 : "Friend request sent.",
           });
         } else {
-          setResult(sent);
+          setResult({ kind: "failure", message: sent.message });
         }
-        setBusy(false);
       }}
     >
       <div className="flex gap-2">
         <Input
+          disabled={busy}
           aria-label="Username"
           placeholder="Username"
           value={username}
@@ -197,10 +198,10 @@ function AddByUsername() {
           Add friend
         </Button>
       </div>
-      {result && (
+      {result.kind !== "idle" && (
         <p
-          role={result.ok ? "status" : "alert"}
-          className={`text-sm ${result.ok ? "text-muted-foreground" : "text-destructive"}`}
+          role={result.kind === "success" ? "status" : "alert"}
+          className={`text-sm ${result.kind === "success" ? "text-muted-foreground" : "text-destructive"}`}
         >
           {result.message}
         </p>
@@ -220,45 +221,30 @@ function FriendLists({
   const cancelRequest = useMutation(api.friends.cancelRequest);
   const unfriend = useMutation(api.friends.unfriend);
   const invite = useMutation(api.friends.invite);
-  const answerInvite = useInviteAnswer();
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  async function act(id: string, run: () => Promise<unknown>) {
-    setBusyId(id);
-    await run();
-    setBusyId(null);
-  }
+  const answerInvite = useInviteAnswer(roomId);
+  const { busy, run } = useSocialCommand(roomId);
   const answer = (userId: Id<"users">, answer: "accept" | "decline") =>
-    act(userId, () =>
-      runMutation(() => answerRequest({ userId, answer }), {
-        context: "friends.answerRequest",
-        fallback: "Could not answer this friend request. Try again.",
-      }),
-    );
+    run("answer", () => answerRequest({ userId, answer }), {
+      context: "friends.answerRequest",
+      fallback: "Could not answer this friend request. Try again.",
+    });
   const cancel = (userId: Id<"users">) =>
-    act(userId, () =>
-      runMutation(() => cancelRequest({ userId }), {
-        context: "friends.cancelRequest",
-        fallback: "Could not cancel this friend request. Try again.",
-      }),
-    );
+    run("cancel", () => cancelRequest({ userId }), {
+      context: "friends.cancelRequest",
+      fallback: "Could not cancel this friend request. Try again.",
+    });
 
   const remove = (userId: Id<"users">) =>
-    act(userId, () =>
-      runMutation(() => unfriend({ userId }), {
-        context: "friends.unfriend",
-        fallback: "Could not unfriend. Try again.",
-      }),
-    );
+    run("unfriend", () => unfriend({ userId }), {
+      context: "friends.unfriend",
+      fallback: "Could not unfriend. Try again.",
+    });
   const room = overview.room;
   const inviteFriend = (roomId: Id<"rooms">, userId: Id<"users">) =>
-    act(userId, () =>
-      runMutation(() => invite({ roomId, userId }), {
-        context: "friends.invite",
-        fallback: "Could not invite this friend. Try again.",
-      }),
-    );
-  const busy = busyId !== null;
+    run("invite", () => invite({ roomId, userId }), {
+      context: "friends.invite",
+      fallback: "Could not invite this friend. Try again.",
+    });
 
   return (
     <>
@@ -274,7 +260,10 @@ function FriendLists({
                 invite={invite}
                 disabled={busy}
                 onAnswer={(answer) =>
-                  act(invite._id, () => answerInvite(invite, answer))
+                  run("answerInvite", () => answerInvite(invite, answer), {
+                    context: "friends.answerInvite",
+                    fallback: "Could not answer this invite. Try again.",
+                  })
                 }
               />
             </FriendRow>
@@ -452,26 +441,29 @@ export function InviteAnswers({
 }
 
 // Answers an Invite, and takes the recipient to the Room when they join.
-export function useInviteAnswer() {
+export function useInviteAnswer(destination?: string) {
   const answerInvite = useMutation(api.friends.answerInvite);
   const router = useRouter();
+  const { run } = useSocialCommand(destination);
   return useCallback(
     async (
       invite: Pick<Invite, "_id" | "roomCode">,
       answer: "join" | "decline",
     ) => {
-      const result = await runMutation(
+      const result = await run(
+        "answerInvite",
         () => answerInvite({ inviteId: invite._id, answer }),
         {
           context: "friends.answerInvite",
           fallback: "Could not answer this invite. Try again.",
         },
       );
-      if (result.ok && result.value !== null) {
+      if (answer === "join" && result?.ok && result.value !== null) {
         router.push(roomPath(result.value.code));
       }
+      return result !== undefined;
     },
-    [answerInvite, router],
+    [answerInvite, router, run],
   );
 }
 
@@ -484,16 +476,24 @@ const PRESENCE_CHOICES = [
 function YourPresence({ appearOffline }: { appearOffline: boolean }) {
   const me = useQuery(api.users.getUser, {});
   const setAppearOffline = useMutation(api.users.setAppearOffline);
-  const [pending, setPending] = useState<boolean | null>(null);
-  const shown = pending ?? appearOffline;
+  const { busy, run } = useSocialCommand();
+  const [choice, setChoice] = useState<
+    { kind: "confirmed" } | { kind: "saving"; desired: boolean }
+  >({ kind: "confirmed" });
+  const shown = choice.kind === "saving" ? choice.desired : appearOffline;
 
   async function choose(next: boolean) {
-    setPending(next);
-    await runMutation(() => setAppearOffline({ appearOffline: next }), {
-      context: "users.setAppearOffline",
-      fallback: "Could not change how Friends see you. Try again.",
-    });
-    setPending(null);
+    if (busy) return;
+    setChoice({ kind: "saving", desired: next });
+    const result = await run(
+      "presence",
+      () => setAppearOffline({ appearOffline: next }),
+      {
+        context: "users.setAppearOffline",
+        fallback: "Could not change how Friends see you. Try again.",
+      },
+    );
+    if (result !== undefined) setChoice({ kind: "confirmed" });
   }
 
   const name = me?.player.name ?? "You";
@@ -518,7 +518,7 @@ function YourPresence({ appearOffline }: { appearOffline: boolean }) {
         </div>
       </div>
       <fieldset
-        disabled={pending !== null}
+        disabled={busy}
         className="grid grid-cols-2 gap-1 rounded-md bg-background/60 p-1"
       >
         <legend className="sr-only">Show Friends that you are</legend>
