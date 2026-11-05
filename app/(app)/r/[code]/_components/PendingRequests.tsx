@@ -82,14 +82,14 @@ export function PendingRequestsProvider({
   children: React.ReactNode;
 }) {
   return (
-    <GameRequests key={`${gameId}:${isHost}`} gameId={gameId} isHost={isHost}>
+    <GameRequests key={gameId} gameId={gameId} isHost={isHost}>
       {children}
     </GameRequests>
   );
 }
 
 // The subscription, commands and reveal clocks belong to one Game and role.
-// Remounting also resets reveal components when the viewer becomes Host.
+// Role changes reset request state while preserving unrelated Game children.
 function GameRequests({
   gameId,
   isHost,
@@ -133,6 +133,7 @@ type RequestOperation =
     }
   | { phase: "approving" | "denying" | "cancelling" };
 type RequestEvent =
+  | { type: "reset" }
   | { type: "start"; id: RequestId; state: RequestOperation }
   | { type: "revealed"; id: RequestId; hint: NonNullable<Giving["hint"]> }
   | { type: "settled"; id: RequestId; now: number }
@@ -142,6 +143,7 @@ function transitionRequests(
   current: ReadonlyMap<RequestId, RequestOperation>,
   event: RequestEvent,
 ) {
+  if (event.type === "reset") return new Map<RequestId, RequestOperation>();
   const next = new Map(current);
   const entry = current.get(event.id);
   switch (event.type) {
@@ -227,15 +229,18 @@ function usePendingRequestsState(
     transitionRequests,
     new Map<RequestId, RequestOperation>(),
   );
-  const active = useRef(false);
+  const [scope, setScope] = useState(() => ({ isHost }));
+  const active = useRef<typeof scope | null>(null);
   const inFlight = useRef(new Set<RequestId>());
   const askingNow = useRef(false);
   useEffect(() => {
-    active.current = true;
+    inFlight.current = new Set();
+    askingNow.current = false;
+    active.current = scope;
     return () => {
-      active.current = false;
+      active.current = null;
     };
-  }, []);
+  }, [scope]);
 
   // Owned clocks rearm from deadlines; repeated settlement is harmless.
   useEffect(() => {
@@ -245,13 +250,13 @@ function usePendingRequestsState(
     const timers = retained.map(([id, entry]) =>
       setTimeout(
         () => {
-          if (active.current) dispatch({ type: "finished", id });
+          if (active.current === scope) dispatch({ type: "finished", id });
         },
         entry.phase === "retained" ? Math.max(0, entry.until - Date.now()) : 0,
       ),
     );
     return () => timers.forEach(clearTimeout);
-  }, [entries]);
+  }, [entries, scope]);
 
   const [observed, setObserved] = useState<
     Record<RequestKind, ObservedRequest>
@@ -259,9 +264,21 @@ function usePendingRequestsState(
     hint: { phase: "unobserved", source: undefined },
     giveup: { phase: "unobserved", source: undefined },
   });
+  if (scope.isHost !== isHost) {
+    setScope({ isHost });
+    setCommand({ phase: "idle" });
+    dispatch({ type: "reset" });
+    setObserved({
+      hint: { phase: "unobserved", source: undefined },
+      giveup: { phase: "unobserved", source: undefined },
+    });
+  }
   const hint = observe(observed.hint, latest?.hint);
   const giveupObservation = observe(observed.giveup, latest?.giveup);
-  if (hint !== observed.hint || giveupObservation !== observed.giveup) {
+  if (
+    scope.isHost === isHost &&
+    (hint !== observed.hint || giveupObservation !== observed.giveup)
+  ) {
     setObserved({ hint, giveup: giveupObservation });
   }
   const pendingHint =
@@ -290,15 +307,16 @@ function usePendingRequestsState(
     }
   });
   const start = (id: RequestId, state: RequestOperation) => {
-    if (!active.current || inFlight.current.has(id) || entries.has(id))
+    if (active.current !== scope || inFlight.current.has(id) || entries.has(id))
       return false;
     inFlight.current.add(id);
     dispatch({ type: "start", id, state });
     return true;
   };
   const finish = (id: RequestId) => {
+    if (active.current !== scope) return;
     inFlight.current.delete(id);
-    if (active.current) dispatch({ type: "finished", id });
+    if (active.current === scope) dispatch({ type: "finished", id });
   };
 
   // Report errors as usual, but only the originating view may show a toast.
@@ -307,15 +325,15 @@ function usePendingRequestsState(
     options: Parameters<typeof runMutation>[1],
   ) {
     const result = await runMutation(fn, { ...options, showToast: false });
-    if (!result.ok && active.current)
+    if (!result.ok && active.current === scope)
       lazyToast((toast) => {
-        if (active.current) toast.error(result.message);
+        if (active.current === scope) toast.error(result.message);
       });
     return result;
   }
 
   async function ask(kind: RequestKind) {
-    if (!active.current || askingNow.current) return false;
+    if (active.current !== scope || askingNow.current) return false;
     askingNow.current = true;
     setCommand({ phase: "asking", kind });
     const result = await runMutation(
@@ -340,8 +358,8 @@ function usePendingRequestsState(
         showToast: false,
       },
     );
+    if (active.current !== scope) return false;
     askingNow.current = false;
-    if (!active.current) return false;
     setCommand(
       result.ok
         ? { phase: "idle" }
@@ -368,8 +386,8 @@ function usePendingRequestsState(
           fallback: "Could not approve request.",
         },
       );
+      if (active.current !== scope) return;
       inFlight.current.delete(request._id);
-      if (!active.current) return;
       if (
         request.type === "hint" &&
         result.ok &&
@@ -410,7 +428,8 @@ function usePendingRequestsState(
       approve,
       deny,
       settled: (id) => {
-        if (active.current) dispatch({ type: "settled", id, now: Date.now() });
+        if (active.current === scope)
+          dispatch({ type: "settled", id, now: Date.now() });
       },
     };
   }
@@ -454,7 +473,7 @@ function usePendingRequestsState(
       finish(request._id);
     },
     dismiss: (id) => {
-      if (!active.current) return;
+      if (active.current !== scope) return;
       setObserved((current) => {
         const next = { ...current };
         for (const kind of ["hint", "giveup"] as const) {
