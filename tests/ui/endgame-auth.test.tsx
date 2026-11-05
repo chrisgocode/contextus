@@ -4,7 +4,14 @@ import GlobalError from "@/app/global-error";
 import { EndGameBanner } from "@/app/(app)/r/[code]/_components/EndGameBanner";
 import SignIn from "@/app/(app)/signin/page";
 import { reportClientError } from "@/lib/report-error";
-import { render, screen, userEvent, waitFor } from "./test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -89,7 +96,8 @@ describe("EndGameBanner", () => {
     mocks.useQuery.mockImplementation((reference) => {
       const name = getFunctionName(reference);
       if (name === "guesses:listForGame") return { sorted: [] };
-      if (name === "users:getGuestAccountPrompt") return { messageIndex: 0 };
+      if (name === "users:getGuestAccountPrompt")
+        return { completedGames: 3, messageIndex: 0 };
       throw new Error(`Unexpected query: ${name}`);
     });
     const user = userEvent.setup();
@@ -106,12 +114,89 @@ describe("EndGameBanner", () => {
     expect(mocks.push).toHaveBeenCalledWith("/signin?redirectTo=%2F");
   });
 
+  it("keeps a failed acknowledgement visible and does not navigate", async () => {
+    mocks.dismissPrompt.mockRejectedValue(new Error("offline"));
+    mocks.useQuery.mockImplementation((reference) =>
+      getFunctionName(reference) === "guesses:listForGame"
+        ? { sorted: [] }
+        : { completedGames: 3, messageIndex: 0 },
+    );
+    render(
+      <EndGameBanner
+        answerLemma="apple"
+        gameId={"game" as never}
+        status="won"
+      />,
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByRole("dialog")).toHaveProperty("open", true);
+    expect(mocks.push).not.toHaveBeenCalled();
+    mocks.dismissPrompt.mockResolvedValue(null);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Not now" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mocks.dismissPrompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares Escape and Not now acknowledgement and waits for persistence", async () => {
+    let finish!: () => void;
+    mocks.dismissPrompt.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let milestone = 3;
+    mocks.useQuery.mockImplementation((reference) =>
+      getFunctionName(reference) === "guesses:listForGame"
+        ? { sorted: [] }
+        : { completedGames: milestone, messageIndex: 0 },
+    );
+    const banner = (
+      <EndGameBanner
+        answerLemma="apple"
+        gameId={"game" as never}
+        status="won"
+      />
+    );
+    const view = render(banner);
+    const dialog = screen.getByRole("dialog");
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(mocks.dismissPrompt).toHaveBeenCalledTimes(1);
+    expect(dialog).toHaveProperty("open", true);
+    await act(async () => finish());
+    expect(dialog).toHaveProperty("open", false);
+    // A repeated query value must not reopen the acknowledged milestone.
+    view.rerender(
+      <EndGameBanner
+        answerLemma="pear"
+        gameId={"game" as never}
+        status="won"
+      />,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    milestone = 6;
+    view.rerender(banner);
+    expect(screen.getByRole("dialog")).toHaveProperty("open", true);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Not now" }));
+    expect(mocks.dismissPrompt).toHaveBeenCalledTimes(2);
+    await act(async () => finish());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("keeps the guest prompt open until the player answers it", () => {
     vi.useFakeTimers();
     mocks.useQuery.mockImplementation((reference) => {
       const name = getFunctionName(reference);
       if (name === "guesses:listForGame") return { sorted: [] };
-      if (name === "users:getGuestAccountPrompt") return { messageIndex: 0 };
+      if (name === "users:getGuestAccountPrompt")
+        return { completedGames: 3, messageIndex: 0 };
       throw new Error(`Unexpected query: ${name}`);
     });
     render(

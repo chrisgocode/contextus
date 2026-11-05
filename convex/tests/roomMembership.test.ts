@@ -219,29 +219,64 @@ test.each(scenarios)(
   },
 );
 
-test("a new Host's Pending requests are withdrawn whatever moved the Host", async () => {
-  const t = setupTest();
-  const host = await seedUser(t, { isAnonymous: true, guestExpiresAt: 1 });
-  const member = await seedUser(t);
-  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
-  await asUser(t, member).mutation(api.rooms.join, { code });
-  const { gameId } = await asUser(t, host).mutation(api.games.start, {
-    roomId,
-    contextoGameId: 1336,
-  });
-  await asUser(t, member).mutation(api.requests.create, {
-    gameId,
-    type: "hint",
-  });
+test.each(["left", "expired", "merged", "idle"] as const)(
+  "%s: becoming Host withdraws both types of Pending request",
+  async (reason) => {
+    vi.useFakeTimers();
+    const t = setupTest();
+    const host = await seedUser(t, { isAnonymous: true, guestExpiresAt: 1 });
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, host).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    const { gameId } = await asUser(t, host).mutation(api.games.start, {
+      roomId,
+      contextoGameId: 1336,
+    });
+    for (const type of ["hint", "giveup"] as const) {
+      await asUser(t, member).mutation(api.requests.create, { gameId, type });
+    }
 
-  await t.mutation(internal.cleanup.removeExpiredGuests, {});
+    switch (reason) {
+      case "left":
+        await asUser(t, host).mutation(api.rooms.leave, { roomId });
+        break;
+      case "expired":
+        await t.mutation(internal.cleanup.removeExpiredGuests, {});
+        break;
+      case "merged": {
+        const mergeId = await t.run((ctx) =>
+          startGuestMerge(ctx, sessionOf(t, host), member),
+        );
+        if (mergeId === null) throw new Error("merge did not start");
+        // Observe the atomic membership/Host handoff before request expiry or
+        // any later merge batch can hide a missing withdrawal.
+        await t.mutation(internal.guestMerge.runBatch, { mergeId });
+        break;
+      }
+      case "idle":
+        await asUser(t, member).mutation(api.presence.heartbeat, {
+          roomId,
+          userId: member,
+          sessionId: "member",
+          interval: 10000,
+        });
+        await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+        break;
+    }
 
-  const room = await t.run((ctx) => ctx.db.get("rooms", roomId));
-  expect(room?.hostUserId).toBe(member);
-  expect(
-    await asUser(t, member).query(api.requests.listPending, { gameId }),
-  ).toEqual([]);
-});
+    expect(
+      await asUser(t, member).query(api.rooms.getByCode, { code }),
+    ).toMatchObject({
+      room: { hostUserId: member, status: "active" },
+    });
+    expect(
+      await asUser(t, member).query(api.requests.listPending, { gameId }),
+    ).toEqual([]);
+  },
+);
 
 test("a Guest who is not the Host expires without moving the Host", async () => {
   const t = setupTest();
@@ -346,3 +381,169 @@ test("an ended Room's Host moves to a remaining member when the Host leaves", as
   const room = await t.run((ctx) => ctx.db.get("rooms", roomId));
   expect(room).toMatchObject({ status: "ended", hostUserId: member });
 });
+
+test("reopening restores the retained Game and memberships and withdraws the new Host's requests", async () => {
+  vi.useFakeTimers();
+  const t = setupTest();
+  const host = await seedUser(t);
+  const member = await seedUser(t);
+  const { roomId, code } = await asUser(t, host).mutation(api.rooms.create, {});
+  await asUser(t, member).mutation(api.rooms.join, { code });
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1336,
+  });
+  await asUser(t, member).mutation(api.requests.create, {
+    gameId,
+    type: "hint",
+  });
+  await asUser(t, host).mutation(api.rooms.endRoom, { roomId });
+  expect(
+    await asUser(t, member).query(api.games.getActive, { roomId }),
+  ).toMatchObject({ _id: gameId, status: "in_progress" });
+  await expect(
+    asUser(t, member).mutation(api.requests.create, { gameId, type: "giveup" }),
+  ).rejects.toThrow();
+  expect(await asUser(t, host).query(api.rooms.listMine, {})).toEqual([]);
+
+  const replay = await asUser(t, member).mutation(api.rooms.playAgain, {
+    roomId,
+  });
+
+  expect(
+    await asUser(t, host).query(api.games.getActive, { roomId }),
+  ).toMatchObject({
+    _id: gameId,
+    status: "in_progress",
+  });
+  expect(
+    await asUser(t, member).query(api.rooms.getByCode, { code: replay.code }),
+  ).toMatchObject({
+    room: { status: "active", hostUserId: member },
+    members: expect.arrayContaining([
+      expect.objectContaining({ userId: host }),
+      expect.objectContaining({ userId: member }),
+    ]),
+  });
+  expect(await asUser(t, host).query(api.rooms.listMine, {})).toEqual([
+    expect.objectContaining({ _id: roomId }),
+  ]);
+  expect(
+    await asUser(t, member).query(api.requests.listPending, { gameId }),
+  ).toEqual([]);
+});
+
+test.each([true, undefined, false])(
+  "Host succession respects membership active=%s without migrating legacy rows",
+  async (active) => {
+    vi.useFakeTimers();
+    const t = setupTest();
+    const host = await seedUser(t);
+    const first = await seedUser(t);
+    const second = await seedUser(t);
+    const { roomId, code } = await asUser(t, host).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, first).mutation(api.rooms.join, { code });
+    vi.advanceTimersByTime(1);
+    await asUser(t, second).mutation(api.rooms.join, { code });
+    // Fixture for a legacy or explicitly inactive membership. All observations
+    // below use public APIs, including authorization after succession.
+    await t.run(async (ctx) => {
+      const member = await ctx.db
+        .query("roomMembers")
+        .withIndex("by_room_user", (q) =>
+          q.eq("roomId", roomId).eq("userId", first),
+        )
+        .unique();
+      await ctx.db.patch("roomMembers", member!._id, { active });
+    });
+
+    await asUser(t, host).mutation(api.rooms.leave, { roomId });
+
+    const successor = active === false ? second : first;
+    expect(
+      await asUser(t, successor).query(api.rooms.getByCode, { code }),
+    ).toMatchObject({
+      room: { status: "active", hostUserId: successor },
+      isViewerHost: true,
+    });
+    await expect(
+      asUser(t, successor).mutation(api.games.start, {
+        roomId,
+        contextoGameId: 1336,
+      }),
+    ).resolves.toHaveProperty("gameId");
+  },
+);
+
+test.each(["before", "after"] as const)(
+  "a disconnected Host returns %s cleanup: the online incumbent stays Host",
+  async (returning) => {
+    vi.useFakeTimers();
+    const t = setupTest();
+    const host = await seedUser(t);
+    const member = await seedUser(t);
+    const { roomId, code } = await asUser(t, host).mutation(
+      api.rooms.create,
+      {},
+    );
+    await asUser(t, member).mutation(api.rooms.join, { code });
+    const heartbeat = (userId: Id<"users">) =>
+      asUser(t, userId).mutation(api.presence.heartbeat, {
+        roomId,
+        userId,
+        sessionId: `session-${userId}`,
+        interval: 10000,
+      });
+    const connection = await heartbeat(host);
+    await asUser(t, host).mutation(api.presence.disconnect, {
+      sessionToken: connection!.sessionToken,
+    });
+    await heartbeat(member);
+    if (returning === "before") await heartbeat(host);
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+    if (returning === "after") await heartbeat(host);
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    expect(
+      await asUser(t, host).query(api.rooms.getByCode, { code }),
+    ).toMatchObject({
+      room: {
+        status: "active",
+        hostUserId: returning === "before" ? host : member,
+      },
+    });
+  },
+);
+
+test.each([0, 1])(
+  "idle cleanup requires more than 30 minutes without activity (overdue by %sms)",
+  async (overdue) => {
+    vi.useFakeTimers();
+    const t = setupTest();
+    const host = await seedUser(t);
+    const { roomId, code } = await asUser(t, host).mutation(
+      api.rooms.create,
+      {},
+    );
+    await t.run(async (ctx) => {
+      const activity = await ctx.db
+        .query("roomActivity")
+        .withIndex("by_room", (q) => q.eq("roomId", roomId))
+        .unique();
+      await ctx.db.patch("roomActivity", activity!._id, {
+        lastActivityAt: Date.now() - IDLE_TIMEOUT_MS - overdue,
+      });
+    });
+
+    await t.mutation(internal.cleanup._cleanupRoom, { roomId });
+
+    expect(
+      await asUser(t, host).query(api.rooms.getByCode, { code }),
+    ).toMatchObject({
+      room: { status: overdue === 0 ? "active" : "ended", hostUserId: host },
+    });
+  },
+);

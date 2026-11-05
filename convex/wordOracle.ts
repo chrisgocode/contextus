@@ -20,6 +20,27 @@ export type DistanceResult =
       error: string;
     };
 
+// Internal protocol: failures never qualify for either cache. The production
+// adapter keeps its existing DistanceResult contract.
+type CacheSource = "hit" | "miss" | "bypass";
+export type DistanceOutcome =
+  | { kind: "known"; score: ScoredLemma; cache: CacheSource }
+  | { kind: "unknown"; message: string; cache: CacheSource }
+  | { kind: "failure"; error: unknown };
+
+function distanceOutcome(
+  result: DistanceResult,
+  cache: CacheSource,
+): DistanceOutcome {
+  return result.ok
+    ? {
+        kind: "known",
+        score: { lemma: result.lemma, distance: result.distance },
+        cache,
+      }
+    : { kind: "unknown", message: result.error, cache };
+}
+
 // Answers questions about a Contexto puzzle's answer. Transport and
 // payload failures throw a user-facing ConvexError; an unknown word is an
 // expected result, not an error.
@@ -30,7 +51,8 @@ export type WordOracle = {
 };
 
 // The word oracle for one Contexto puzzle, with distances served from the
-// wordDistances and unknownWords caches when possible. Callers never see cache vs. fetch.
+// wordDistances and unknownWords caches when possible. Cache provenance stays
+// internal; app-facing turn results keep their existing shape.
 export type ContextoRequest = EventProperties<"contexto_request">;
 
 export function puzzleWordOracle(
@@ -70,13 +92,17 @@ export function puzzleWordOracle(
   // and real Contexto scores never mix on a shared deployment.
   if (env.E2E_TEST === "1") {
     return {
-      distance: (word: string) => e2eWordOracle.distance(contextoGameId, word),
+      distance: async (word: string): Promise<DistanceOutcome> =>
+        distanceOutcome(
+          await e2eWordOracle.distance(contextoGameId, word),
+          "bypass",
+        ),
       tip: (distance: number) => e2eWordOracle.tip(contextoGameId, distance),
       answer: () => e2eWordOracle.answer(contextoGameId),
     };
   }
   return {
-    async distance(word: string): Promise<DistanceResult> {
+    async distance(word: string): Promise<DistanceOutcome> {
       const startedAt = Date.now();
       const cached: DistanceResult | null = await ctx.runQuery(
         internal.wordOracle._cachedDistance,
@@ -89,13 +115,18 @@ export function puzzleWordOracle(
           outcome: cached.ok ? "ok" : "unknown_word",
           cache: "hit",
         });
-        return cached;
+        return distanceOutcome(cached, "hit");
       }
-      const result = await timed(
-        "distance",
-        () => contextoOracle.distance(contextoGameId, word),
-        (result) => (result.ok ? "ok" : "unknown_word"),
-      );
+      let result: DistanceResult;
+      try {
+        result = await timed(
+          "distance",
+          () => contextoOracle.distance(contextoGameId, word),
+          (result) => (result.ok ? "ok" : "unknown_word"),
+        );
+      } catch (error) {
+        return { kind: "failure", error };
+      }
       if (result.ok) {
         await ctx.runMutation(internal.wordOracle._cacheDistance, {
           contextoGameId,
@@ -110,7 +141,7 @@ export function puzzleWordOracle(
           error: result.error,
         });
       }
-      return result;
+      return distanceOutcome(result, "miss");
     },
 
     async tip(distance: number): Promise<ScoredLemma> {

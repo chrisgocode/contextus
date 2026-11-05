@@ -911,3 +911,46 @@ test("a Friend request sent by username records that it came from the username l
     },
   });
 });
+
+test("a silent decline can be cancelled, and a late answer cannot revive the request", async () => {
+  const t = setupTest();
+  const sender = await seedUser(t);
+  const recipient = await seedUser(t);
+  await asUser(t, sender).mutation(api.friends.sendRequest, {
+    userId: recipient,
+    via: "profile",
+  });
+  await asUser(t, recipient).mutation(api.friends.answerRequest, {
+    userId: sender,
+    answer: "decline",
+  });
+  expect(
+    await asUser(t, sender).mutation(api.friends.sendRequest, {
+      userId: recipient,
+      via: "profile",
+    }),
+  ).toEqual({ status: "requested" });
+  expect(
+    await asUser(t, recipient).query(api.friends.overview, {}),
+  ).toMatchObject({ incoming: [], outgoing: [], friends: [] });
+  await asUser(t, sender).mutation(api.friends.cancelRequest, {
+    userId: recipient,
+  });
+  await expect(
+    asUser(t, recipient).mutation(api.friends.answerRequest, {
+      userId: sender,
+      answer: "accept",
+    }),
+  ).rejects.toMatchObject({ data: { code: "friendRequestNotFound" } });
+  expect(
+    await asUser(t, sender).query(api.friends.relationship, {
+      userId: recipient,
+    }),
+  ).toBe("none");
+  expect(
+    await asUser(t, recipient).mutation(api.friends.sendRequest, {
+      userId: sender,
+      via: "profile",
+    }),
+  ).toEqual({ status: "requested" });
+});

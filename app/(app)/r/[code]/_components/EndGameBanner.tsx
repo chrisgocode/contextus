@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -93,24 +93,52 @@ function GuestAccountPrompt() {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const dismiss = useCallback(async () => {
+  type Acknowledgement =
+    | { phase: "ready" }
+    | { phase: "saving" | "acknowledged"; milestone: number };
+  const [acknowledgement, setAcknowledgement] = useState<Acknowledgement>({
+    phase: "ready",
+  });
+  const saving = useRef(false);
+  const milestone = prompt?.completedGames;
+  const acknowledged =
+    acknowledgement.phase === "acknowledged" &&
+    acknowledgement.milestone === milestone;
+  const visible = prompt != null && !acknowledged;
+
+  async function dismiss() {
+    if (saving.current || milestone === undefined || acknowledged) return false;
+    saving.current = true;
+    const dialog = dialogRef.current;
+    setAcknowledgement({ phase: "saving", milestone });
     const result = await runMutation(() => dismissPrompt({}), {
       context: "guestPrompt.dismiss",
       fallback: "Could not dismiss this message. Try again.",
     });
-    if (result.ok) dialogRef.current?.close();
-  }, [dismissPrompt]);
+    saving.current = false;
+    // Close while still connected so native modal focus restoration runs.
+    // A different milestone has its own dialog and cannot be closed here.
+    if (result.ok && dialog?.open) dialog.close();
+    setAcknowledgement(
+      result.ok ? { phase: "acknowledged", milestone } : { phase: "ready" },
+    );
+    return result.ok;
+  }
 
-  // No auto-dismiss: showModal() moves focus inside, and closing a modal on a
-  // timer takes it away from keyboard and screen-reader users mid-read.
+  // Visibility follows the persisted milestone, never a dismissal timer.
+  // Closing before removal also lets the browser restore the previous focus.
   useEffect(() => {
-    if (prompt === null || prompt === undefined) return;
-    if (dialogRef.current?.open !== true) dialogRef.current?.showModal();
-  }, [prompt]);
+    const dialog = dialogRef.current;
+    if (visible && dialog?.open !== true) dialog?.showModal();
+    return () => {
+      if (dialog?.open) dialog.close();
+    };
+  }, [visible, milestone]);
 
-  if (prompt === null || prompt === undefined) return null;
+  if (!visible || prompt == null) return null;
   return (
     <dialog
+      key={milestone}
       ref={dialogRef}
       aria-labelledby="guest-account-title"
       className="m-auto max-w-sm rounded-lg border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/60"
@@ -131,7 +159,7 @@ function GuestAccountPrompt() {
         <div className="flex gap-2">
           <Button
             onClick={async () => {
-              await dismiss();
+              if (!(await dismiss())) return;
               const redirectTo = window.location.pathname;
               router.push(
                 `/signin?redirectTo=${encodeURIComponent(redirectTo)}`,
