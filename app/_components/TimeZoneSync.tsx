@@ -14,18 +14,23 @@ export function TimeZoneSync() {
     isAuthenticated ? {} : "skip",
   );
   const setTimeZone = useMutation(api.users.setTimeZone);
-  const userId = currentUser?._id;
+  const userId = isAuthenticated ? currentUser?._id : undefined;
 
   useEffect(() => {
     if (userId === undefined) return;
+    let current = true;
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setTimeZone({ timeZone }).catch((err: unknown) => {
+      if (!current) return;
       reportClientError(err, {
         userMessage: "Could not save your time zone.",
         context: "users.setTimeZone",
         showToast: false,
       });
     });
+    return () => {
+      current = false;
+    };
   }, [userId, setTimeZone]);
 
   return null;
