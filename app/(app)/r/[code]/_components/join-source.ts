@@ -7,8 +7,12 @@ export function markFriendStatusJoin(code: string) {
   friendStatusCode = code.toUpperCase();
 }
 
+export function peekJoinSource(code: string): "friend_status" | undefined {
+  return friendStatusCode === code.toUpperCase() ? "friend_status" : undefined;
+}
+
 export function takeJoinSource(code: string): "friend_status" | undefined {
-  if (friendStatusCode !== code.toUpperCase()) return undefined;
+  const matches = friendStatusCode === code.toUpperCase();
   friendStatusCode = null;
-  return "friend_status";
+  return matches ? "friend_status" : undefined;
 }

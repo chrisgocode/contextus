@@ -997,3 +997,232 @@ test("a member who becomes Host has their pending requests withdrawn", async () 
     asUser(t, other).action(api.requests.approve, { requestId }),
   ).rejects.toMatchObject({ data: { code: "requestHandled" } });
 });
+
+// These tests observe public projections and effects. The clock is injected at
+// the runtime boundary; scheduled jobs deliberately lag the projected deadline.
+test("all request views release the type exactly at the unanswered deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = setupTest();
+    const { host, other, gameId } = await startedGame(t);
+    await extendSessions(t);
+    await asUser(t, other).mutation(api.requests.create, {
+      gameId,
+      type: "hint",
+    });
+    const mine = await asUser(t, other).query(api.requests.latestMine, {
+      gameId,
+    });
+    const deadline = mine.hint!.expiresAt!;
+    for (const [now, live] of [
+      [deadline - 1, true],
+      [deadline, false],
+    ] as const) {
+      vi.setSystemTime(now);
+      expect(
+        await asUser(t, host).query(api.requests.listPending, { gameId }),
+      ).toHaveLength(live ? 1 : 0);
+      expect(
+        await asUser(t, host).query(api.requests.pendingFromOthers, { gameId }),
+      ).toEqual({ hint: live ? { name: "Other" } : null, giveup: null });
+      expect(
+        (await asUser(t, other).query(api.requests.latestMine, { gameId })).hint
+          ?.status,
+      ).toBe(live ? "pending" : "expired");
+    }
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+test.each(["approve", "deny", "cancel", "expire"] as const)(
+  "a deferred approval respects %s and cannot replay a handled request",
+  async (finish) => {
+    vi.useFakeTimers();
+    try {
+      const t = setupTest();
+      const oracle = fakeWordOracle({});
+      const { host, other, roomId, gameId } = await startedGame(t);
+      await extendSessions(t);
+      await asUser(t, other).mutation(api.requests.create, {
+        gameId,
+        type: "hint",
+      });
+      const mine = await asUser(t, other).query(api.requests.latestMine, {
+        gameId,
+      });
+      const requestId = mine.hint!._id;
+      const deadline = mine.hint!.expiresAt!;
+      vi.setSystemTime(deadline - 1_000);
+      const started = deferred<void>();
+      const tip = deferred<{ lemma: string; distance: number }>();
+      oracle.tip.mockImplementationOnce(() => {
+        started.resolve();
+        return tip.promise;
+      });
+      const approval = asUser(t, host)
+        .action(api.requests.approve, { requestId })
+        .then(
+          (value) => ({ value }),
+          (error) => ({ error }),
+        );
+      await started.promise;
+      // Approval started at 59s: the scheduled 60s expiry must defer to 89s.
+      vi.advanceTimersByTime(1_000);
+      await t.finishInProgressScheduledFunctions();
+      expect(
+        (await asUser(t, other).query(api.requests.latestMine, { gameId })).hint
+          ?.status,
+      ).toBe("pending");
+      await expect(
+        asUser(t, other).mutation(api.requests.create, {
+          gameId,
+          type: "hint",
+        }),
+      ).rejects.toMatchObject({ data: { code: "requestAlreadyPending" } });
+      vi.setSystemTime(deadline + 29_000 - 1);
+      expect(
+        await asUser(t, host).query(api.requests.listPending, { gameId }),
+      ).toHaveLength(1);
+
+      if (finish === "deny")
+        await asUser(t, host).mutation(api.requests.deny, { requestId });
+      if (finish === "cancel")
+        await asUser(t, other).mutation(api.requests.cancel, { requestId });
+      if (finish === "expire") {
+        // No scheduled job has persisted expiry at this boundary yet.
+        vi.setSystemTime(deadline + 29_000);
+        expect(
+          await asUser(t, host).query(api.requests.listPending, { gameId }),
+        ).toEqual([]);
+        expect(
+          (await asUser(t, other).query(api.requests.latestMine, { gameId }))
+            .hint?.status,
+        ).toBe("expired");
+      }
+      tip.resolve({ lemma: "pomelo", distance: 299 });
+      const result = await approval;
+      const latest = await asUser(t, other).query(api.requests.latestMine, {
+        gameId,
+      });
+      const guesses = await asUser(t, host).query(api.guesses.listForGame, {
+        gameId,
+      });
+      if (finish === "approve") {
+        expect(result).toEqual({ value: { lemma: "pomelo", distance: 299 } });
+        expect(latest.hint).toMatchObject({
+          status: "approved",
+          hint: { lemma: "pomelo", distance: 299 },
+        });
+        expect(guesses.sorted).toMatchObject([
+          { lemma: "pomelo", distance: 299, source: "hint", userId: other },
+        ]);
+      } else {
+        expect(result).toMatchObject({
+          error: { data: { code: "requestHandled" } },
+        });
+        expect(latest.hint?.status ?? null).toBe(
+          finish === "cancel" ? null : finish === "deny" ? "denied" : "expired",
+        );
+        expect(guesses.sorted).toEqual([]);
+      }
+      expect(
+        (await asUser(t, host).query(api.games.getActive, { roomId }))?.status,
+      ).toBe("in_progress");
+      await expect(
+        asUser(t, host).action(api.requests.approve, { requestId }),
+      ).rejects.toMatchObject({ data: { code: "requestHandled" } });
+      // A delayed expiry cannot undo approval/denial or resurrect cancellation.
+      vi.advanceTimersByTime(60_000);
+      await t.finishInProgressScheduledFunctions();
+      expect(
+        await asUser(t, other).query(api.requests.latestMine, { gameId }),
+      ).toEqual(latest);
+      expect(
+        await asUser(t, host).query(api.guesses.listForGame, { gameId }),
+      ).toEqual(guesses);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each(["first", "second", "neither"] as const)(
+  "repeated approvals in grace share a deadline; %s finishes",
+  async (winner) => {
+    vi.useFakeTimers();
+    try {
+      const t = setupTest();
+      const oracle = fakeWordOracle({});
+      const { host, other, gameId } = await startedGame(t);
+      await extendSessions(t);
+      await asUser(t, other).mutation(api.requests.create, {
+        gameId,
+        type: "hint",
+      });
+      const mine = await asUser(t, other).query(api.requests.latestMine, {
+        gameId,
+      });
+      const requestId = mine.hint!._id;
+      const deadline = mine.hint!.expiresAt!;
+      const entered = [deferred<void>(), deferred<void>()];
+      const tips = [
+        deferred<{ lemma: string; distance: number }>(),
+        deferred<{ lemma: string; distance: number }>(),
+      ];
+      for (const i of [0, 1]) {
+        oracle.tip.mockImplementationOnce(() => {
+          entered[i].resolve();
+          return tips[i].promise;
+        });
+      }
+      const approve = () =>
+        asUser(t, host)
+          .action(api.requests.approve, { requestId })
+          .then(
+            (value) => ({ value }),
+            (error) => ({ error }),
+          );
+      vi.setSystemTime(deadline - 1_000);
+      const first = approve();
+      await entered[0].promise;
+      vi.setSystemTime(deadline + 1_000);
+      const second = approve();
+      await entered[1].promise;
+      vi.setSystemTime(deadline + 29_000 - (winner === "neither" ? 0 : 1));
+      const index = winner === "second" ? 1 : 0;
+      const results = [first, second];
+      tips[index].resolve({ lemma: "pomelo", distance: 299 });
+      const completed = await results[index];
+      expect(completed).toMatchObject(
+        winner === "neither"
+          ? { error: { data: { code: "requestHandled" } } }
+          : { value: { lemma: "pomelo", distance: 299 } },
+      );
+      tips[1 - index].resolve({ lemma: "kumquat", distance: 299 });
+      expect(await results[1 - index]).toMatchObject({
+        error: { data: { code: "requestHandled" } },
+      });
+      const guesses = await asUser(t, other).query(api.guesses.listForGame, {
+        gameId,
+      });
+      expect(guesses.sorted.map((g) => g.lemma)).toEqual(
+        winner === "neither" ? [] : ["pomelo"],
+      );
+      expect(
+        (await asUser(t, other).query(api.requests.latestMine, { gameId })).hint
+          ?.status,
+      ).toBe(winner === "neither" ? "expired" : "approved");
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

@@ -14,3 +14,10 @@ export function isCreatedRoom(code: string) {
 export function clearCreatedRoom(code: string) {
   if (isCreatedRoom(code)) createdRoomCode = null;
 }
+
+/** Claim the handoff for this destination, discarding abandoned destinations. */
+export function takeCreatedRoom(code: string): boolean {
+  const created = isCreatedRoom(code);
+  createdRoomCode = null;
+  return created;
+}
