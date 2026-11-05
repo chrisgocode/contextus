@@ -8,7 +8,7 @@ import {
 import { Achievements } from "@/app/(app)/user/[username]/_components/Achievements";
 import { ActivityGraph } from "@/app/(app)/user/[username]/_components/ActivityGraph";
 import { achievementDefinitions } from "@/convex/lib/achievements";
-import { render, screen, userEvent } from "./test-utils";
+import { act, render, screen, userEvent } from "./test-utils";
 
 afterEach(() => vi.useRealTimers());
 
@@ -116,6 +116,88 @@ describe("AchievementUnlockQueue", () => {
     vi.runAllTimers();
     expect(onItemDone).toHaveBeenCalledOnce();
   });
+
+  it("does not restart a displaying head when unlocks append or callbacks change", () => {
+    vi.useFakeTimers();
+    const bronze = achievementGroups[0];
+    const item = {
+      key: "first",
+      achievementName: "Bullseye",
+      category: "bronze" as const,
+      categoryLabel: bronze.label,
+      trophy: bronze.image,
+      trophyAlt: "Bronze trophy",
+    };
+    const done = vi.fn();
+    const latestDone = vi.fn();
+    const view = render(
+      <AchievementUnlockQueue items={[item]} onItemDone={done} />,
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    view.rerender(
+      <AchievementUnlockQueue
+        items={[{ ...item }, { ...item, key: "second" }]}
+        onItemDone={latestDone}
+      />,
+    );
+    act(() => vi.advanceTimersByTime(2199));
+    expect(latestDone).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(latestDone).toHaveBeenCalledTimes(1);
+    expect(done).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(8400));
+    expect(latestDone).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["empty", "replaced", "unmounted"])(
+    "cancels obsolete head timers when %s, including reduced motion",
+    (transition) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("matchMedia", () => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      const bronze = achievementGroups[0];
+      const item = {
+        key: "first",
+        achievementName: "Bullseye",
+        category: "bronze" as const,
+        categoryLabel: bronze.label,
+        trophy: bronze.image,
+        trophyAlt: "Bronze trophy",
+      };
+      const done = vi.fn();
+      const view = render(
+        <AchievementUnlockQueue items={[item]} onItemDone={done} />,
+      );
+      act(() => vi.advanceTimersByTime(2000));
+      if (transition === "unmounted") view.unmount();
+      else
+        view.rerender(
+          <AchievementUnlockQueue
+            items={
+              transition === "empty"
+                ? []
+                : [{ ...item, key: "second", achievementName: "So Close" }]
+            }
+            onItemDone={done}
+          />,
+        );
+      act(() => vi.advanceTimersByTime(2200));
+      expect(done).not.toHaveBeenCalled();
+      if (transition === "replaced") {
+        expect(
+          screen.getByText("Bronze achievement unlocked: So Close"),
+        ).toBeVisible();
+        act(() => vi.advanceTimersByTime(2000));
+        expect(done).toHaveBeenCalledTimes(1);
+      }
+      view.unmount();
+      act(() => vi.runAllTimers());
+      expect(done).toHaveBeenCalledTimes(transition === "replaced" ? 1 : 0);
+    },
+  );
 
   it("keeps the same live region mounted while the queue fills", () => {
     const bronze = achievementGroups[0];

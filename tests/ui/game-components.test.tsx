@@ -13,7 +13,15 @@ import {
 } from "@/app/(app)/r/[code]/_components/HostRequestRows";
 import { RequestRows } from "@/app/(app)/r/[code]/_components/RequestRows";
 import { fakeRequests, RequestsProvider } from "./fake-requests";
-import { act, cleanup, render, screen, userEvent, waitFor } from "./test-utils";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from "./test-utils";
 
 const convex = vi.hoisted(() => ({
   useAction: vi.fn(),
@@ -111,6 +119,178 @@ describe("GuessInput", () => {
     );
     expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
   });
+
+  it.each(["accepted", "duplicate", "unknown", "failed"])(
+    "ignores a stale %s completion after the Game changes",
+    async (outcome) => {
+      let resolve!: (value: unknown) => void;
+      let reject!: (reason: Error) => void;
+      convex.useAction.mockReturnValue(
+        vi.fn(
+          () =>
+            new Promise((yes, no) => {
+              resolve = yes;
+              reject = no;
+            }),
+        ),
+      );
+      const duplicate = vi.fn();
+      const achievements = vi.fn();
+      const form = (game: string) => (
+        <GuessInput
+          gameId={game as never}
+          onDuplicate={duplicate}
+          onAchievementsUnlocked={achievements}
+        />
+      );
+      const view = render(form("old"));
+      const user = userEvent.setup();
+      await user.type(screen.getByPlaceholderText("Type a word…"), "apple");
+      await user.click(screen.getByRole("button", { name: "Guess" }));
+      sessionStorage.setItem("guess-draft:new", "pear");
+      view.rerender(form("new"));
+      expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("pear");
+      duplicate.mockClear();
+      await act(async () => {
+        if (outcome === "failed") reject(new Error("offline"));
+        else
+          resolve(
+            outcome === "duplicate"
+              ? { alreadyGuessed: true, lemma: "apple" }
+              : outcome === "unknown"
+                ? { message: "Unknown word." }
+                : { lemma: "apple", won: false, unlockedAchievementIds: [] },
+          );
+      });
+      expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("pear");
+      expect(sessionStorage.getItem("guess-draft:new")).toBe("pear");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(duplicate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("submits only once while a Guess is pending", async () => {
+    const submit = vi.fn(() => new Promise(() => {}));
+    convex.useAction.mockReturnValue(submit);
+    render(
+      <GuessInput
+        gameId={"game" as never}
+        onDuplicate={vi.fn()}
+        onAchievementsUnlocked={vi.fn()}
+      />,
+    );
+    await userEvent
+      .setup()
+      .type(screen.getByPlaceholderText("Type a word…"), "apple");
+    const form = screen.getByRole("button", { name: "Guess" }).closest("form")!;
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears duplicate drafts, highlights the lemma, and restores focus", async () => {
+    convex.useAction.mockReturnValue(
+      vi.fn().mockResolvedValue({ alreadyGuessed: true, lemma: "dog" }),
+    );
+    const duplicate = vi.fn();
+    render(
+      <GuessInput
+        gameId={"game" as never}
+        onDuplicate={duplicate}
+        onAchievementsUnlocked={vi.fn()}
+      />,
+    );
+    const input = screen.getByPlaceholderText("Type a word…");
+    await userEvent.setup().type(input, "dogs");
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Guess" }));
+    expect(duplicate).toHaveBeenLastCalledWith("dog");
+    expect(input).toHaveValue("");
+    expect(sessionStorage.getItem("guess-draft:game")).toBeNull();
+    expect(input).toHaveFocus();
+  });
+
+  it.each(["unknown", "failed"])(
+    "retains a %s draft and clears the error on editing",
+    async (outcome) => {
+      const submit = vi.fn();
+      if (outcome === "unknown")
+        submit.mockResolvedValue({ message: "Unknown word." });
+      else submit.mockRejectedValue(new Error("offline"));
+      convex.useAction.mockReturnValue(submit);
+      render(
+        <GuessInput
+          gameId={"game" as never}
+          onDuplicate={vi.fn()}
+          onAchievementsUnlocked={vi.fn()}
+        />,
+      );
+      const input = screen.getByPlaceholderText("Type a word…");
+      const user = userEvent.setup();
+      await user.type(input, "pear");
+      await user.click(screen.getByRole("button", { name: "Guess" }));
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(input).toHaveValue("pear");
+      expect(input).toHaveFocus();
+      expect(sessionStorage.getItem("guess-draft:game")).toBe("pear");
+      await user.type(input, "s");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(sessionStorage.getItem("guess-draft:game")).toBe("pears");
+    },
+  );
+
+  it.each(["accepted", "duplicate"])(
+    "protects a remounted draft from an unmounted %s completion",
+    async (outcome) => {
+      let finish!: (value: unknown) => void;
+      const submit = vi.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      convex.useAction.mockReturnValue(submit);
+      const duplicate = vi.fn();
+      const achievements = vi.fn();
+      const form = (
+        <GuessInput
+          gameId={"game" as never}
+          onDuplicate={duplicate}
+          onAchievementsUnlocked={achievements}
+        />
+      );
+      const first = render(form);
+      const user = userEvent.setup();
+      await user.type(screen.getByPlaceholderText("Type a word…"), "apple");
+      await user.click(screen.getByRole("button", { name: "Guess" }));
+      first.unmount();
+      render(form);
+      expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("apple");
+      await user.clear(screen.getByPlaceholderText("Type a word…"));
+      await user.type(screen.getByPlaceholderText("Type a word…"), "pear");
+      duplicate.mockClear();
+      await act(async () =>
+        finish(
+          outcome === "duplicate"
+            ? { alreadyGuessed: true, lemma: "apple" }
+            : {
+                lemma: "apple",
+                won: true,
+                unlockedAchievementIds: ["bullseye"],
+              },
+        ),
+      );
+      expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("pear");
+      expect(sessionStorage.getItem("guess-draft:game")).toBe("pear");
+      expect(duplicate).not.toHaveBeenCalled();
+      if (outcome === "accepted")
+        expect(achievements).toHaveBeenCalledExactlyOnceWith(["bullseye"]);
+      else expect(achievements).not.toHaveBeenCalled();
+    },
+  );
 
   it("shows unknown words inline", async () => {
     convex.useAction.mockReturnValue(

@@ -9,6 +9,7 @@ import {
   normalizeUsernameInput,
 } from "./lib/usernames";
 import { track } from "./analytics";
+import { guestPromptDecision } from "./lib/guestEngagement";
 import { appError } from "./lib/errors";
 import { canonicalTimeZone } from "./lib/localTime";
 import { playerFromUser } from "./lib/player";
@@ -103,15 +104,11 @@ export const getGuestAccountPrompt = query({
     const userId = await getCurrentUserId(ctx);
     if (userId === null) return null;
     const user = await ctx.db.get("users", userId);
-    if (user?.isAnonymous !== true) return null;
-    const completedGames = user.guestCompletedGames ?? 0;
-    const milestone = Math.floor(completedGames / 3) * 3;
-    if (milestone < 3 || (user.guestPromptedGames ?? 0) >= milestone) {
-      return null;
-    }
+    const decision = guestPromptDecision(user);
+    if (decision.phase !== "due") return null;
     return {
-      completedGames: milestone,
-      messageIndex: (milestone / 3 - 1) % 3,
+      completedGames: decision.milestone,
+      messageIndex: decision.messageIndex,
     };
   },
 });
@@ -121,10 +118,11 @@ export const dismissGuestAccountPrompt = mutation({
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
     const user = await ctx.db.get("users", userId);
-    if (user?.isAnonymous !== true) return null;
-    const milestone = Math.floor((user.guestCompletedGames ?? 0) / 3) * 3;
-    if (milestone >= 3) {
-      await ctx.db.patch("users", userId, { guestPromptedGames: milestone });
+    const decision = guestPromptDecision(user);
+    if (decision.phase === "due") {
+      await ctx.db.patch("users", userId, {
+        guestPromptedGames: decision.milestone,
+      });
     }
     return null;
   },
