@@ -581,3 +581,87 @@ test("Play with friends invites as many Friends as one go allows, and refuses mo
     MAX_INVITES_AT_ONCE,
   );
 });
+
+test("the old expiry deadline preserves a refreshed Invite and join-by-code consumes it", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  const t = setupTest();
+  const { host, friend, roomId, code } = await roomWithFriend(t);
+  await keepSignedIn(t);
+  await sendInvite(t, host, roomId, friend);
+  const [original] = await asUser(t, friend).query(api.friends.openInvites, {});
+  await advance(t, 60_000);
+  await sendInvite(t, host, roomId, friend);
+  const [beforeExpiry] = await asUser(t, friend).query(
+    api.friends.openInvites,
+    {},
+  );
+  expect(beforeExpiry.expiresAt).toBeGreaterThan(original.expiresAt);
+  await advance(t, original.expiresAt - Date.now());
+  const [refreshed] = await asUser(t, friend).query(
+    api.friends.openInvites,
+    {},
+  );
+  expect(refreshed).toEqual(beforeExpiry);
+  expect(refreshed._id).toBe(original._id);
+  expect((await overview(t, host, roomId)).room?.invited).toEqual([friend]);
+  await asUser(t, friend).mutation(api.rooms.join, { code });
+  await expect(
+    asUser(t, friend).mutation(api.friends.answerInvite, {
+      inviteId: original._id,
+      answer: "join",
+    }),
+  ).rejects.toMatchObject({ data: { code: "inviteNotFound" } });
+  expect(await asUser(t, friend).query(api.friends.openInvites, {})).toEqual(
+    [],
+  );
+  expect((await overview(t, host, roomId)).room?.members).toEqual([friend]);
+});
+
+test("an Invite does not authorize Pending requests before the recipient joins", async () => {
+  const t = setupTest();
+  const { host, friend, roomId } = await roomWithFriend(t);
+  await sendInvite(t, host, roomId, friend);
+  const { gameId } = await asUser(t, host).mutation(api.games.start, {
+    roomId,
+    contextoGameId: 1,
+  });
+  await expect(
+    asUser(t, friend).mutation(api.requests.create, { gameId, type: "hint" }),
+  ).rejects.toMatchObject({ data: { code: "notMember" } });
+  expect(await asUser(t, friend).query(api.rooms.listMine, {})).toEqual([]);
+  expect(
+    await asUser(t, friend).query(api.friends.openInvites, {}),
+  ).toHaveLength(1);
+});
+
+test("an overdue stored Invite rejects both answers and can be refreshed before cleanup", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  const t = setupTest();
+  const { host, friend, roomId } = await roomWithFriend(t);
+  await keepSignedIn(t);
+  await sendInvite(t, host, roomId, friend);
+  const [original] = await asUser(t, friend).query(api.friends.openInvites, {});
+  // Move the clock without running scheduler timers: the row is still stored.
+  vi.setSystemTime(original.expiresAt + 1);
+  expect(await asUser(t, friend).query(api.friends.openInvites, {})).toEqual(
+    [],
+  );
+  expect((await overview(t, host, roomId)).room?.invited).toEqual([]);
+  for (const answer of ["join", "decline"] as const) {
+    await expect(
+      asUser(t, friend).mutation(api.friends.answerInvite, {
+        inviteId: original._id,
+        answer,
+      }),
+    ).rejects.toMatchObject({ data: { code: "inviteNotFound" } });
+  }
+  await sendInvite(t, host, roomId, friend);
+  const [refreshed] = await asUser(t, friend).query(
+    api.friends.openInvites,
+    {},
+  );
+  expect(refreshed._id).toBe(original._id);
+  expect(refreshed.expiresAt).toBeGreaterThan(original.expiresAt);
+});

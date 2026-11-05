@@ -11,6 +11,7 @@ import {
 } from "../testHelpers.test";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -502,4 +503,130 @@ test("listForProfile reveals unlocked hidden achievements", async () => {
     unlocked: true,
     unlockedAt: 456,
   });
+});
+
+test.each([
+  ["equal distances", [100, 100, 50, 0]],
+  ["a worse guess", [100, 150, 50, 0]],
+])(
+  "no-backtracking cannot recover after %s within a run",
+  async (_, distances) => {
+    const t = setupTest();
+    fakeWordOracle({
+      guesses: {
+        1336: Object.fromEntries(distances.map((d, i) => [`word${i}`, d])),
+      },
+    });
+    const { host, gameId } = await startedGame(t);
+    for (let i = 0; i < distances.length; i++) {
+      const result = await asUser(t, host).action(api.guesses.submit, {
+        gameId,
+        word: `word${i}`,
+      });
+      expect(result.unlockedAchievementIds).not.toContain("no_backtracking");
+    }
+  },
+);
+
+test("hints and duplicate guesses leave a strictly improving real-guess run eligible", async () => {
+  const t = setupTest();
+  fakeWordOracle({
+    guesses: { 1336: { opener: 100, answer: 0 } },
+    tips: { 1336: { 50: "hint" } },
+  });
+  const { host, gameId } = await startedGame(t);
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "opener" });
+  await asUser(t, host).action(api.guesses.submit, { gameId, word: "opener" });
+  await asUser(t, host).action(api.hints.hostHint, { gameId });
+  const result = await asUser(t, host).action(api.guesses.submit, {
+    gameId,
+    word: "answer",
+  });
+  expect(result.unlockedAchievementIds).toContain("no_backtracking");
+});
+
+test("credited solve without an own attempt preserves first-attempt eligibility but prevents One and Done", async () => {
+  const t = setupTest();
+  const host = await seedUser(t);
+  // This can arrive through Guest/account reconciliation: solve and attempt
+  // milestones are independent, and old credit must not invent an attempt.
+  await t.run(async (ctx) => {
+    await ctx.db.insert("userGameHistory", {
+      userId: host,
+      contextoGameId: 1336,
+      firstPlayedAt: 1,
+      firstSolvedAt: 2,
+    });
+  });
+  fakeWordOracle({ guesses: { 1336: { answer: 0 } } });
+  const { gameId } = await startedGame(t, 1336, { host });
+  const result = await asUser(t, host).action(api.guesses.submit, {
+    gameId,
+    word: "answer",
+  });
+  expect(result.unlockedAchievementIds).toContain("lucky_shot");
+  expect(result.unlockedAchievementIds).not.toContain("one_and_done");
+});
+
+test("overlapping replay requests credit the first accepted attempt and solve only once", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+  const t = setupTest();
+  const host = await seedUser(t, { username: "replayer" });
+  const first = await startedGame(t, 1336, { host });
+  const replay = await startedGame(t, 1336, { host });
+  const oracle = fakeWordOracle({ guesses: { 1336: { answer: 0 } } });
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  oracle.distance.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return { ok: true, lemma: "late", distance: 0 };
+  });
+  let firstUnlockedAt: number | null | undefined;
+  const pending = asUser(t, host).action(api.guesses.submit, {
+    gameId: first.gameId,
+    word: "late",
+  });
+  await entered.promise;
+  try {
+    const accepted = await asUser(t, host).action(api.guesses.submit, {
+      gameId: replay.gameId,
+      word: "answer",
+    });
+    expect(accepted.unlockedAchievementIds).toContain("one_and_done");
+    const profile = await asUser(t, host).query(
+      api.achievements.listForProfile,
+      { username: "replayer" },
+    );
+    firstUnlockedAt = profile?.achievements.find(
+      (a) => a.achievementId === "one_and_done",
+    )?.unlockedAt;
+    expect(firstUnlockedAt).toBeTypeOf("number");
+    vi.setSystemTime(new Date("2026-06-01T12:00:01Z"));
+  } finally {
+    release.resolve();
+  }
+  const delayed = await pending;
+  expect(delayed.unlockedAchievementIds).not.toContain("one_and_done");
+  expect(delayed.unlockedAchievementIds).not.toContain("lucky_shot");
+  const profile = await asUser(t, host).query(api.achievements.listForProfile, {
+    username: "replayer",
+  });
+  expect(
+    profile?.achievements.find((a) => a.achievementId === "word_explorer")
+      ?.progress,
+  ).toEqual({ current: 1, target: 10 });
+  expect(
+    profile?.achievements.find((a) => a.achievementId === "one_and_done")
+      ?.unlockedAt,
+  ).toBe(firstUnlockedAt);
+  expect(
+    profile?.achievements.filter(
+      (a) => a.achievementId === "one_and_done" && a.unlocked,
+    ),
+  ).toHaveLength(1);
+  await expect(
+    asUser(t, host).query(api.games.listMyHistory, {}),
+  ).resolves.toEqual([1336]);
 });

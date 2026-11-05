@@ -9,7 +9,7 @@
 import type * as SentrySdk from "@sentry/nextjs";
 import { sentryEnabled } from "@/lib/sentry";
 import { loadSentry } from "@/lib/sentry-client";
-import { markPosthogReady } from "@/lib/posthog-client";
+import { loadPosthog } from "@/lib/posthog-client";
 
 const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const posthogEnvironment = process.env.NEXT_PUBLIC_POSTHOG_ENVIRONMENT;
@@ -17,26 +17,8 @@ if (posthogEnvironment && posthogToken) {
   // Pageviews only: interaction capture, replay, and errors (Sentry's job)
   // stay off. Loaded on idle like Sentry below.
   const start = () => {
-    void import("posthog-js")
-      .then(({ default: posthog }) => {
-        posthog.init(posthogToken, {
-          api_host: "/ingest",
-          ui_host: "https://us.posthog.com",
-          defaults: "2026-01-30",
-          capture_pageview: "history_change",
-          capture_pageleave: false,
-          autocapture: false,
-          capture_dead_clicks: false,
-          rageclick: false,
-          disable_session_recording: true,
-          capture_exceptions: false,
-        });
-        // Tag browser events like server events so previews can be filtered.
-        posthog.register({ deployment_environment: posthogEnvironment });
-        markPosthogReady(posthog);
-      })
-      // Analytics is best-effort and must never break the page.
-      .catch(() => {});
+    // Analytics is best-effort and must never break the page.
+    void loadPosthog().catch(() => {});
   };
   const startWhenIdle = () =>
     "requestIdleCallback" in window
@@ -50,10 +32,22 @@ if (posthogEnvironment && posthogToken) {
 let sentry: typeof SentrySdk | undefined;
 
 if (sentryEnabled) {
-  const early: unknown[] = [];
-  const onError = (event: ErrorEvent) => early.push(event.error ?? event);
-  const onRejection = (event: PromiseRejectionEvent) =>
-    early.push(event.reason);
+  type EarlyErrors =
+    | { status: "buffering"; errors: unknown[] }
+    | { status: "flushed" | "discarded" };
+  let early: EarlyErrors = { status: "buffering", errors: [] };
+  const buffer = (error: unknown) => {
+    if (early.status === "buffering") early.errors.push(error);
+  };
+  const onError = (event: ErrorEvent) => buffer(event.error ?? event);
+  const onRejection = (event: PromiseRejectionEvent) => buffer(event.reason);
+  const finishBuffering = (status: "flushed" | "discarded") => {
+    window.removeEventListener("error", onError);
+    window.removeEventListener("unhandledrejection", onRejection);
+    const errors = early.status === "buffering" ? early.errors : [];
+    early = { status };
+    return errors;
+  };
   window.addEventListener("error", onError);
   window.addEventListener("unhandledrejection", onRejection);
 
@@ -62,18 +56,16 @@ if (sentryEnabled) {
       .then((Sentry) => {
         sentry = Sentry;
         // Sentry's own global handlers take over from here.
-        window.removeEventListener("error", onError);
-        window.removeEventListener("unhandledrejection", onRejection);
-        for (const error of early.splice(0)) Sentry.captureException(error);
+        for (const error of finishBuffering("flushed")) {
+          Sentry.captureException(error);
+        }
       })
       .catch(() => {
         // Blocked or offline: the page works without Sentry. Stop buffering
         // so the queue can't grow for the rest of the session.
         // captureException still retries the import on the next reported
         // error.
-        window.removeEventListener("error", onError);
-        window.removeEventListener("unhandledrejection", onRejection);
-        early.length = 0;
+        finishBuffering("discarded");
       });
   };
   const startWhenIdle = () =>

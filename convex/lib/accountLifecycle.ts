@@ -15,6 +15,7 @@ import {
   mergeSolveDay,
   mergeWin,
 } from "./guestMergeRows";
+import { guestLifecycle } from "./guestLifecycle";
 import { type RoomCtx, depart } from "./roomMembership";
 
 // What happens to a user's rows when a Guest signs in (merge), a Guest
@@ -118,6 +119,25 @@ function policy<T extends TableNames>(p: Policy<T>) {
     ) => {
       if (atFinalize === null) return;
       await forEachRow(ctx, guest, (row) => atFinalize(ctx, row, state));
+    },
+    runRemoveWithGuestBatch: async (
+      ctx: LifecycleCtx,
+      guest: UserId,
+      limit: number,
+    ) => {
+      // Keep the owning job until all other rows have been removed.
+      if (merge !== "removeWithGuest" || p.table === "guestMerges") return 0;
+      let removed = 0;
+      for (const row of await p.rows(ctx, guest).take(limit)) {
+        if (p.expireRemove) {
+          removed += await p.expireRemove(ctx, row, limit - removed);
+        } else {
+          await remove(ctx, row);
+          removed++;
+        }
+        if (removed === limit) break;
+      }
+      return removed;
     },
     runRemoveWithGuest: async (ctx: LifecycleCtx, guest: UserId) => {
       if (merge !== "removeWithGuest") return;
@@ -405,6 +425,22 @@ export const USER_KEYED_TABLES = [
   }),
 ];
 
+// Finalization also bounds auth children (verification codes/refresh tokens).
+// A full batch repeats finalization, including its stale-write re-sweep, before
+// totals or the Guest/job are removed. Purge keeps its existing registry path.
+export async function removeMergedGuestData(
+  ctx: LifecycleCtx,
+  guestUserId: UserId,
+  budget: number,
+) {
+  let remaining = budget;
+  for (const p of USER_KEYED_TABLES) {
+    remaining -= await p.runRemoveWithGuestBatch(ctx, guestUserId, remaining);
+    if (remaining === 0) return false;
+  }
+  return true;
+}
+
 // Deletes what a finished merge leaves on the guest, then the guest itself.
 export async function deleteMergedGuest(
   ctx: LifecycleCtx,
@@ -425,12 +461,29 @@ export async function expireGuest(
   guestUserId: UserId,
   budget: number,
 ) {
+  const state = await guestLifecycle(
+    ctx,
+    await ctx.db.get("users", guestUserId),
+    Date.now(),
+  );
+  if (
+    state.kind === "merging" ||
+    state.kind === "outsideLifecycle" ||
+    state.kind === "deleted"
+  ) {
+    return { deleted: 0, done: true, outcome: "skipped" as const };
+  }
+  // Claim before deleting anything. The mark and the first batch commit
+  // together, so sign-in and cleanup serialize on this ownership decision.
+  if (state.kind !== "cleaning") {
+    await ctx.db.patch("users", guestUserId, { guestCleanupStarted: true });
+  }
   let remaining = budget;
   for (const p of USER_KEYED_TABLES) {
     remaining -= await p.runExpire(ctx, guestUserId, remaining);
     if (remaining === 0) {
       await ctx.db.patch("users", guestUserId, { guestCleanupStarted: true });
-      return { deleted: budget, done: false };
+      return { deleted: budget, done: false, outcome: "continue" as const };
     }
   }
   await ctx.db.patch("users", guestUserId, {
@@ -445,7 +498,11 @@ export async function expireGuest(
     guestExpiresAt: undefined,
     guestCleanupStarted: undefined,
   });
-  return { deleted: budget - remaining, done: true };
+  return {
+    deleted: budget - remaining,
+    done: true,
+    outcome: "anonymized" as const,
+  };
 }
 
 export async function deleteAccount(

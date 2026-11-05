@@ -1,25 +1,18 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { runMutation } from "@/lib/report-error";
+import { useSocialCommand } from "@/app/_components/use-social-command";
 
 export function FriendButton({ userId }: { userId: Id<"users"> }) {
   const relationship = useQuery(api.friends.relationship, { userId });
   const sendRequest = useMutation(api.friends.sendRequest);
   const answerRequest = useMutation(api.friends.answerRequest);
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useSocialCommand(userId);
 
   if (relationship === undefined || relationship === null) return null;
-
-  async function run(fn: () => Promise<unknown>) {
-    setBusy(true);
-    await fn();
-    setBusy(false);
-  }
 
   switch (relationship) {
     case "none":
@@ -28,12 +21,10 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
           className="w-full"
           disabled={busy}
           onClick={() =>
-            run(() =>
-              runMutation(() => sendRequest({ userId, via: "profile" }), {
-                context: "friends.sendRequest",
-                fallback: "Could not send a friend request. Try again.",
-              }),
-            )
+            run("add", () => sendRequest({ userId, via: "profile" }), {
+              context: "friends.sendRequest",
+              fallback: "Could not send a friend request. Try again.",
+            })
           }
         >
           Add friend
@@ -45,12 +36,10 @@ export function FriendButton({ userId }: { userId: Id<"users"> }) {
           className="w-full"
           disabled={busy}
           onClick={() =>
-            run(() =>
-              runMutation(() => answerRequest({ userId, answer: "accept" }), {
-                context: "friends.answerRequest",
-                fallback: "Could not accept this friend request. Try again.",
-              }),
-            )
+            run("answer", () => answerRequest({ userId, answer: "accept" }), {
+              context: "friends.answerRequest",
+              fallback: "Could not accept this friend request. Try again.",
+            })
           }
         >
           Accept request
