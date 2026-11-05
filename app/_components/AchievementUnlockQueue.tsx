@@ -1,7 +1,7 @@
 "use client";
 
 import type { StaticImageData } from "next/image";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { AchievementUnlockWidget } from "./AchievementUnlockWidget";
 import type { AchievementCategory } from "./achievement-metadata";
 
@@ -25,14 +25,19 @@ export function AchievementUnlockQueue({
 }) {
   const current = items[0] ?? null;
 
+  const headKey = current?.key ?? null;
+  const advance = useEffectEvent(onItemDone);
+
+  // A head starts one display clock. Appending items or replacing the callback
+  // does not restart it; replacing/removing the head cancels its advance event.
   useEffect(() => {
-    if (current === null) return;
+    if (headKey === null) return;
     const timeout = window.setTimeout(
-      onItemDone,
+      () => advance(),
       ACHIEVEMENT_UNLOCK_DISPLAY_MS,
     );
     return () => window.clearTimeout(timeout);
-  }, [current, onItemDone]);
+  }, [headKey]);
 
   // The live region stays mounted so screen readers pick up each unlock
   // inserted into it.

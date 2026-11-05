@@ -14,3 +14,26 @@ Every table that references `users` declares its merge, expire, and purge policy
 ## Consequences
 
 Kept rows hold no personal data other than the words the Guest typed. A future "delete my account" feature cannot reuse the expire policy unchanged: a registered user who asks to be deleted may expect their Guesses to go too.
+
+## Guest lifecycle ownership
+
+`convex/lib/guestLifecycle.ts` derives ownership from the existing user fields
+and `guestMerges` job. An active Guest becomes expired when its expiry passes.
+Either may start merging while its auth session is live; starting merge postpones
+expiry by the existing Guest lifetime. The persisted job owns that Guest until
+completion, including if the worker is interrupted beyond that postponed expiry.
+Cleanup claims an expired Guest by setting `guestCleanupStarted` in the first
+cleanup transaction. Cleaning cannot transition to merging. Cleaning finishes by
+anonymizing the user; merging finishes by deleting the Guest and job together.
+Anonymized users are outside the Guest lifecycle, like registered users: there is
+no new persisted state or name-based tombstone detection.
+
+Table phases drain their Guest index in bounded batches: full batches repeat,
+short batches advance. The streak phase resumes after its last scanned Solve day.
+Finalization re-sweeps table phases for stale Guest writes before removing auth
+rows in bounded batches and committing totals and deletion. Cleanup similarly
+resumes from the remaining indexed rows, retaining its ownership mark between
+batches. Its sweep advances past merge-owned Guests with a cursor; a partial page
+is retried before advancing. Room cleanup keeps its existing boundary: each page
+of active Room ids schedules the next cursor, while each Room's idle decision
+reads and writes current membership and activity in its own transaction.

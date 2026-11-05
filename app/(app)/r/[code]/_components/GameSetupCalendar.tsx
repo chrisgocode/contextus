@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
@@ -22,7 +22,14 @@ const Calendar = dynamic(
   { loading: () => <Skeleton className="h-[291px] w-62" /> },
 );
 
-export function GameSetupCalendar({
+export function GameSetupCalendar(props: {
+  roomId: Id<"rooms">;
+  isHost: boolean;
+}) {
+  return <SetupAttempt key={`${props.roomId}:${props.isHost}`} {...props} />;
+}
+
+function SetupAttempt({
   roomId,
   isHost,
 }: {
@@ -30,8 +37,14 @@ export function GameSetupCalendar({
   isHost: boolean;
 }) {
   const [date, setDate] = useState<Date | undefined>(todayLocalMidnight());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submission, setSubmission] = useState<
+    | { kind: "ready" }
+    | { kind: "starting" }
+    | { kind: "failed"; message: string }
+  >({ kind: "ready" });
+  const pending = useRef(false);
+  const busy = submission.kind === "starting";
+  const error = submission.kind === "failed" ? submission.message : null;
   const start = useMutation(api.games.start);
   const history = useQuery(api.games.listMyHistory, {});
   const playedSet = new Set(history ?? []);
@@ -80,9 +93,9 @@ export function GameSetupCalendar({
       <Button
         disabled={busy || gameId === null}
         onClick={async () => {
-          if (gameId === null) return;
-          setError(null);
-          setBusy(true);
+          if (gameId === null || pending.current) return;
+          pending.current = true;
+          setSubmission({ kind: "starting" });
           const result = await runMutation(
             () => start({ roomId, contextoGameId: gameId }),
             {
@@ -91,8 +104,12 @@ export function GameSetupCalendar({
               showToast: false,
             },
           );
-          if (!result.ok) setError(result.message);
-          setBusy(false);
+          setSubmission(
+            result.ok
+              ? { kind: "ready" }
+              : { kind: "failed", message: result.message },
+          );
+          pending.current = false;
         }}
       >
         {busy ? "Starting…" : "Start game"}

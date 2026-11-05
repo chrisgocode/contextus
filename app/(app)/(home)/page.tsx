@@ -116,7 +116,7 @@ export default function Home() {
         />
         <JoinRoom onOpeningChange={setOpeningRoom} />
         {isAuthenticated && <MyRooms />}
-        {isRegistered && <RecentGroups />}
+        {isRegistered && <RecentGroups key={currentUser?._id} />}
         {isRegistered && <FriendSuggestions />}
       </div>
     </>
@@ -158,9 +158,25 @@ function CreateRoom({
 }) {
   const router = useRouter();
   const createRoom = useCreateRoom();
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<EntryFailure | null>(null);
-  const [picking, setPicking] = useState(false);
+  type Creation =
+    | { kind: "ready"; picking: boolean }
+    | { kind: "creating"; picking: boolean }
+    | { kind: "failed"; picking: boolean; failure: EntryFailure };
+  const [creation, setCreation] = useState<Creation>({
+    kind: "ready",
+    picking: false,
+  });
+  const busy = creation.kind === "creating";
+  const picking = creation.picking;
+  const failure = creation.kind === "failed" ? creation.failure : null;
+  const active = useRef(false);
+  const pending = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const playWithFriends = useRef<HTMLButtonElement>(null);
   const roster = useRef<HTMLDivElement>(null);
   const switched = useRef(false);
@@ -174,26 +190,31 @@ function CreateRoom({
   }, [picking]);
 
   function switchTo(next: boolean) {
-    setFailure(null);
-    setPicking(next);
+    setCreation({ kind: "ready", picking: next });
     switched.current = true;
   }
 
   async function start(invite?: Id<"users">[]) {
-    setFailure(null);
-    setBusy(true);
+    if (pending.current) return;
+    pending.current = true;
+    setCreation({ kind: "creating", picking });
     onOpeningChange("waiting");
     // The new room opens on the game setup calendar.
     preloadCalendar();
     const result = await createRoom(invite);
+    if (!active.current) return;
     if (result.kind === "created") {
       markRoomCreated(result.code);
       router.push(`/r/${result.code}`);
     } else {
       onOpeningChange(false);
-      setFailure(result);
+      setCreation(
+        result.kind === "cancelled"
+          ? { kind: "ready", picking }
+          : { kind: "failed", picking, failure: result },
+      );
+      pending.current = false;
     }
-    setBusy(false);
   }
 
   return (
@@ -604,6 +625,14 @@ function RecentGroups() {
   const groups = useQuery(api.rooms.listRecentGroups, {});
   const playAgain = useMutation(api.rooms.playAgain);
   const [busyRoomId, setBusyRoomId] = useState<string | null>(null);
+  const mounted = useRef(false);
+  const pending = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   if (groups === undefined || groups.length === 0) return null;
@@ -663,6 +692,8 @@ function RecentGroups() {
                 className="h-11 w-full sm:w-auto sm:min-w-36"
                 disabled={busyRoomId !== null}
                 onClick={async () => {
+                  if (pending.current) return;
+                  pending.current = true;
                   setError(null);
                   setBusyRoomId(group.roomId);
                   const result = await runMutation(
@@ -672,6 +703,8 @@ function RecentGroups() {
                       fallback: "Could not start this room. Try again.",
                     },
                   );
+                  if (!mounted.current) return;
+                  pending.current = false;
                   if (result.ok) router.push(`/r/${result.value.code}`);
                   else setError(result.message);
                   setBusyRoomId(null);

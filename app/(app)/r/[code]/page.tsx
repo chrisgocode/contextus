@@ -8,7 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import {
   AchievementUnlockQueue,
   type AchievementUnlockQueueItem,
@@ -48,11 +48,23 @@ export default function RoomPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = use(params);
-  const upper = code.toUpperCase();
+  return (
+    <RoomDestination key={code.toUpperCase()} upper={code.toUpperCase()} />
+  );
+}
+
+function RoomDestination({ upper }: { upper: string }) {
   const router = useRouter();
   const entry = useRoomEntry(upper);
   const endRoom = useMutation(api.rooms.endRoom);
   const [copied, setCopied] = useState(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // Start fetching the calendar chunk now rather than once the room and game
   // queries say it's needed, so it isn't a second round trip for hosts.
@@ -65,17 +77,17 @@ export default function RoomPage({
 
   const roomPath = `/r/${upper}`;
   const roomHandlers = (view: RoomView) => ({
-    onLeave: () => {
+    onLeave: async () => {
       if (entry.kind !== "member") return;
-      router.push("/");
-      void entry.leave();
+      const left = await entry.leave();
+      if (left && mounted.current) router.push("/");
     },
     onEnd: async () => {
       const result = await runMutation(
         () => endRoom({ roomId: view.data.room._id }),
         { context: "room.end", fallback: "Could not end room." },
       );
-      if (result.ok) router.push("/");
+      if (result.ok && mounted.current) router.push("/");
     },
     copied,
     onCopy: () => {
