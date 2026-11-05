@@ -231,6 +231,35 @@ describe("RoomPage", () => {
     expect(screen.getByText("Alex")).toBeVisible();
   });
 
+  it("stays in the Room when leaving fails", async () => {
+    const member = memberOf();
+    member.leave.mockResolvedValue(false);
+    entry = member;
+    const user = userEvent.setup();
+    await renderRoom();
+    await user.click(screen.getByRole("button", { name: "Room menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Leave room" }));
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "ABCDEF" })).toBeVisible();
+  });
+
+  it("an end-Room completion cannot navigate after leaving the page", async () => {
+    let finish!: () => void;
+    mocks.endRoom.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    const rendered = await renderRoom();
+    await user.click(screen.getByRole("button", { name: "Room menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "End room" }));
+    rendered.unmount();
+    await act(async () => finish());
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
   it("ends the Room and goes home", async () => {
     const user = userEvent.setup();
     await renderRoom();

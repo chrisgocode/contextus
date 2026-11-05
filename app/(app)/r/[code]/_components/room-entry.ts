@@ -16,8 +16,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { appErrorData } from "@/convex/lib/errors";
 import type { ErrorContext } from "@/lib/client-errors";
 import { reportClientError, runMutation } from "@/lib/report-error";
-import { clearCreatedRoom, isCreatedRoom } from "./created-room";
-import { takeJoinSource } from "./join-source";
+import { isCreatedRoom, takeCreatedRoom } from "./created-room";
+import { peekJoinSource, takeJoinSource } from "./join-source";
 
 // Room entry: the auth ordering behind creating and joining a Room, and what
 // the Room page should show while it happens. Pages call these hooks and
@@ -81,49 +81,108 @@ function useEntryAuth() {
 export function useCreateRoom() {
   const { isLoading, isAuthenticated, signIn } = useEntryAuth();
   const create = useMutation(api.rooms.create);
-  const settled = useRef<boolean | null>(null);
+  const viewer = useQuery(api.users.getUser, isAuthenticated ? {} : "skip");
+  const previousViewer = useRef<string | null>(null);
+  type AuthReadiness = "loading" | "anonymous" | "tokenReady";
+  type Created = { kind: "created"; code: string } | EntryFailure;
+  const readiness = useRef<AuthReadiness>("loading");
+  const hadToken = useRef(false);
+  const lifetime = useRef({ active: true, identity: 0 });
+  const pending = useRef<Promise<Created> | null>(null);
   const waiters = useRef<
     {
-      untilAuthenticated: boolean;
-      resolve: (isAuthenticated: boolean) => void;
+      until: "settled" | "tokenReady";
+      resolve: (authenticated: boolean) => void;
     }[]
   >([]);
 
   useEffect(() => {
-    settled.current = isLoading ? null : isAuthenticated;
-    if (isLoading) return;
+    const owner = { active: true, identity: 0 };
+    lifetime.current = owner;
+    return () => {
+      owner.active = false;
+      waiters.current = [];
+      pending.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const next: AuthReadiness = isLoading
+      ? "loading"
+      : isAuthenticated
+        ? "tokenReady"
+        : "anonymous";
+    if (next !== "loading") {
+      if (hadToken.current && next === "anonymous") {
+        lifetime.current.identity++;
+        pending.current = null;
+      }
+      hadToken.current = next === "tokenReady";
+    }
+    readiness.current = next;
+    if (next === "loading") return;
     waiters.current = waiters.current.filter((waiter) => {
-      if (waiter.untilAuthenticated && !isAuthenticated) return true;
-      waiter.resolve(isAuthenticated);
+      if (waiter.until === "tokenReady" && next !== "tokenReady") return true;
+      waiter.resolve(next === "tokenReady");
       return false;
     });
   }, [isLoading, isAuthenticated]);
 
+  useEffect(() => {
+    const next = viewer?._id ?? null;
+    if (
+      previousViewer.current !== null &&
+      next !== null &&
+      previousViewer.current !== next
+    ) {
+      lifetime.current.identity++;
+      pending.current = null;
+    }
+    if (next !== null) previousViewer.current = next;
+  }, [viewer?._id]);
+
   return useCallback(
-    async (
-      invite?: Id<"users">[],
-    ): Promise<{ kind: "created"; code: string } | EntryFailure> => {
-      const settledAuth = (untilAuthenticated: boolean) =>
-        settled.current === true ||
-        (settled.current === false && !untilAuthenticated)
-          ? Promise.resolve(settled.current)
+    (invite?: Id<"users">[]): Promise<Created> => {
+      if (pending.current) return pending.current;
+      const owner = lifetime.current;
+      // Cancellation deliberately never resolves, preserving the app-facing
+      // contract: callers cannot navigate using an abandoned result.
+      const abandoned = () => new Promise<never>(() => {});
+      const settledAuth = (until: "settled" | "tokenReady") =>
+        readiness.current === "tokenReady" ||
+        (readiness.current === "anonymous" && until === "settled")
+          ? Promise.resolve(readiness.current === "tokenReady")
           : new Promise<boolean>((resolve) =>
-              waiters.current.push({ untilAuthenticated, resolve }),
+              waiters.current.push({ until, resolve }),
             );
-      try {
-        if (!(await settledAuth(false))) {
-          await signIn("anonymous");
-          await settledAuth(true);
+      const operation = async (): Promise<Created> => {
+        const identity = owner.identity;
+        const current = () => owner.active && owner.identity === identity;
+        try {
+          if (!(await settledAuth("settled"))) {
+            if (!current()) return abandoned();
+            await signIn("anonymous");
+            if (!current()) return abandoned();
+            await settledAuth("tokenReady");
+          }
+          if (!current()) return abandoned();
+          const { code } = await create(invite === undefined ? {} : { invite });
+          if (!current()) return abandoned();
+          return { kind: "created", code };
+        } catch (err) {
+          if (!current()) return abandoned();
+          return toFailure(err, {
+            context:
+              invite === undefined ? "room.create" : "room.playWithFriends",
+            fallback: "Could not create room. Try again.",
+          });
         }
-        const { code } = await create(invite === undefined ? {} : { invite });
-        return { kind: "created", code };
-      } catch (err) {
-        return toFailure(err, {
-          context:
-            invite === undefined ? "room.create" : "room.playWithFriends",
-          fallback: "Could not create room. Try again.",
-        });
-      }
+      };
+      const promise = operation().finally(() => {
+        if (pending.current === promise) pending.current = null;
+      });
+      pending.current = promise;
+      return promise;
     },
     [create, signIn],
   );
@@ -169,28 +228,30 @@ export function useRoomEntry(code: string): RoomEntry {
   const data = useQuery(api.rooms.getByCode, { code });
   const join = useMutation(api.rooms.join);
   const leaveMutation = useMutation(api.rooms.leave);
-  const [failure, setFailure] = useState<{
-    attempt: string;
-    failure: EntryFailure;
-  } | null>(null);
-  const [leavingView, setLeavingView] = useState<RoomView | null>(null);
-
   const viewerUserId = data?.viewerUserId ?? null;
   const isMember =
     viewerUserId !== null &&
     data != null &&
     data.members.some((m) => m.userId === viewerUserId);
-  // Who is entering which Room. Errors and pending joins belong to one.
-  const attempt = `${code}:${isAuthenticated}:${viewerUserId}`;
-  // A failure is dropped once the attempt changes, so the same viewer
-  // returning after an auth change tries again instead of seeing it.
-  const [lastAttempt, setLastAttempt] = useState(attempt);
-  if (lastAttempt !== attempt) {
-    setLastAttempt(attempt);
-    setFailure(null);
+  const key = `${code}:${isAuthenticated}:${viewerUserId}`;
+  // Identity, rather than the key alone, distinguishes A → B → A visits.
+  const [scope, setScope] = useState(() => ({ key }));
+  type Progress =
+    | { kind: "idle" }
+    | { kind: "failed"; failure: EntryFailure }
+    | { kind: "leaving"; view: RoomView };
+  const [progress, setProgress] = useState<Progress>({ kind: "idle" });
+  if (scope.key !== key) {
+    setScope({ key });
+    setProgress({ kind: "idle" });
   }
-  const joinFailure = failure?.attempt === attempt ? failure.failure : null;
+  const attempt = scope;
+  const leavingView =
+    scope.key === key && progress.kind === "leaving" ? progress.view : null;
+  const joinFailure =
+    scope.key === key && progress.kind === "failed" ? progress.failure : null;
   const shouldJoin =
+    !isLoading &&
     data != null &&
     isAuthenticated &&
     viewerUserId !== null &&
@@ -201,10 +262,24 @@ export function useRoomEntry(code: string): RoomEntry {
 
   // Consumed on mount, so a visit abandoned before the game query resolves
   // can't leave the marker set for a later visit to the same room.
-  const [createdCode, setCreatedCode] = useState(() =>
-    isCreatedRoom(code) ? code : null,
-  );
-  const created = createdCode === code;
+  const [destination, setDestination] = useState(() => ({
+    code,
+    created: isCreatedRoom(code),
+    source: { via: peekJoinSource(code) },
+  }));
+  if (destination.code !== code) {
+    setDestination({
+      code,
+      created: isCreatedRoom(code),
+      source: { via: peekJoinSource(code) },
+    });
+  }
+  useEffect(() => {
+    takeCreatedRoom(code);
+    takeJoinSource(code);
+  }, [code]);
+  const consumedSources = useRef(new WeakSet<object>());
+  const created = destination.code === code && destination.created;
   const roomId = data != null && isMember ? data.room._id : null;
   const activeGameResult = useQuery(
     api.games.getActive,
@@ -212,7 +287,8 @@ export function useRoomEntry(code: string): RoomEntry {
   );
   // A room this client just created has no game yet, so skip straight to the
   // setup calendar rather than flashing the guess list skeleton.
-  if (created && activeGameResult !== undefined) setCreatedCode(null);
+  if (created && activeGameResult !== undefined)
+    setDestination({ ...destination, created: false });
   const activeGame =
     activeGameResult === undefined && created ? null : activeGameResult;
   const lastFinished = useQuery(
@@ -220,10 +296,8 @@ export function useRoomEntry(code: string): RoomEntry {
     roomId !== null && activeGame === null ? { roomId } : "skip",
   );
 
-  useEffect(() => clearCreatedRoom(code), [code]);
-
-  const currentAttempt = useRef<string | null>(attempt);
-  const pendingAttempt = useRef<string | null>(null);
+  const currentAttempt = useRef<typeof attempt | null>(attempt);
+  const pendingAttempt = useRef<typeof attempt | null>(null);
   useEffect(() => {
     currentAttempt.current = attempt;
     return () => {
@@ -234,13 +308,16 @@ export function useRoomEntry(code: string): RoomEntry {
   useEffect(() => {
     if (!shouldJoin || pendingAttempt.current === attempt) return;
     pendingAttempt.current = attempt;
-    const via = takeJoinSource(code);
+    const via = consumedSources.current.has(destination.source)
+      ? undefined
+      : destination.source.via;
+    consumedSources.current.add(destination.source);
     join(via === undefined ? { code } : { code, via })
       .catch((err) => {
         if (currentAttempt.current !== attempt) return;
         // Shown in place of the Room, including the Guest room limit.
-        setFailure({
-          attempt,
+        setProgress({
+          kind: "failed",
           failure: toFailure(err, {
             context: "room.autojoin",
             fallback: "Could not join room. Try again.",
@@ -250,7 +327,7 @@ export function useRoomEntry(code: string): RoomEntry {
       .finally(() => {
         if (pendingAttempt.current === attempt) pendingAttempt.current = null;
       });
-  }, [attempt, code, join, shouldJoin]);
+  }, [attempt, code, destination.source, join, shouldJoin]);
 
   if (leavingView !== null) return { kind: "leaving", view: leavingView };
   if (data?.room.status === "ended") return { kind: "ended" };
@@ -281,13 +358,20 @@ export function useRoomEntry(code: string): RoomEntry {
     kind: "member",
     view,
     leave: async () => {
-      setLeavingView(view);
-      const result = await runMutation(
-        () => leaveMutation({ roomId: data.room._id }),
-        { context: "room.leave", fallback: "Could not leave room." },
-      );
-      if (!result.ok) setLeavingView(null);
-      return result.ok;
+      if (currentAttempt.current !== attempt) return false;
+      setProgress({ kind: "leaving", view });
+      try {
+        await leaveMutation({ roomId: data.room._id });
+        return currentAttempt.current === attempt;
+      } catch (err) {
+        if (currentAttempt.current !== attempt) return false;
+        reportClientError(err, {
+          context: "room.leave",
+          userMessage: "Could not leave room.",
+        });
+        setProgress({ kind: "idle" });
+        return false;
+      }
     },
   };
 }
