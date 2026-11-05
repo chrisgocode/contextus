@@ -40,18 +40,34 @@ export async function findMembership(
     .unique();
 }
 
-// Live membership: the Room is active and the user's membership in it is too.
-// A membership is live unless marked inactive, since legacy rows have no
-// `active` flag (#172). An ended Room has no live members, which is what
-// freezes the in_progress Game it keeps for playAgain.
+// Effective membership includes the Room's status, not just the row's flag.
+// Retained memberships can read an ended Room and are restored by reopenRoom.
+// Missing `active` remains live in active Rooms until #172's backfill lands.
+type MembershipState = "absent" | "retained" | "inactive" | "live";
+
+function membershipState(
+  room: Doc<"rooms">,
+  membership: Doc<"roomMembers"> | null,
+): MembershipState {
+  if (membership === null) return "absent";
+  if (room.status === "ended") return "retained";
+  return membership.active === false ? "inactive" : "live";
+}
+
+function canHost(state: MembershipState): boolean {
+  return state === "live" || state === "retained";
+}
+
 export async function isLiveMember(
   ctx: ReadCtx,
   room: Doc<"rooms">,
   userId: Id<"users">,
 ): Promise<boolean> {
   if (room.status !== "active") return false;
-  const membership = await findMembership(ctx, room._id, userId);
-  return membership !== null && membership.active !== false;
+  return (
+    membershipState(room, await findMembership(ctx, room._id, userId)) ===
+    "live"
+  );
 }
 
 export async function lastRoomActivityAt(
@@ -190,6 +206,7 @@ export async function reopenRoom(
   for (const member of members) {
     await ctx.db.patch("roomMembers", member._id, { active: true });
   }
+  await seatHost(ctx, roomId, next.hostUserId);
   await touchRoomActivity(ctx, roomId, now);
 }
 
@@ -301,11 +318,11 @@ async function settleHost(
     hostUserId = departure.into;
     await seatHost(ctx, room._id, hostUserId);
   }
-  // An ended Room has no live members, so its Host is whoever stayed longest.
-  const canHost = (m: Doc<"roomMembers">) => !active || m.active !== false;
-  const hostMembership = await findMembership(ctx, room._id, hostUserId);
-  const seated = hostMembership !== null && canHost(hostMembership);
-  if (seated && !idle) {
+  const host = membershipState(
+    room,
+    await findMembership(ctx, room._id, hostUserId),
+  );
+  if (canHost(host) && !idle) {
     const moved = hostUserId !== room.hostUserId;
     return { settled: moved ? "moved" : "kept", membersScanned: 0 };
   }
@@ -316,29 +333,79 @@ async function settleHost(
     .collect();
   const membersScanned = memberships.length;
   const candidates = memberships
-    .filter(canHost)
+    .filter((member) => canHost(membershipState(room, member)))
     .sort((a, b) => a.joinedAt - b.joinedAt);
   const online = active
     ? await onlineUserIds(ctx, room._id)
     : new Set<Id<"users">>();
-  const onlineCandidates = candidates.filter((m) => online.has(m.userId));
-  if (idle && onlineCandidates.length === 0) {
-    if (now - (await lastRoomActivityAt(ctx, room._id)) > IDLE_TIMEOUT_MS) {
+  const decision = decideSuccession({
+    roomStatus: room.status,
+    event: departure,
+    host: { userId: hostUserId, membership: host },
+    candidates,
+    online,
+    // Only idle checks can end a populated Room for inactivity. A departure
+    // still chooses a successor even when the last activity is old.
+    idleDeadlinePassed:
+      idle &&
+      !candidates.some((member) => online.has(member.userId)) &&
+      now - (await lastRoomActivityAt(ctx, room._id)) > IDLE_TIMEOUT_MS,
+  });
+  switch (decision.kind) {
+    case "keep":
+      return { settled: "kept", membersScanned };
+    case "close":
       await closeRoom(ctx, room._id);
       return { settled: "ended", membersScanned };
-    }
+    case "seat":
+      await seatHost(ctx, room._id, decision.userId);
+      return { settled: "moved", membersScanned };
   }
-  if (seated && (online.has(hostUserId) || onlineCandidates.length === 0)) {
-    return { settled: "kept", membersScanned };
-  }
+}
 
+type SuccessionSnapshot = {
+  roomStatus: Doc<"rooms">["status"];
+  event: Departure;
+  host: { userId: Id<"users">; membership: MembershipState };
+  // Oldest membership first, excluding inactive members of active Rooms.
+  candidates: Doc<"roomMembers">[];
+  online: ReadonlySet<Id<"users">>;
+  idleDeadlinePassed: boolean;
+};
+
+type SuccessionDecision =
+  | { kind: "keep" }
+  | { kind: "close" }
+  | { kind: "seat"; userId: Id<"users"> };
+
+// Decide from one transaction's snapshot; only settleHost applies the writes.
+// A returning seated Host wins over other online candidates. With nobody
+// online, keep an eligible Host or seat the oldest eligible member. Ended
+// Rooms may retain an absent Host when empty, but active Rooms must close.
+function decideSuccession(snapshot: SuccessionSnapshot): SuccessionDecision {
+  const { roomStatus, event, host, candidates, online, idleDeadlinePassed } =
+    snapshot;
+  const onlineCandidates = candidates.filter((member) =>
+    online.has(member.userId),
+  );
+  if (
+    event.reason === "idle" &&
+    onlineCandidates.length === 0 &&
+    idleDeadlinePassed
+  ) {
+    return { kind: "close" };
+  }
+  if (
+    canHost(host.membership) &&
+    (online.has(host.userId) || onlineCandidates.length === 0)
+  ) {
+    return { kind: "keep" };
+  }
   const successor = onlineCandidates[0] ?? candidates[0];
   if (successor === undefined) {
-    if (active) await closeRoom(ctx, room._id);
-    return { settled: active ? "ended" : "kept", membersScanned };
+    return { kind: roomStatus === "active" ? "close" : "keep" };
   }
-  await seatHost(ctx, room._id, successor.userId);
-  return { settled: "moved", membersScanned };
+  return { kind: "seat", userId: successor.userId };
 }
 
 // A Host answers Pending requests instead of asking, so the new Host's own
