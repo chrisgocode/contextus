@@ -3,7 +3,11 @@ import { sentryDsn, sentryEnabled, sentryEnvironment } from "./sentry";
 
 type Sentry = typeof SentrySdk;
 
-let sdk: Promise<Sentry> | undefined;
+type Initialization =
+  | { status: "idle" }
+  | { status: "loading" | "ready"; promise: Promise<Sentry> };
+
+let initialization: Initialization = { status: "idle" };
 
 /**
  * Imports and initializes the Sentry browser SDK once, on first use.
@@ -13,12 +17,20 @@ let sdk: Promise<Sentry> | undefined;
  * captureException calls it if an error comes first.
  */
 export function loadSentry(): Promise<Sentry> {
-  sdk ??= importAndInit().catch((error: unknown) => {
-    // Let the next call retry, e.g. once the network is back.
-    sdk = undefined;
-    throw error;
-  });
-  return sdk;
+  if (initialization.status !== "idle") return initialization.promise;
+  const promise = importAndInit().then(
+    (Sentry) => {
+      initialization = { status: "ready", promise };
+      return Sentry;
+    },
+    (error: unknown) => {
+      // Let the next call retry, e.g. once the network is back.
+      initialization = { status: "idle" };
+      throw error;
+    },
+  );
+  initialization = { status: "loading", promise };
+  return promise;
 }
 
 function importAndInit(): Promise<Sentry> {
@@ -55,7 +67,8 @@ function importAndInit(): Promise<Sentry> {
 
     // Fetch Replay from the Sentry CDN instead of bundling it for every
     // visitor. The sample rates above apply once it's added.
-    Sentry.lazyLoadIntegration("replayIntegration")
+    void Promise.resolve()
+      .then(() => Sentry.lazyLoadIntegration("replayIntegration"))
       .then((replayIntegration) => Sentry.addIntegration(replayIntegration()))
       .catch(() => {
         // Replay is best-effort; ad blockers may block the CDN script.
