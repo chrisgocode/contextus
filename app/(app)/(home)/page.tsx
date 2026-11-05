@@ -29,6 +29,7 @@ import {
 import { AppearancePicker } from "@/components/AppearancePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSocialCommand } from "@/app/_components/use-social-command";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MAX_INVITES_AT_ONCE } from "@/convex/lib/inviteLimits";
@@ -692,7 +693,7 @@ function RecentGroups() {
 function FriendSuggestions() {
   const suggestions = useQuery(api.friends.suggestions, {});
   const sendRequest = useMutation(api.friends.sendRequest);
-  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const { busy, run } = useSocialCommand();
 
   if (suggestions === undefined || suggestions.length === 0) return null;
 
@@ -710,17 +711,16 @@ function FriendSuggestions() {
             <Button
               size="sm"
               variant="outline"
-              disabled={busyUserId !== null}
+              disabled={busy}
               onClick={async () => {
-                setBusyUserId(player.id);
-                await runMutation(
+                await run(
+                  "add",
                   () => sendRequest({ userId: player.id, via: "suggestion" }),
                   {
                     context: "friends.sendRequest",
                     fallback: "Could not send a friend request. Try again.",
                   },
                 );
-                setBusyUserId(null);
               }}
             >
               Add friend

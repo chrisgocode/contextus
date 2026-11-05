@@ -1,19 +1,28 @@
-import type { ReactElement } from "react";
+import { getFunctionName } from "convex/server";
+import { StrictMode, type ReactElement } from "react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InviteToasts } from "@/app/_components/InviteToasts";
-import { render, screen, userEvent, waitFor } from "./test-utils";
+import { act, render, screen, userEvent, waitFor } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
   answerInvite: vi.fn(),
   push: vi.fn(),
   useQuery: vi.fn(),
+  viewer: "alice",
+  authenticated: true,
 }));
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useConvexAuth: () => ({
+    isAuthenticated: mocks.authenticated,
+    isLoading: false,
+  }),
   useMutation: () => mocks.answerInvite,
-  useQuery: mocks.useQuery,
+  useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) =>
+    getFunctionName(ref) === "users:getUser"
+      ? { _id: mocks.viewer }
+      : mocks.useQuery(ref, args),
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
@@ -46,7 +55,9 @@ function renderLastToast() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  mocks.viewer = "alice";
+  mocks.authenticated = true;
 });
 
 describe("InviteToasts", () => {
@@ -66,6 +77,21 @@ describe("InviteToasts", () => {
     rerender(<InviteToasts />);
 
     await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not deliver a queued toast after unmount", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    const { unmount } = render(<InviteToasts />);
+    unmount();
+    await act(async () => {});
+    expect(toast.custom).not.toHaveBeenCalled();
+  });
+
+  it("does not replay an expired deadline when its query arrives late", async () => {
+    mocks.useQuery.mockReturnValue([invite(Date.now() - 1)]);
+    render(<InviteToasts />);
+    await act(async () => {});
+    expect(toast.custom).not.toHaveBeenCalled();
   });
 
   it("removes the toast once its Invite ends", async () => {
@@ -109,6 +135,72 @@ describe("InviteToasts", () => {
     await waitFor(() => expect(toast.custom).toHaveBeenCalledTimes(2));
   });
 
+  it("dismisses at the deadline without replaying a late query, and renews once", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      const deadline = Date.now() + 5000;
+      mocks.useQuery.mockReturnValue([invite(deadline)]);
+      const { rerender } = render(<InviteToasts />);
+      await act(async () => {});
+      expect(toast.custom).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTime(5000));
+      expect(toast.dismiss).toHaveBeenCalledWith("invite-i1");
+      mocks.useQuery.mockReturnValue([invite(deadline)]);
+      rerender(<InviteToasts />);
+      await act(async () => {});
+      expect(toast.custom).toHaveBeenCalledTimes(1);
+      mocks.useQuery.mockReturnValue([invite(deadline + 5000)]);
+      rerender(<InviteToasts />);
+      await act(async () => {});
+      expect(toast.custom).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows only one toast during Strict Mode effect replay", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    render(
+      <StrictMode>
+        <InviteToasts />
+      </StrictMode>,
+    );
+    await act(async () => {});
+    expect(toast.custom).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes toasts on sign-out even if the old query remains available", async () => {
+    mocks.useQuery.mockReturnValue([invite()]);
+    const { rerender } = render(<InviteToasts />);
+    await act(async () => {});
+    mocks.authenticated = false;
+    rerender(<InviteToasts />);
+    await act(async () => {});
+    expect(toast.dismiss).toHaveBeenCalledWith("invite-i1");
+    expect(toast.custom).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["viewer", "sign-out"])(
+    "ignores a pending join after changing %s",
+    async (change) => {
+      mocks.useQuery.mockReturnValue([invite()]);
+      const pending = Promise.withResolvers<{ code: string }>();
+      mocks.answerInvite.mockReturnValue(pending.promise);
+      const { rerender } = render(<InviteToasts />);
+      await act(async () => {});
+      renderLastToast();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Join room ABCDEF" }),
+      );
+      if (change === "viewer") mocks.viewer = "bob";
+      else mocks.authenticated = false;
+      rerender(<InviteToasts />);
+      await act(async () => pending.resolve({ code: "ABCDEF" }));
+      expect(mocks.push).not.toHaveBeenCalled();
+    },
+  );
+
   it("joins the Room from the toast", async () => {
     mocks.useQuery.mockReturnValue([invite()]);
     mocks.answerInvite.mockResolvedValue({ code: "ABCDEF" });
@@ -132,11 +224,14 @@ describe("InviteToasts", () => {
 
   it("dismissing the toast doesn't decline the Invite", async () => {
     mocks.useQuery.mockReturnValue([invite()]);
-    render(<InviteToasts />);
+    const { rerender } = render(<InviteToasts />);
     await waitFor(() => expect(toast.custom).toHaveBeenCalled());
     renderLastToast();
 
     await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    rerender(<InviteToasts />);
+    await act(async () => {});
+    expect(toast.custom).toHaveBeenCalledTimes(1);
 
     expect(toast.dismiss).toHaveBeenCalledWith("invite-i1");
     expect(mocks.answerInvite).not.toHaveBeenCalled();

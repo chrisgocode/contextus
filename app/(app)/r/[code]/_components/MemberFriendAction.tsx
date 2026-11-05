@@ -7,11 +7,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { runMutation } from "@/lib/report-error";
+import { useSocialCommand } from "@/app/_components/use-social-command";
 
 // One small icon per member row: a button while there's something to do,
 // a muted status icon once there isn't.
@@ -25,13 +24,7 @@ export function MemberFriendAction({
   const relationship = useQuery(api.friends.relationship, { userId });
   const sendRequest = useMutation(api.friends.sendRequest);
   const answerRequest = useMutation(api.friends.answerRequest);
-  const [busy, setBusy] = useState(false);
-
-  async function run(fn: () => Promise<unknown>) {
-    setBusy(true);
-    await fn();
-    setBusy(false);
-  }
+  const { busy, run } = useSocialCommand(userId);
 
   switch (relationship) {
     case undefined:
@@ -47,12 +40,10 @@ export function MemberFriendAction({
           title="Add friend"
           disabled={busy}
           onClick={() =>
-            run(() =>
-              runMutation(() => sendRequest({ userId, via: "room" }), {
-                context: "friends.sendRequest",
-                fallback: "Could not send a friend request. Try again.",
-              }),
-            )
+            run("add", () => sendRequest({ userId, via: "room" }), {
+              context: "friends.sendRequest",
+              fallback: "Could not send a friend request. Try again.",
+            })
           }
         >
           <HugeiconsIcon
@@ -72,12 +63,10 @@ export function MemberFriendAction({
           title="Accept friend request"
           disabled={busy}
           onClick={() =>
-            run(() =>
-              runMutation(() => answerRequest({ userId, answer: "accept" }), {
-                context: "friends.answerRequest",
-                fallback: "Could not accept this friend request. Try again.",
-              }),
-            )
+            run("answer", () => answerRequest({ userId, answer: "accept" }), {
+              context: "friends.answerRequest",
+              fallback: "Could not accept this friend request. Try again.",
+            })
           }
         >
           <HugeiconsIcon

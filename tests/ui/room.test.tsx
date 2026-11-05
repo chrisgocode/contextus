@@ -131,6 +131,7 @@ beforeEach(() => {
   });
   mocks.useQuery.mockImplementation((reference) => {
     const name = getFunctionName(reference);
+    if (name === "users:getUser") return { _id: "me" };
     if (name.startsWith("requests:") || name.startsWith("friends:")) {
       return undefined;
     }
@@ -270,6 +271,7 @@ describe("RoomPage", () => {
     };
     mocks.useQuery.mockImplementation((reference, args) => {
       const name = getFunctionName(reference);
+      if (name === "users:getUser") return { _id: "me" };
       if (name === "friends:relationship") return relationships[args.userId];
       if (name === "friends:overview") return undefined;
       if (name.startsWith("requests:")) return undefined;

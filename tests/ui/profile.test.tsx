@@ -99,6 +99,7 @@ describe("ProfileClient", () => {
         return { ...profile, isCurrentUser: false };
       if (name === "users:getActivityGraph") return { days: [] };
       if (name === "achievements:listForProfile") return { achievements: [] };
+      if (name === "users:getUser") return { _id: "viewer" };
       if (name === "friends:relationship") return "none";
       throw new Error(`Unexpected query: ${name}`);
     });

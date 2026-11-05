@@ -26,52 +26,107 @@ export function InviteToasts() {
     api.friends.openInvites,
     isAuthenticated ? {} : "skip",
   );
-  const answer = useInviteAnswer();
-  const shown = useRef(new Map<string, number>());
+  const viewer = useQuery(api.users.getUser, {});
+  const answer = useInviteAnswer(`${isAuthenticated}:${viewer?._id}`);
+  const delivery = useRef(
+    new Map<
+      string,
+      {
+        deadline: number;
+        kind: "unseen" | "shown" | "dismissed" | "expired";
+      }
+    >(),
+  );
 
   useEffect(() => {
-    const open = new Set((invites ?? []).map(toastId));
-    for (const id of shown.current.keys()) {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const entries = delivery.current;
+    const open = new Set((isAuthenticated ? (invites ?? []) : []).map(toastId));
+    for (const id of entries.keys()) {
       if (open.has(id)) continue;
-      shown.current.delete(id);
+      entries.delete(id);
       lazyToast((toast) => toast.dismiss(id));
     }
-    if (invites === undefined) return;
-    for (const invite of invites) {
+    for (const invite of isAuthenticated ? (invites ?? []) : []) {
       const id = toastId(invite);
-      if (shown.current.get(id) === invite.expiresAt) continue;
-      shown.current.set(id, invite.expiresAt);
-      lazyToast((toast) =>
-        toast.custom(
-          () => (
-            <InviteToast
-              invite={invite}
-              onAnswer={(response) => {
-                toast.dismiss(id);
-                void answer(invite, response);
-              }}
-              onDismiss={() => toast.dismiss(id)}
-            />
-          ),
-          {
-            id,
-            duration: Math.max(invite.expiresAt - Date.now(), 0),
-            position: "bottom-right",
-          },
-        ),
-      );
+      let entry = entries.get(id);
+      // A renewed deadline is a new delivery, even after dismissal.
+      if (entry?.deadline !== invite.expiresAt) {
+        entry = { deadline: invite.expiresAt, kind: "unseen" };
+        entries.set(id, entry);
+      }
+      const version = entry;
+      const current = () => entries.get(id) === version;
+      const dismiss = (kind: "dismissed" | "expired") => {
+        if (!current()) return;
+        version.kind = kind;
+        lazyToast((toast) => {
+          if (entries.get(id) === version) toast.dismiss(id);
+        });
+      };
+      if (invite.expiresAt <= Date.now()) {
+        dismiss("expired");
+        continue;
+      }
+      if (version.kind === "unseen") {
+        lazyToast((toast) => {
+          if (!current() || version.kind !== "unseen") return;
+          const remaining = invite.expiresAt - Date.now();
+          if (remaining <= 0) {
+            dismiss("expired");
+            return;
+          }
+          version.kind = "shown";
+          toast.custom(
+            () => (
+              <InviteToast
+                invite={invite}
+                onAnswer={(response) => {
+                  if (!current() || version.kind !== "shown") return;
+                  dismiss("dismissed");
+                  void answer(invite, response);
+                }}
+                onDismiss={() => dismiss("dismissed")}
+              />
+            ),
+            {
+              id,
+              duration: remaining,
+              position: "bottom-right",
+              onDismiss: () => {
+                if (current()) version.kind = "dismissed";
+              },
+              onAutoClose: () => {
+                if (current()) version.kind = "expired";
+              },
+            },
+          );
+        });
+      }
+      if (version.kind === "shown" || version.kind === "unseen") {
+        timers.push(
+          setTimeout(() => dismiss("expired"), invite.expiresAt - Date.now()),
+        );
+      }
     }
-  }, [invites, answer]);
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [invites, answer, isAuthenticated, viewer?._id]);
 
   useEffect(() => {
-    const toasts = shown.current;
+    const entries = delivery.current;
     return () => {
-      for (const id of toasts.keys()) {
-        lazyToast((toast) => toast.dismiss(id));
+      for (const [id, entry] of entries) {
+        entry.kind = "dismissed";
+        lazyToast((toast) => {
+          // Do not dismiss a renewed Invite delivered by a later effect.
+          if (!entries.has(id) || entries.get(id) === entry) toast.dismiss(id);
+        });
       }
-      toasts.clear();
+      entries.clear();
     };
-  }, []);
+  }, [viewer?._id]);
 
   return null;
 }

@@ -1,12 +1,14 @@
 import { getFunctionName } from "convex/server";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemberFriendAction } from "@/app/(app)/r/[code]/_components/MemberFriendAction";
 import { FriendButton } from "@/app/_components/FriendButton";
 import { FriendsPanel } from "@/app/_components/FriendsPanel";
 import type { Id } from "@/convex/_generated/dataModel";
 import { appError } from "@/convex/lib/errors";
 import { takeJoinSource } from "@/app/(app)/r/[code]/_components/join-source";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -26,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   sendRequestByUsername: vi.fn(),
   unfriend: vi.fn(),
   useQuery: vi.fn(),
+  viewer: "alice",
 }));
 
 vi.mock("convex/react", () => ({
@@ -44,7 +47,7 @@ vi.mock("convex/react", () => ({
   },
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) =>
     getFunctionName(reference) === "users:getUser"
-      ? { player: { name: "Alice" }, image: null }
+      ? { _id: mocks.viewer, player: { name: "Alice" }, image: null }
       : mocks.useQuery(reference, args),
 }));
 vi.mock("next/navigation", () => ({
@@ -102,7 +105,8 @@ function overview(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  mocks.viewer = "alice";
 });
 
 describe("FriendButton", () => {
@@ -118,6 +122,55 @@ describe("FriendButton", () => {
       userId: bob,
       via: "profile",
     });
+  });
+
+  it.each(["profile", "member"])(
+    "lets a new %s act while an obsolete request is pending",
+    async (surface) => {
+      const action = (userId: Id<"users">) =>
+        surface === "profile" ? (
+          <FriendButton userId={userId} />
+        ) : (
+          <MemberFriendAction userId={userId} name="Player" />
+        );
+      mocks.useQuery.mockReturnValue("none");
+      const first = Promise.withResolvers<unknown>();
+      const second = Promise.withResolvers<unknown>();
+      mocks.sendRequest
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      const { rerender } = render(action(bob));
+      fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+      rerender(action("carol" as Id<"users">));
+      const button = screen.getByRole("button", { name: /Add/ });
+      expect(button).toBeEnabled();
+      fireEvent.click(button);
+      await act(async () => first.resolve({ status: "requested" }));
+      expect(button).toBeDisabled();
+      await act(async () => second.resolve({ status: "requested" }));
+      expect(button).toBeEnabled();
+    },
+  );
+
+  it("suppresses errors from the previous viewer without unlocking the current request", async () => {
+    mocks.useQuery.mockReturnValue("none");
+    const old = Promise.withResolvers<unknown>();
+    const current = Promise.withResolvers<unknown>();
+    mocks.sendRequest
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(current.promise);
+    const { rerender } = render(<FriendButton userId={bob} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add friend" }));
+    mocks.viewer = "carol";
+    rerender(<FriendButton userId={bob} />);
+    const button = screen.getByRole("button", { name: "Add friend" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await act(async () => old.reject(appError("friendLimit")));
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(button).toBeDisabled();
+    await act(async () => current.resolve({ status: "requested" }));
+    expect(button).toBeEnabled();
   });
 
   it("accepts the profile user's Friend request", async () => {
@@ -269,6 +322,102 @@ describe("FriendsPanel", () => {
         within(row).queryByRole("link", { name: "Join" }),
       ).not.toBeInTheDocument();
     }
+  });
+
+  it.each(["viewer", "room", "unmount"] as const)(
+    "ignores a successful Invite join after changing %s",
+    async (change) => {
+      mocks.useQuery.mockReturnValue(
+        overview({ invites: [invite("i1", "ABCDEF", "Carol")] }),
+      );
+      const pending = Promise.withResolvers<{ code: string }>();
+      mocks.answerInvite.mockReturnValue(pending.promise);
+      const user = userEvent.setup();
+      const view = render(<FriendsPanel roomId={roomId} />);
+      await user.click(screen.getByRole("button", { name: "Friends" }));
+      await user.click(
+        screen.getByRole("button", { name: "Join room ABCDEF" }),
+      );
+      if (change === "unmount") view.unmount();
+      else {
+        if (change === "viewer") mocks.viewer = "dave";
+        view.rerender(
+          <FriendsPanel
+            roomId={change === "room" ? ("other" as Id<"rooms">) : roomId}
+          />,
+        );
+      }
+      await act(async () => pending.resolve({ code: "ABCDEF" }));
+      expect(mocks.push).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks all list actions until the current command fails, then permits retry", async () => {
+    mocks.useQuery.mockReturnValue(
+      overview({
+        incoming: [player("carol", "Carol")],
+        outgoing: [player("dave", "Dave")],
+      }),
+    );
+    const pending = Promise.withResolvers<null>();
+    mocks.answerRequest
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue(null);
+    const { user, panel } = await openPanel();
+    const accept = within(panel).getByRole("button", { name: "Accept" });
+    await user.click(accept);
+    expect(accept).toBeDisabled();
+    expect(
+      within(panel).getByRole("button", { name: "Decline" }),
+    ).toBeDisabled();
+    const cancel = within(panel).getByRole("button", { name: "Cancel" });
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+    expect(mocks.cancelRequest).not.toHaveBeenCalled();
+    await act(async () => pending.reject(appError("friendLimit")));
+    expect(accept).toBeEnabled();
+    await user.click(accept);
+    expect(mocks.answerRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the optimistic presence choice while saving and rolls back to the server value", async () => {
+    mocks.useQuery.mockReturnValue(overview());
+    const pending = Promise.withResolvers<null>();
+    mocks.setAppearOffline.mockReturnValue(pending.promise);
+    const { user, panel } = await openPanel();
+    const online = within(panel).getByRole("radio", { name: "Online" });
+    const offline = within(panel).getByRole("radio", {
+      name: "Appear offline",
+    });
+    await user.click(offline);
+    expect(offline).toBeChecked();
+    expect(online).toBeDisabled();
+    expect(offline).toBeDisabled();
+    fireEvent.click(online);
+    expect(mocks.setAppearOffline).toHaveBeenCalledTimes(1);
+    await act(async () => pending.reject(new Error("offline")));
+    expect(online).toBeChecked();
+    expect(offline).toBeEnabled();
+  });
+
+  it("prevents duplicate form submits and keeps an error usable", async () => {
+    mocks.useQuery.mockReturnValue(overview());
+    const pending = Promise.withResolvers<unknown>();
+    mocks.sendRequestByUsername.mockReturnValue(pending.promise);
+    const { user, panel } = await openPanel();
+    const input = within(panel).getByRole("textbox", { name: "Username" });
+    await user.type(input, "missing");
+    const form = input.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(mocks.sendRequestByUsername).toHaveBeenCalledTimes(1);
+    expect(input).toBeDisabled();
+    await act(async () => pending.reject(appError("userNotFound")));
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue("missing");
+    expect(within(panel).getByRole("alert")).toHaveTextContent(
+      "No player has that username.",
+    );
   });
 
   it("shows your own status last and switches Appear offline", async () => {
