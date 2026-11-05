@@ -2,9 +2,12 @@ import { act } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/version/route";
+import { GuessInput } from "@/app/(app)/r/[code]/_components/GuessInput";
 import { NewVersionNotifier } from "@/app/_components/NewVersionNotifier";
 import { watchForNewVersion } from "@/lib/new-version";
 import { fireEvent, render, screen } from "./test-utils";
+
+vi.mock("convex/react", () => ({ useAction: vi.fn() }));
 
 vi.mock("sonner", () => ({
   toast: { custom: vi.fn(), dismiss: vi.fn() },
@@ -29,6 +32,7 @@ async function flush() {
 beforeEach(() => {
   vi.useFakeTimers();
   setVisibility("visible");
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -107,6 +111,23 @@ describe("watchForNewVersion", () => {
     stop();
   });
 
+  it("does not notify again when deployments alternate between known versions", async () => {
+    const onNewVersion = vi.fn();
+    const fetchLatestVersion = vi
+      .fn()
+      .mockResolvedValueOnce("v2")
+      .mockResolvedValueOnce("v3")
+      .mockResolvedValueOnce("v2")
+      .mockResolvedValueOnce("v1")
+      .mockResolvedValueOnce("");
+    const stop = watchForNewVersion("v1", onNewVersion, { fetchLatestVersion });
+
+    await vi.advanceTimersByTimeAsync(POLL_MS * 5);
+
+    expect(onNewVersion.mock.calls).toEqual([["v2"], ["v3"]]);
+    stop();
+  });
+
   it("ignores failed and empty checks", async () => {
     const onNewVersion = vi.fn();
     const fetchLatestVersion = vi
@@ -129,11 +150,16 @@ describe("watchForNewVersion", () => {
     const fetchLatestVersion = vi.fn(
       () => new Promise<string>((r) => (resolve = r)),
     );
-    const stop = watchForNewVersion("v1", vi.fn(), { fetchLatestVersion });
+    const stop = watchForNewVersion("v1", vi.fn(), {
+      fetchLatestVersion,
+      pollIntervalMs: 1_000,
+    });
 
     window.dispatchEvent(new Event("focus"));
     setVisibility("visible");
     window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("pageshow"));
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(fetchLatestVersion).toHaveBeenCalledTimes(1);
 
     resolve("v1");
@@ -160,6 +186,121 @@ describe("watchForNewVersion", () => {
     expect(fetchLatestVersion).toHaveBeenCalledTimes(1);
     expect(onNewVersion).not.toHaveBeenCalled();
   });
+
+  it.each(["response", "failure"])(
+    "ignores a timed-out check's late %s during the next check",
+    async (outcome) => {
+      let resolveOld!: (version: string) => void;
+      let rejectOld!: (error: Error) => void;
+      let resolveNew!: (version: string) => void;
+      const fetchLatestVersion = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<string>((resolve, reject) => {
+              resolveOld = resolve;
+              rejectOld = reject;
+            }),
+        )
+        .mockImplementationOnce(
+          () => new Promise<string>((r) => (resolveNew = r)),
+        );
+      const onNewVersion = vi.fn();
+      const stop = watchForNewVersion("v1", onNewVersion, {
+        fetchLatestVersion,
+      });
+
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(10_000);
+      window.dispatchEvent(new Event("online"));
+      expect(fetchLatestVersion).toHaveBeenCalledTimes(2);
+
+      if (outcome === "response") resolveOld("obsolete");
+      else rejectOld(new Error("late failure"));
+      await vi.advanceTimersByTimeAsync(0);
+      window.dispatchEvent(new Event("pageshow"));
+      expect(fetchLatestVersion).toHaveBeenCalledTimes(2);
+      expect(onNewVersion).not.toHaveBeenCalled();
+
+      resolveNew("v3");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onNewVersion).toHaveBeenCalledExactlyOnceWith("v3");
+      stop();
+    },
+  );
+
+  it.each(["focus", "online", "pageshow"])(
+    "suppresses %s while hidden and checks on visible return",
+    async (event) => {
+      const fetchLatestVersion = vi.fn().mockResolvedValue("v2");
+      const onNewVersion = vi.fn();
+      const stop = watchForNewVersion("v1", onNewVersion, {
+        fetchLatestVersion,
+      });
+      setVisibility("hidden");
+      window.dispatchEvent(new Event(event));
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+      expect(fetchLatestVersion).not.toHaveBeenCalled();
+
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onNewVersion).toHaveBeenCalledExactlyOnceWith("v2");
+      stop();
+    },
+  );
+
+  it("aborts pending network work and removes all listeners and timers on stop", async () => {
+    const removeDocumentListener = vi.spyOn(document, "removeEventListener");
+    const removeWindowListener = vi.spyOn(window, "removeEventListener");
+    let resolve!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => (resolve = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    const onNewVersion = vi.fn();
+    const stop = watchForNewVersion("v1", onNewVersion);
+    window.dispatchEvent(new Event("pageshow"));
+    stop();
+    stop();
+    expect(vi.mocked(fetch).mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      "visibilitychange",
+      expect.any(Function),
+    );
+    for (const event of ["focus", "online", "pageshow"]) {
+      expect(removeWindowListener).toHaveBeenCalledWith(
+        event,
+        expect.any(Function),
+      );
+      window.dispatchEvent(new Event(event));
+    }
+    setVisibility("visible");
+    resolve(Response.json({ version: "v2" }));
+    await vi.advanceTimersByTimeAsync(POLL_MS * 2);
+    expect(onNewVersion).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([null, {}, { version: 42 }, { version: "" }, { version: "v1" }])(
+    "ignores an unusable or current version response %j and retries",
+    async (body) => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(() => Promise.resolve(Response.json(body)))
+        .mockImplementationOnce(() =>
+          Promise.resolve(Response.json({ version: "v2" })),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      const onNewVersion = vi.fn();
+      const stop = watchForNewVersion("v1", onNewVersion);
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onNewVersion).not.toHaveBeenCalled();
+      window.dispatchEvent(new Event("pageshow"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onNewVersion).toHaveBeenCalledExactlyOnceWith("v2");
+      stop();
+    },
+  );
 
   it("reads the deployed version from the version endpoint by default", async () => {
     const fetchMock = vi
@@ -240,6 +381,59 @@ describe("NewVersionNotifier", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(toast.dismiss).toHaveBeenCalledWith("new-version");
     unmount();
+  });
+
+  it("retains the unsent Game draft when Refresh requests a reload", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_VERSION", "v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(Response.json({ version: "v2" })),
+    );
+    const game = (id: string) => (
+      <GuessInput
+        gameId={id as never}
+        onAchievementsUnlocked={vi.fn()}
+        onDuplicate={vi.fn()}
+      />
+    );
+    const page = render(
+      <>
+        <NewVersionNotifier />
+        {game("game")}
+      </>,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Type a word…"), {
+      target: { value: "apple" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    const [renderToast] = vi.mocked(toast.custom).mock.calls[0];
+    const notification = render(<>{renderToast("new-version")}</>);
+    const reload = vi.fn();
+    // jsdom cannot navigate; replace only the browser reload boundary.
+    const browserWindow = window;
+    vi.stubGlobal(
+      "window",
+      new Proxy(browserWindow, {
+        get(target, property) {
+          return property === "location"
+            ? { reload }
+            : Reflect.get(target, property);
+        },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(reload).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+    page.unmount();
+    notification.unmount();
+
+    const otherGame = render(game("other"));
+    expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("");
+    otherGame.unmount();
+    render(game("game"));
+    expect(screen.getByPlaceholderText("Type a word…")).toHaveValue("apple");
   });
 
   it("does nothing when the build has no version", async () => {

@@ -9,20 +9,30 @@ type WatchOptions = {
   pollIntervalMs?: number;
 };
 
-async function fetchDeployedVersion(): Promise<string | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let body: unknown;
-  try {
-    const response = await fetch("/api/version", {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!response.ok) return null;
-    body = await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
+type Check = {
+  controller: AbortController;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+type WatchState =
+  | { status: "watching" }
+  | { status: "checking"; check: Check }
+  | { status: "stopped" };
+
+type CheckOutcome =
+  | { type: "response"; version: string | null }
+  | { type: "failure" }
+  | { type: "timeout" };
+
+async function fetchDeployedVersion(
+  signal: AbortSignal,
+): Promise<string | null> {
+  const response = await fetch("/api/version", {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) return null;
+  const body: unknown = await response.json();
   if (typeof body !== "object" || body === null || !("version" in body)) {
     return null;
   }
@@ -44,32 +54,56 @@ export function watchForNewVersion(
   currentVersion: string,
   onNewVersion: (latestVersion: string) => void,
   {
-    fetchLatestVersion = fetchDeployedVersion,
+    fetchLatestVersion,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   }: WatchOptions = {},
 ): () => void {
-  let stopped = false;
-  let checking = false;
-  let lastNotified: string | null = null;
+  let state: WatchState = { status: "watching" };
+  const notifiedVersions = new Set<string>();
 
-  async function check() {
-    if (stopped || checking) return;
-    checking = true;
-    try {
-      const latest = await fetchLatestVersion();
-      if (stopped || !latest) return;
-      if (latest === currentVersion || latest === lastNotified) return;
-      lastNotified = latest;
-      onNewVersion(latest);
-    } catch {
-      // Offline or mid-deploy: try again on the next trigger.
-    } finally {
-      checking = false;
+  function complete(check: Check, outcome: CheckOutcome) {
+    // Only the currently owned check can finish. A timed-out or stopped
+    // request may still resolve if the transport ignores cancellation.
+    if (state.status !== "checking" || state.check !== check) return;
+    clearTimeout(check.timeout);
+    state = { status: "watching" };
+    if (outcome.type === "timeout") check.controller.abort();
+    if (outcome.type !== "response") return;
+
+    const latest = outcome.version;
+    if (!latest || latest === currentVersion || notifiedVersions.has(latest)) {
+      return;
     }
+    notifiedVersions.add(latest);
+    onNewVersion(latest);
   }
 
   function checkIfVisible() {
-    if (document.visibilityState === "visible") void check();
+    if (state.status !== "watching" || document.visibilityState !== "visible") {
+      return;
+    }
+    const controller = new AbortController();
+    const check: Check = {
+      controller,
+      timeout: setTimeout(
+        () => complete(check, { type: "timeout" }),
+        FETCH_TIMEOUT_MS,
+      ),
+    };
+    state = { status: "checking", check };
+    // The timeout belongs to the watcher, so even a custom fetcher or a body
+    // that ignores abort cannot keep it in checking forever.
+    void (async () => {
+      try {
+        const version = await (fetchLatestVersion
+          ? fetchLatestVersion()
+          : fetchDeployedVersion(controller.signal));
+        complete(check, { type: "response", version });
+      } catch {
+        // Offline or mid-deploy: try again on the next trigger.
+        complete(check, { type: "failure" });
+      }
+    })();
   }
 
   const interval = window.setInterval(checkIfVisible, pollIntervalMs);
@@ -79,7 +113,13 @@ export function watchForNewVersion(
   window.addEventListener("pageshow", checkIfVisible);
 
   return () => {
-    stopped = true;
+    if (state.status === "stopped") return;
+    const previous = state;
+    state = { status: "stopped" };
+    if (previous.status === "checking") {
+      clearTimeout(previous.check.timeout);
+      previous.check.controller.abort();
+    }
     window.clearInterval(interval);
     document.removeEventListener("visibilitychange", checkIfVisible);
     window.removeEventListener("focus", checkIfVisible);

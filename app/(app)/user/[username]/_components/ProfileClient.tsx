@@ -1,5 +1,6 @@
 "use client";
 
+import type { FunctionReturnType } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { notFound, useRouter } from "next/navigation";
 import {
@@ -7,6 +8,7 @@ import {
   type FormEvent,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -69,26 +71,6 @@ export function ProfileClient({ username }: { username: string }) {
   const achievementState = useQuery(api.achievements.listForProfile, {
     username,
   });
-  const generateUploadUrl = useMutation(
-    api.users.generateProfileImageUploadUrl,
-  );
-  const updateProfile = useMutation(api.users.updateProfile);
-  const nameInputId = useId();
-  const usernameInputId = useId();
-  const emailInputId = useId();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [usernameInput, setUsernameInput] = useState("");
-  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(
-    null,
-  );
-  const [selectedAvatarPreview, setSelectedAvatarPreview] = useState<
-    string | null
-  >(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
   useEffect(() => {
     if (
       profile === undefined ||
@@ -102,11 +84,6 @@ export function ProfileClient({ username }: { username: string }) {
     }
   }, [profile, router, username]);
 
-  useEffect(() => {
-    if (selectedAvatarPreview === null) return;
-    return () => URL.revokeObjectURL(selectedAvatarPreview);
-  }, [selectedAvatarPreview]);
-
   if (
     profile === undefined ||
     activityGraph === undefined ||
@@ -119,14 +96,88 @@ export function ProfileClient({ username }: { username: string }) {
     notFound();
   }
 
-  const loadedProfile = profile;
+  return (
+    <ProfileEditor
+      key={`${username}:${profile._id}:${profile.isCurrentUser}`}
+      loadedProfile={profile}
+      activityGraph={activityGraph}
+      achievementState={achievementState}
+    />
+  );
+}
+
+type Draft = {
+  name: string;
+  username: string;
+  avatar: { file: File; preview: string } | null;
+};
+type SaveStage = "upload-url" | "upload" | "persist";
+type EditState =
+  | { stage: "viewing" }
+  | { stage: "editing"; draft: Draft }
+  | {
+      stage: "failed";
+      draft: Draft;
+      failedAt: "validate" | SaveStage;
+      error: string;
+    }
+  | { stage: SaveStage; draft: Draft }
+  | { stage: "navigating"; username: string };
+
+function ProfileEditor({
+  loadedProfile,
+  activityGraph,
+  achievementState,
+}: {
+  loadedProfile: NonNullable<
+    FunctionReturnType<typeof api.users.getByUsername>
+  >;
+  activityGraph: NonNullable<
+    FunctionReturnType<typeof api.users.getActivityGraph>
+  >;
+  achievementState: NonNullable<
+    FunctionReturnType<typeof api.achievements.listForProfile>
+  >;
+}) {
+  const router = useRouter();
+  const generateUploadUrl = useMutation(
+    api.users.generateProfileImageUploadUrl,
+  );
+  const updateProfile = useMutation(api.users.updateProfile);
+  const nameInputId = useId();
+  const usernameInputId = useId();
+  const emailInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [state, setState] = useState<EditState>({ stage: "viewing" });
+  // A synchronous claim prevents repeated submits before React commits disabled controls.
+  // Unmounting this keyed editor invalidates all of its outstanding work.
+  const inFlight = useRef<symbol | null>(null);
+  useLayoutEffect(
+    () => () => {
+      inFlight.current = null;
+    },
+    [],
+  );
+  const draft = "draft" in state ? state.draft : null;
+  const selectedAvatarPreview = draft?.avatar?.preview ?? null;
+  useEffect(() => {
+    if (selectedAvatarPreview === null) return;
+    return () => URL.revokeObjectURL(selectedAvatarPreview);
+  }, [selectedAvatarPreview]);
+  const isEditing = draft !== null;
+  const isBusy =
+    state.stage !== "viewing" &&
+    state.stage !== "editing" &&
+    state.stage !== "failed";
+  const error = state.stage === "failed" ? state.error : null;
+  const nameInput = draft?.name ?? "";
+  const usernameInput = draft?.username ?? "";
   const displayName = loadedProfile.player.name;
   const avatarSrc = selectedAvatarPreview ?? loadedProfile.player.image;
   const canEdit = loadedProfile.isCurrentUser;
   const profileEmail = loadedProfile.email ?? "";
   const profileUsername =
     loadedProfile.displayUsername ?? loadedProfile.username ?? "";
-  const isBusy = isSaving;
   const avatar = (
     <Avatar className="h-20 w-20">
       {avatarSrc && <AvatarImage src={avatarSrc} alt={displayName} />}
@@ -137,88 +188,112 @@ export function ProfileClient({ username }: { username: string }) {
   );
 
   function beginEditing() {
-    if (!canEdit) return;
-    setNameInput(loadedProfile.name ?? "");
-    setUsernameInput(profileUsername);
-    setError(null);
-    setIsEditing(true);
+    if (!canEdit || state.stage !== "viewing") return;
+    inFlight.current = null;
+    setState({
+      stage: "editing",
+      draft: {
+        name: loadedProfile.name ?? "",
+        username: profileUsername,
+        avatar: null,
+      },
+    });
   }
 
   function handleAvatarClick() {
-    if (!canEdit) return;
+    if (!canEdit || isBusy) return;
     beginEditing();
     fileInputRef.current?.click();
   }
 
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null;
-    if (file === null) return;
+    // Allow picking the same file again after cancellation or a failed validation.
+    event.currentTarget.value = "";
+    if (file === null || draft === null || isBusy) return;
     const invalidReason = !AVATAR_ACCEPT.split(",").includes(file.type)
       ? "Please choose a PNG, JPEG, WebP or GIF image."
       : file.size > MAX_AVATAR_BYTES
         ? "Profile image must be 1 MB or smaller."
         : null;
     if (invalidReason !== null) {
-      // Drop any earlier pick so Save can't upload a file the user replaced.
-      setSelectedAvatarFile(null);
-      setSelectedAvatarPreview((previous) => {
-        if (previous !== null) URL.revokeObjectURL(previous);
-        return null;
+      setState({
+        stage: "failed",
+        draft: { ...draft, avatar: null },
+        failedAt: "validate",
+        error: invalidReason,
       });
-      setError(invalidReason);
       return;
     }
-    setSelectedAvatarFile(file);
-    setSelectedAvatarPreview((previous) => {
-      if (previous !== null) URL.revokeObjectURL(previous);
-      return URL.createObjectURL(file);
+    setState({
+      stage: "editing",
+      draft: { ...draft, avatar: { file, preview: URL.createObjectURL(file) } },
     });
   }
 
-  function resetEditState() {
-    setNameInput(loadedProfile.name ?? "");
-    setUsernameInput(profileUsername);
-    setSelectedAvatarFile(null);
-    setSelectedAvatarPreview((previous) => {
-      if (previous !== null) URL.revokeObjectURL(previous);
-      return null;
-    });
-    setError(null);
+  function changeDraft(field: "name" | "username", value: string) {
+    if (draft === null || isBusy) return;
+    setState({ stage: "editing", draft: { ...draft, [field]: value } });
+  }
+
+  function cancelEditing() {
+    if (isBusy) return;
+    inFlight.current = null;
+    setState({ stage: "viewing" });
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedName = nameInput.trim();
-    const trimmedUsername = usernameInput.trim();
-    if (trimmedName.length === 0) {
-      setError("Name is required.");
-      return;
-    }
-    if (trimmedUsername.length === 0) {
-      setError("Username is required.");
+    if (draft === null || isBusy || inFlight.current !== null) return;
+    const trimmedName = draft.name.trim();
+    const trimmedUsername = draft.username.trim();
+    const validationError =
+      trimmedName.length === 0
+        ? "Name is required."
+        : trimmedUsername.length === 0
+          ? "Username is required."
+          : null;
+    if (validationError !== null) {
+      setState({
+        stage: "failed",
+        draft,
+        failedAt: "validate",
+        error: validationError,
+      });
       return;
     }
 
-    setIsSaving(true);
-    setError(null);
+    const request = Symbol("profile save");
+    inFlight.current = request;
+    const isCurrent = () => inFlight.current === request;
+    let stage: SaveStage = draft.avatar === null ? "persist" : "upload-url";
+    setState({ stage, draft });
     const result = await runMutation(
       async () => {
         let avatarStorageId: Id<"_storage"> | undefined;
-        if (selectedAvatarFile !== null) {
+        if (draft.avatar !== null) {
           const uploadUrl = await generateUploadUrl({});
+          if (!isCurrent()) return;
+          stage = "upload";
+          setState({ stage, draft });
           const uploadResponse = await fetch(uploadUrl, {
             method: "POST",
-            headers: { "Content-Type": selectedAvatarFile.type },
-            body: selectedAvatarFile,
+            headers: { "Content-Type": draft.avatar.file.type },
+            body: draft.avatar.file,
           });
-          if (!uploadResponse.ok) {
+          if (!isCurrent()) return;
+          if (!uploadResponse.ok)
             throw new Error("Profile image upload failed.");
-          }
           const { storageId } = (await uploadResponse.json()) as {
             storageId: Id<"_storage">;
           };
+          if (!isCurrent()) return;
           avatarStorageId = storageId;
         }
+        if (!isCurrent()) return;
+        stage = "persist";
+        setState({ stage, draft });
         await updateProfile({
           name: trimmedName,
           username: trimmedUsername,
@@ -231,20 +306,26 @@ export function ProfileClient({ username }: { username: string }) {
         showToast: false,
       },
     );
-    setIsSaving(false);
+    if (!isCurrent()) return;
     if (!result.ok) {
-      setError(result.message);
+      inFlight.current = null;
+      setState({
+        stage: "failed",
+        draft,
+        failedAt: stage,
+        error: result.message,
+      });
       return;
     }
+    // Success releases the preview through its sole effect owner. Keep the claim
+    // until the next edit session so repeated submit events cannot persist twice.
     const nextUsername = trimmedUsername.toLowerCase();
-    setIsEditing(false);
-    setSelectedAvatarFile(null);
-    setSelectedAvatarPreview((previous) => {
-      if (previous !== null) URL.revokeObjectURL(previous);
-      return null;
-    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (nextUsername !== loadedProfile.username) {
+      setState({ stage: "navigating", username: nextUsername });
       router.replace(`/user/${nextUsername}`);
+    } else {
+      setState({ stage: "viewing" });
     }
   }
 
@@ -257,6 +338,7 @@ export function ProfileClient({ username }: { username: string }) {
             type="file"
             accept={AVATAR_ACCEPT}
             className="hidden"
+            disabled={isBusy}
             onChange={handleAvatarChange}
           />
           {canEdit ? (
@@ -264,6 +346,7 @@ export function ProfileClient({ username }: { username: string }) {
               type="button"
               aria-label="Change profile picture"
               className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              disabled={isBusy}
               onClick={handleAvatarClick}
             >
               {avatar}
@@ -297,7 +380,7 @@ export function ProfileClient({ username }: { username: string }) {
                 <Input
                   id={nameInputId}
                   value={nameInput}
-                  onChange={(event) => setNameInput(event.target.value)}
+                  onChange={(event) => changeDraft("name", event.target.value)}
                   disabled={isBusy}
                   autoComplete="name"
                 />
@@ -310,7 +393,9 @@ export function ProfileClient({ username }: { username: string }) {
                 <Input
                   id={usernameInputId}
                   value={usernameInput}
-                  onChange={(event) => setUsernameInput(event.target.value)}
+                  onChange={(event) =>
+                    changeDraft("username", event.target.value)
+                  }
                   disabled={isBusy}
                   autoComplete="username"
                   maxLength={20}
@@ -329,10 +414,7 @@ export function ProfileClient({ username }: { username: string }) {
                     variant="outline"
                     className="flex-1"
                     disabled={isBusy}
-                    onClick={() => {
-                      resetEditState();
-                      setIsEditing(false);
-                    }}
+                    onClick={cancelEditing}
                   >
                     Cancel
                   </Button>
@@ -340,6 +422,7 @@ export function ProfileClient({ username }: { username: string }) {
               </form>
             ) : (
               <Button
+                disabled={isBusy}
                 onClick={beginEditing}
                 className="w-full justify-center hover:bg-muted/80"
               >

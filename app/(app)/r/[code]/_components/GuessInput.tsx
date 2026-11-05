@@ -3,7 +3,7 @@
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useAction } from "convex/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
@@ -34,28 +34,58 @@ function loadDraft(gameId: Id<"games">) {
   }
 }
 
-export function GuessInput({
+type GuessInputProps = {
+  gameId: Id<"games">;
+  onAchievementsUnlocked: (ids: string[]) => void;
+  onDuplicate: (lemma: string | null) => void;
+  children?: React.ReactNode;
+};
+
+type GuessState =
+  | { phase: "editing" | "submitting"; word: string }
+  | { phase: "rejected"; word: string; message: string }
+  | { phase: "accepted" | "duplicate"; word: "" };
+
+export function GuessInput(props: GuessInputProps) {
+  return <GameGuessInput key={props.gameId} {...props} />;
+}
+
+function GameGuessInput({
   gameId,
   onAchievementsUnlocked,
   onDuplicate,
   children,
-}: {
-  gameId: Id<"games">;
-  onAchievementsUnlocked: (ids: string[]) => void;
-  onDuplicate: (lemma: string | null) => void;
-  // Controls beside the input, such as the Assist button.
-  children?: React.ReactNode;
-}) {
+}: GuessInputProps) {
   const submit = useAction(api.guesses.submit);
   // Only mounted once the game has loaded on the client, so reading storage
   // here can't cause a hydration mismatch.
-  const [word, setWord] = useState(() => loadDraft(gameId));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<GuessState>(() => ({
+    phase: "editing",
+    word: loadDraft(gameId),
+  }));
+  const word = state.word;
+  const busy = state.phase === "submitting";
+  const error = state.phase === "rejected" ? state.message : null;
   const inputRef = useRef<HTMLInputElement>(null);
+  const pending = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.phase === "editing" || state.phase === "submitting") return;
+    const frame = requestAnimationFrame(() => {
+      if (mounted.current) inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state.phase]);
 
   function updateWord(next: string) {
-    setWord(next);
+    setState({ phase: "editing", word: next });
     saveDraft(gameId, next);
   }
 
@@ -65,39 +95,52 @@ export function GuessInput({
         className="flex flex-col gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!word.trim()) return;
-          setError(null);
+          if (pending.current || !word.trim()) return;
+          pending.current = true;
           onDuplicate(null);
-          setBusy(true);
+          setState({ phase: "submitting", word });
           try {
             const result = await runMutation(() => submit({ gameId, word }), {
               context: "guess.submit",
               fallback: "Could not submit guess. Try again.",
               showToast: false,
             });
+            // Durable unlocks belong to the Room queue outside this form. A
+            // winning turn or a role change may already have unmounted it.
+            if (
+              result.ok &&
+              !result.value.message &&
+              !result.value.alreadyGuessed
+            ) {
+              if (result.value.unlockedAchievementIds.length > 0)
+                onAchievementsUnlocked(result.value.unlockedAchievementIds);
+              if (result.value.won)
+                lazyToast((toast) =>
+                  toast.success(`You got it: ${result.value.lemma}!`),
+                );
+            }
+            // Draft, duplicate and focus effects belong only to this mounted
+            // Game form; an old completion must not touch its replacement.
+            if (!mounted.current) return;
             if (!result.ok) {
-              setError(result.message);
+              setState({ phase: "rejected", word, message: result.message });
               return;
             }
             const res = result.value;
             if (res.alreadyGuessed && res.lemma) {
               onDuplicate(res.lemma);
-              updateWord("");
+              saveDraft(gameId, "");
+              setState({ phase: "duplicate", word: "" });
               return;
             }
             if (res.message) {
-              setError(res.message);
+              setState({ phase: "rejected", word, message: res.message });
               return;
             }
-            updateWord("");
-            if (res.unlockedAchievementIds.length > 0) {
-              onAchievementsUnlocked(res.unlockedAchievementIds);
-            }
-            if (res.won)
-              lazyToast((toast) => toast.success(`You got it: ${res.lemma}!`));
+            saveDraft(gameId, "");
+            setState({ phase: "accepted", word: "" });
           } finally {
-            setBusy(false);
-            requestAnimationFrame(() => inputRef.current?.focus());
+            pending.current = false;
           }
         }}
       >
@@ -110,7 +153,6 @@ export function GuessInput({
               value={word}
               onChange={(e) => {
                 updateWord(e.target.value);
-                setError(null);
               }}
               disabled={busy}
               aria-invalid={error !== null}
