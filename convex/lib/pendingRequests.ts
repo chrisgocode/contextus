@@ -24,22 +24,57 @@ export function deadlineOf(req: Doc<"pendingRequests">) {
   return req.expiresAt ?? 0;
 }
 
-// Whether a pending request still holds its type.
-export function isLive(req: Doc<"pendingRequests">, now: number) {
-  return (
-    req.status === "pending" &&
-    (now < deadlineOf(req) ||
-      (req.approvalStartedAt !== undefined &&
-        now < req.approvalStartedAt + APPROVAL_GRACE_MS))
-  );
+// Effective state is time-aware; persisted status can lag a scheduled expiry.
+// Withdrawal is deletion, so absent includes cancelled/departed requesters.
+export type RequestState =
+  | { kind: "absent" }
+  | { kind: "waiting"; until: number }
+  | { kind: "approval-started"; until: number }
+  | { kind: "approval-grace"; until: number }
+  | { kind: "overdue" }
+  | { kind: "approved" | "denied" | "expired" };
+
+export function effectiveState(
+  req: Doc<"pendingRequests"> | null,
+  now: number,
+): RequestState {
+  if (req === null) return { kind: "absent" };
+  if (req.status !== "pending") return { kind: req.status };
+  const deadline = deadlineOf(req);
+  const graceUntil =
+    req.approvalStartedAt === undefined
+      ? 0
+      : req.approvalStartedAt + APPROVAL_GRACE_MS;
+  const until = Math.max(deadline, graceUntil);
+  if (now >= until) return { kind: "overdue" };
+  if (now >= deadline) return { kind: "approval-grace", until };
+  return {
+    kind: req.approvalStartedAt === undefined ? "waiting" : "approval-started",
+    until,
+  };
 }
 
-// When a live request can next stop being live.
-export function liveUntil(req: Doc<"pendingRequests">) {
-  return Math.max(
-    deadlineOf(req),
-    (req.approvalStartedAt ?? 0) + APPROVAL_GRACE_MS,
-  );
+// Keep the liveness interface shared by create, queries and turn validation.
+export function isLive(req: Doc<"pendingRequests"> | null, now: number) {
+  return "until" in effectiveState(req, now);
+}
+
+export function publicStatus(
+  req: Doc<"pendingRequests">,
+  now: number,
+): Doc<"pendingRequests">["status"] {
+  const state = effectiveState(req, now);
+  switch (state.kind) {
+    case "waiting":
+    case "approval-started":
+    case "approval-grace":
+      return "pending";
+    case "overdue":
+    case "absent":
+      return "expired";
+    default:
+      return state.kind;
+  }
 }
 
 export function pendingOfType(

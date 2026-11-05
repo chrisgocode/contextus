@@ -30,7 +30,7 @@ import type { AchievementId } from "./lib/achievements";
 import { decideGiveup, decideGuess } from "./lib/gameTransitions";
 import { type AppErrorCode, appError, appErrorData } from "./lib/errors";
 import { recordGuestGameCompletion } from "./lib/guestEngagement";
-import { initialHintTarget, MAX_WALK_ITERATIONS } from "./lib/hint";
+import { beginHintSearch, decideHint } from "./lib/hint";
 import { isLive } from "./lib/pendingRequests";
 import { enforceRateLimit } from "./lib/rateLimits";
 import { touchRoomActivity } from "./lib/roomMembership";
@@ -57,6 +57,43 @@ export type GuessResult = {
   alreadyGuessed?: true;
   unlockedAchievementIds: AchievementId[];
 };
+
+// The app-facing GuessResult remains compatible; internal orchestration never
+// infers an outcome from optional message/alreadyGuessed fields.
+type GuessOutcome =
+  | { kind: "unknown_word"; message: string }
+  | { kind: "duplicate"; score: ScoredLemma }
+  | {
+      kind: "recorded" | "won";
+      score: ScoredLemma;
+      unlockedAchievementIds: AchievementId[];
+    };
+
+function guessResult(outcome: GuessOutcome): GuessResult {
+  switch (outcome.kind) {
+    case "unknown_word":
+      return {
+        message: outcome.message,
+        won: false,
+        unlockedAchievementIds: [],
+      };
+    case "duplicate":
+      return {
+        ...outcome.score,
+        won: false,
+        alreadyGuessed: true,
+        message: ALREADY_GUESSED_MESSAGE,
+        unlockedAchievementIds: [],
+      };
+    case "recorded":
+    case "won":
+      return {
+        ...outcome.score,
+        won: outcome.kind === "won",
+        unlockedAchievementIds: outcome.unlockedAchievementIds,
+      };
+  }
+}
 
 type ApplyResult = {
   status: "recorded" | "duplicate";
@@ -465,14 +502,8 @@ export async function performTurn(
     switch (turn.kind) {
       case "guess": {
         const guess = await performGuess(ctx, gameId, oracle, turn.word);
-        result = guess;
-        outcome = guess.won
-          ? "won"
-          : guess.alreadyGuessed
-            ? "duplicate"
-            : guess.message !== undefined
-              ? "unknown_word"
-              : "recorded";
+        result = guessResult(guess);
+        outcome = guess.kind;
         break;
       }
       case "hint": {
@@ -570,35 +601,28 @@ async function performGuess(
   gameId: Id<"games">,
   oracle: PuzzleWordOracle,
   word: string,
-): Promise<GuessResult> {
+): Promise<GuessOutcome> {
   const input = word.trim().toLowerCase();
   if (input.length === 0) throw appError("emptyWord");
   if (input.length > MAX_WORD_LENGTH) {
     throw appError("wordTooLong");
   }
   const scored = await oracle.distance(input);
-  if (!scored.ok) {
-    return { message: scored.error, won: false, unlockedAchievementIds: [] };
+  if (scored.kind === "failure") throw scored.error;
+  if (scored.kind === "unknown") {
+    return { kind: "unknown_word", message: scored.message };
   }
-  const { lemma, distance } = scored;
+  const { lemma, distance } = scored.score;
   const result: ApplyResult = await ctx.runMutation(internal.turns._apply, {
     gameId,
     turn: { kind: "guess", lemma, distance },
   });
   if (result.status === "duplicate") {
-    return {
-      lemma,
-      distance,
-      won: false,
-      alreadyGuessed: true,
-      message: ALREADY_GUESSED_MESSAGE,
-      unlockedAchievementIds: [],
-    };
+    return { kind: "duplicate", score: scored.score };
   }
   return {
-    lemma,
-    distance,
-    won: result.won,
+    kind: result.won ? "won" : "recorded",
+    score: scored.score,
     unlockedAchievementIds: result.unlockedAchievementIds,
   };
 }
@@ -615,19 +639,25 @@ async function performHint(
   requestId: Id<"pendingRequests"> | undefined,
   onTip: () => Promise<void>,
 ): Promise<ScoredLemma> {
-  const walking = best === 1;
-  let target = walking ? walkFrom : initialHintTarget(best);
-  for (let i = 0; i < MAX_WALK_ITERATIONS; i++) {
+  let search = beginHintSearch(best, walkFrom);
+  while (true) {
+    // Every attempt spends a token before reaching the oracle, including retries.
     await onTip();
-    const tip = await oracle.tip(target);
+    const tip = await oracle.tip(search.target);
     const result: ApplyResult = await ctx.runMutation(internal.turns._apply, {
       gameId,
       turn: { kind: "hint", lemma: tip.lemma, distance: tip.distance },
       requestId,
     });
-    if (result.status === "recorded") return tip;
-    if (!walking) throw appError("hintDuplicate");
-    target += 1;
+    const decision = decideHint(search, result.status);
+    switch (decision.kind) {
+      case "complete":
+        return tip;
+      case "reject":
+        throw appError(decision.reason);
+      case "retry":
+        search = decision.search;
+        break;
+    }
   }
-  throw appError("hintExhausted");
 }

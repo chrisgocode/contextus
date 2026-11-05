@@ -1,3 +1,4 @@
+import { getOrCreateHistory } from "./lib/playerHistory";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -11,6 +12,12 @@ import {
   achievementDefinitions,
   createAchievementService,
 } from "./lib/achievements";
+import {
+  advanceProgress,
+  advanceRealGuess,
+  firstAttempt,
+  firstSolve,
+} from "./lib/achievementTransitions";
 import type { CounterRuleId } from "./lib/achievementRules";
 
 type DbCtx = Pick<MutationCtx, "db">;
@@ -125,22 +132,18 @@ function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
 
     async updateProgress(userId, achievementId, current, target, hidden, now) {
       const row = await getProgressRow(ctx, userId, achievementId);
-      const clampedCurrent = Math.min(current, target);
+      const nextCurrent = advanceProgress(row?.current, current, target);
       if (row === null) {
         await ctx.db.insert("userAchievementProgress", {
           userId,
           achievementId,
-          current: clampedCurrent,
+          current: nextCurrent,
           target,
           hidden,
           updatedAt: now,
         });
       } else {
         // A stale row can hold more than a lowered target allows.
-        const nextCurrent = Math.min(
-          target,
-          Math.max(row.current, clampedCurrent),
-        );
         if (
           nextCurrent === row.current &&
           target === row.target &&
@@ -196,22 +199,14 @@ function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
         event.contextoGameId,
         event.now,
       );
-      const isFirstEverAttemptForPuzzle = history.firstAttemptAt === undefined;
-      if (isFirstEverAttemptForPuzzle) {
-        await ctx.db.patch("userGameHistory", history._id, {
-          firstAttemptAt: event.now,
-          firstAttemptDistance: event.distance,
-          firstAttemptGameId: event.gameId,
-        });
+      const attempt = firstAttempt(history, event);
+      const isFirstEverAttemptForPuzzle = attempt.kind === "record";
+      if (attempt.kind === "record") {
+        await ctx.db.patch("userGameHistory", history._id, attempt.patch);
       }
+      const stats = advanceRealGuess(existing, event.distance);
 
       if (existing === null) {
-        const stats = {
-          realGuessCount: 1,
-          bestDistance: event.distance,
-          lastDistance: event.distance,
-          noBacktrackingSoFar: true,
-        };
         await ctx.db.insert("gamePlayerStats", {
           gameId: event.gameId,
           userId: event.userId,
@@ -225,14 +220,6 @@ function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
         };
       }
 
-      const stats = {
-        realGuessCount: existing.realGuessCount + 1,
-        bestDistance: Math.min(existing.bestDistance, event.distance),
-        lastDistance: event.distance,
-        noBacktrackingSoFar:
-          existing.noBacktrackingSoFar &&
-          event.distance < existing.lastDistance,
-      };
       await ctx.db.patch("gamePlayerStats", existing._id, {
         ...stats,
         updatedAt: event.now,
@@ -261,11 +248,9 @@ function createConvexAchievementRepository(ctx: DbCtx): AchievementRepository {
         contextoGameId,
         now,
       );
-      if (history.firstSolvedAt !== undefined) return false;
-      await ctx.db.patch("userGameHistory", history._id, {
-        firstSolvedAt: now,
-        firstSolvedGameId: gameId,
-      });
+      const credit = firstSolve(history, gameId, now);
+      if (credit.kind === "unchanged") return false;
+      await ctx.db.patch("userGameHistory", history._id, credit.patch);
       return true;
     },
 
@@ -340,31 +325,6 @@ async function getProgressRow(
       q.eq("userId", userId).eq("achievementId", achievementId),
     )
     .unique();
-}
-
-async function getOrCreateHistory(
-  ctx: DbCtx,
-  userId: Id<"users">,
-  contextoGameId: number,
-  now: number,
-) {
-  const existing = await ctx.db
-    .query("userGameHistory")
-    .withIndex("by_user_game", (q) =>
-      q.eq("userId", userId).eq("contextoGameId", contextoGameId),
-    )
-    .unique();
-  if (existing !== null) return existing;
-  const id = await ctx.db.insert("userGameHistory", {
-    userId,
-    contextoGameId,
-    firstPlayedAt: now,
-  });
-  const inserted = await ctx.db.get("userGameHistory", id);
-  if (inserted === null) {
-    throw new Error("Inserted userGameHistory row could not be read");
-  }
-  return inserted;
 }
 
 async function getUserByUsername(ctx: Pick<QueryCtx, "db">, username: string) {

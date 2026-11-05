@@ -242,3 +242,30 @@ test("profile progress shows the best streak toward each streak achievement", as
   expect(progress("on_a_roll")).toEqual({ current: 2, target: 3 });
   expect(progress("habit_formed")).toEqual({ current: 2, target: 7 });
 });
+
+test("the repeated DST hour counts once and local midnight advances the solve streak", async () => {
+  const t = setup();
+  const host = await seedUser(t, { username: "fallback" });
+  await asUser(t, host).mutation(api.users.setTimeZone, {
+    timeZone: "America/Los_Angeles",
+  });
+  // Both are 01:30 on Nov 1: first PDT, then PST. Neither UTC time nor
+  // elapsed hours may turn these into different Solve days.
+  await solveAt(t, "2026-11-01T08:30:00Z", { host });
+  await solveAt(t, "2026-11-01T09:30:00Z", { host });
+  const progress = async () => {
+    const profile = await asUser(t, host).query(
+      api.achievements.listForProfile,
+      {
+        username: "fallback",
+      },
+    );
+    return profile?.achievements.find((a) => a.achievementId === "on_a_roll")
+      ?.progress;
+  };
+  await expect(progress()).resolves.toEqual({ current: 1, target: 3 });
+  await solveAt(t, "2026-11-02T07:59:00Z", { host }); // still Nov 1
+  await expect(progress()).resolves.toEqual({ current: 1, target: 3 });
+  await solveAt(t, "2026-11-02T08:00:00Z", { host }); // midnight Nov 2
+  await expect(progress()).resolves.toEqual({ current: 2, target: 3 });
+});

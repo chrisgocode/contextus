@@ -1,4 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
+import { reconcileHistory } from "./achievementTransitions";
 import { applyCounterAchievements } from "../achievements";
 import { type RoomCtx, depart } from "./roomMembership";
 
@@ -108,32 +109,9 @@ export async function mergeHistory(
     await ctx.db.patch("userGameHistory", row._id, { userId: targetUserId });
     return;
   }
-  if (existing.firstSolvedAt !== undefined && row.firstSolvedAt !== undefined) {
-    merge.overlappingSolves += 1;
-  }
-  await ctx.db.patch("userGameHistory", existing._id, {
-    firstPlayedAt: Math.min(existing.firstPlayedAt, row.firstPlayedAt),
-    firstAttemptAt: earliest(existing.firstAttemptAt, row.firstAttemptAt),
-    firstAttemptDistance:
-      existing.firstAttemptAt === undefined ||
-      (row.firstAttemptAt !== undefined &&
-        row.firstAttemptAt < existing.firstAttemptAt)
-        ? row.firstAttemptDistance
-        : existing.firstAttemptDistance,
-    firstAttemptGameId:
-      existing.firstAttemptAt === undefined ||
-      (row.firstAttemptAt !== undefined &&
-        row.firstAttemptAt < existing.firstAttemptAt)
-        ? row.firstAttemptGameId
-        : existing.firstAttemptGameId,
-    firstSolvedAt: earliest(existing.firstSolvedAt, row.firstSolvedAt),
-    firstSolvedGameId:
-      existing.firstSolvedAt === undefined ||
-      (row.firstSolvedAt !== undefined &&
-        row.firstSolvedAt < existing.firstSolvedAt)
-        ? row.firstSolvedGameId
-        : existing.firstSolvedGameId,
-  });
+  const reconciliation = reconcileHistory(existing, row);
+  if (reconciliation.overlappingSolve) merge.overlappingSolves += 1;
+  await ctx.db.patch("userGameHistory", existing._id, reconciliation.patch);
   await ctx.db.delete("userGameHistory", row._id);
 }
 
@@ -305,10 +283,4 @@ export async function reconcileCounterAchievements(
       now,
     );
   }
-}
-
-function earliest(a: number | undefined, b: number | undefined) {
-  if (a === undefined) return b;
-  if (b === undefined) return a;
-  return Math.min(a, b);
 }

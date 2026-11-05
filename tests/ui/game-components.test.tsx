@@ -401,6 +401,54 @@ describe("HintGiveupBar", () => {
     expect(onDone).toHaveBeenCalled();
   });
 
+  it.each(["success", "failure"])(
+    "ignores stale ask %s while the next Game is asking",
+    async (outcome) => {
+      const fake = fakeRequests(convex);
+      let resolveOld: (value: unknown) => void = () => {};
+      let rejectOld: (error: unknown) => void = () => {};
+      let resolveNew: (value: unknown) => void = () => {};
+      fake.create
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              resolveOld = resolve;
+              rejectOld = reject;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveNew = resolve;
+            }),
+        );
+      const onDone = vi.fn();
+      const bar = (gameId: string) => (
+        <RequestsProvider gameId={gameId} isHost={false}>
+          <HintGiveupBar onDone={onDone} />
+        </RequestsProvider>
+      );
+      const { rerender } = render(bar("game"));
+      act(() => screen.getByRole("button", { name: "Request hint" }).click());
+      rerender(bar("next"));
+      act(() => screen.getByRole("button", { name: "Request hint" }).click());
+      await act(async () => {
+        if (outcome === "success") resolveOld(null);
+        else rejectOld(appError("gameEnded"));
+      });
+      expect(screen.getByRole("button", { name: "…" })).toBeDisabled();
+      expect(
+        screen.queryByText("This game has already ended."),
+      ).not.toBeInTheDocument();
+      expect(onDone).not.toHaveBeenCalled();
+      await act(async () => resolveNew(null));
+      expect(
+        screen.getByRole("button", { name: "Request hint" }),
+      ).toBeEnabled();
+      expect(onDone).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("shows an exhausted hint pool inline", async () => {
     const fake = fakeRequests(convex);
     fake.hostHint.mockRejectedValue(appError("hintExhausted"));
@@ -561,6 +609,15 @@ describe("RequestRows", () => {
     expect(region).toHaveTextContent("Hint requested");
   });
 
+  it("yields an approved give-up to the end screen", () => {
+    const giveup = { _id: "giveup1", status: "pending", createdAt: 0 };
+    renderRows(
+      { hint: null, giveup },
+      { hint: null, giveup: { ...giveup, status: "approved" } },
+    );
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("hides the answer behind a pending give-up", () => {
     renderRows({
       hint: null,
@@ -568,6 +625,61 @@ describe("RequestRows", () => {
     });
     expect(screen.getByText("Answer · if host agrees")).toBeVisible();
     expect(screen.getByText("Give-up requested")).toBeInTheDocument();
+  });
+
+  it("remembers an observed pending hint across a temporary query gap", () => {
+    renderRows(
+      { hint: pendingHint, giveup: null },
+      { hint: null, giveup: null },
+      { hint: approvedHint, giveup: null },
+    );
+    expect(screen.getByText("Hint approved")).toBeVisible();
+  });
+
+  it("does not replay historic outcomes after remount or a role change", () => {
+    const { view, rows } = renderRows(
+      { hint: pendingHint, giveup: null },
+      { hint: approvedHint, giveup: null },
+    );
+    expect(screen.getByText("Hint approved")).toBeVisible();
+    view.unmount();
+    const next = render(rows());
+    expect(screen.queryByText("Hint approved")).not.toBeInTheDocument();
+    next.rerender(
+      <RequestsProvider isHost>
+        <RequestRows host={host} viewer={viewer} />
+      </RequestsProvider>,
+    );
+    next.rerender(rows());
+    expect(screen.queryByText("Hint approved")).not.toBeInTheDocument();
+  });
+
+  it("keeps a pending give-up independent when a hint is declined and dismissed", async () => {
+    const giveup = { _id: "giveup1", status: "pending", createdAt: 1 };
+    renderRows(
+      { hint: pendingHint, giveup },
+      { hint: { ...pendingHint, status: "denied" }, giveup },
+    );
+    await act(async () =>
+      screen.getByRole("button", { name: "Dismiss" }).click(),
+    );
+    expect(screen.queryByText("Hint declined")).not.toBeInTheDocument();
+    expect(screen.getByText("Give-up requested")).toBeInTheDocument();
+  });
+
+  it("does not revive an old denial when a newer hint is cancelled", async () => {
+    const denied = { ...pendingHint, status: "denied" };
+    const { fake, view, rows } = renderRows(
+      { hint: pendingHint, giveup: null },
+      { hint: denied, giveup: null },
+      { hint: { ...pendingHint, _id: "hint2" }, giveup: null },
+    );
+    await act(async () =>
+      screen.getByRole("button", { name: "Take back" }).click(),
+    );
+    fake.latestMine = { hint: denied, giveup: null };
+    view.rerender(rows());
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("shows nothing to the Host", () => {
@@ -877,6 +989,131 @@ describe("HostRequestRows", () => {
       vi.useRealTimers();
     }
   });
+
+  it("retains a hint for four seconds after its animated reveal settles", async () => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    vi.useFakeTimers();
+    try {
+      const fake = fakeRequests(convex, { listPending: [hint] });
+      fake.approve.mockResolvedValue({ lemma: "ox", distance: 299 });
+      const { rerender } = render(list());
+      await act(async () =>
+        screen.getByRole("button", { name: "Give hint" }).click(),
+      );
+      fake.listPending = [];
+      rerender(list());
+      expect(screen.queryByText("300")).not.toBeInTheDocument();
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(screen.queryByText("300")).not.toBeInTheDocument();
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(screen.getByText("300")).toBeVisible();
+      await act(() => vi.advanceTimersByTimeAsync(3999));
+      expect(screen.getByText("ox")).toBeVisible();
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(screen.queryByText("ox")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles give-up independently while a hint approval is fetching, then allows retry on failure", async () => {
+    const fake = fakeRequests(convex, { listPending: [hint, giveup] });
+    let reject: (error: unknown) => void = () => {};
+    fake.approve.mockImplementation(() => new Promise((_, r) => (reject = r)));
+    render(
+      <RequestsProvider isHost>
+        <HostRequestRows />
+      </RequestsProvider>,
+    );
+    act(() =>
+      screen.getByRole("button", { name: "Give hint for Vic" }).click(),
+    );
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+    await act(async () =>
+      screen.getByRole("button", { name: "Deny Noor's request" }).click(),
+    );
+    expect(fake.deny).toHaveBeenCalledWith({ requestId: "giveup1" });
+    expect(screen.getByText("Finding a hint for Vic")).toBeInTheDocument();
+    await act(async () => reject(appError("requestHandled")));
+    expect(
+      screen.queryByText("Finding a hint for Vic"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Give hint for Vic" }),
+    ).toBeEnabled();
+  });
+
+  it.each(["revealing", "retained"])(
+    "cleans up on unmount while %s without disturbing a new reveal",
+    async (phase) => {
+      vi.stubGlobal("matchMedia", () => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      vi.useFakeTimers();
+      try {
+        const fake = fakeRequests(convex, { listPending: [hint] });
+        fake.approve.mockResolvedValue({ lemma: "ox", distance: 299 });
+        const first = render(list());
+        await act(async () =>
+          screen.getByRole("button", { name: "Give hint" }).click(),
+        );
+        if (phase === "retained") {
+          await act(() => vi.advanceTimersByTimeAsync(200));
+          await act(() => vi.advanceTimersByTimeAsync(200));
+        }
+        first.unmount();
+        render(list());
+        await act(async () =>
+          screen.getByRole("button", { name: "Give hint" }).click(),
+        );
+        // Cross the previous reveal's settlement/expiry while the new row lives.
+        await act(() => vi.advanceTimersByTimeAsync(200));
+        await act(() => vi.advanceTimersByTimeAsync(200));
+        await act(() => vi.advanceTimersByTimeAsync(3999));
+        expect(screen.getByText("ox")).toBeVisible();
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expect(screen.queryByText("ox")).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["game", "role"])(
+    "ignores approval completing after a %s change",
+    async (boundary) => {
+      const fake = fakeRequests(convex, { listPending: [hint] });
+      let resolve: (value: unknown) => void = () => {};
+      fake.approve.mockImplementation(() => new Promise((r) => (resolve = r)));
+      const view = (gameId: string, isHost: boolean) => (
+        <RequestsProvider gameId={gameId} isHost={isHost}>
+          <HostRequestRows />
+          <RequestRows host={{ name: "Host" }} viewer={{ name: "Vic" }} />
+        </RequestsProvider>
+      );
+      const { rerender } = render(view("game", true));
+      act(() =>
+        screen.getByRole("button", { name: "Give hint for Vic" }).click(),
+      );
+      fake.listPending = [];
+      rerender(
+        view(boundary === "game" ? "next" : "game", boundary !== "role"),
+      );
+      await act(async () => resolve({ lemma: "pomelo", distance: 299 }));
+      // Switching back must not resurrect work from the old role either.
+      rerender(view(boundary === "game" ? "next" : "game", true));
+      expect(screen.queryByText("pomelo")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Finding a hint for Vic"),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("shows a requester neither the rows nor the waiting list", () => {
     fakeRequests(convex);
