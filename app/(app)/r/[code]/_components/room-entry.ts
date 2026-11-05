@@ -75,8 +75,8 @@ function useEntryAuth() {
  * invites them to the Room in the same step. It waits for Convex auth to
  * load, so a click before then takes the right path, and after a Guest
  * sign-in it waits for a signed-in client: `signIn` resolves before the Convex
- * client sends the new token. A create still waiting on auth when the page
- * unmounts never resolves, so it can't finish somewhere the user has left.
+ * client sends the new token. Invalidated attempts resolve as cancelled so
+ * mounted callers can release their controls without navigating.
  */
 export function useCreateRoom() {
   const { isLoading, isAuthenticated, signIn } = useEntryAuth();
@@ -84,27 +84,37 @@ export function useCreateRoom() {
   const viewer = useQuery(api.users.getUser, isAuthenticated ? {} : "skip");
   const previousViewer = useRef<string | null>(null);
   type AuthReadiness = "loading" | "anonymous" | "tokenReady";
-  type Created = { kind: "created"; code: string } | EntryFailure;
+  type Created =
+    | { kind: "created"; code: string }
+    | { kind: "cancelled" }
+    | EntryFailure;
   const readiness = useRef<AuthReadiness>("loading");
   const hadToken = useRef(false);
   const lifetime = useRef({ active: true, identity: 0 });
   const pending = useRef<Promise<Created> | null>(null);
+  const cancel = useRef<(() => void) | null>(null);
   const waiters = useRef<
     {
       until: "settled" | "tokenReady";
       resolve: (authenticated: boolean) => void;
     }[]
   >([]);
+  const invalidate = useCallback(() => {
+    lifetime.current.identity++;
+    cancel.current?.();
+    cancel.current = null;
+    pending.current = null;
+    waiters.current = [];
+  }, []);
 
   useEffect(() => {
     const owner = { active: true, identity: 0 };
     lifetime.current = owner;
     return () => {
       owner.active = false;
-      waiters.current = [];
-      pending.current = null;
+      invalidate();
     };
-  }, []);
+  }, [invalidate]);
 
   useEffect(() => {
     const next: AuthReadiness = isLoading
@@ -114,8 +124,8 @@ export function useCreateRoom() {
         : "anonymous";
     if (next !== "loading") {
       if (hadToken.current && next === "anonymous") {
-        lifetime.current.identity++;
-        pending.current = null;
+        invalidate();
+        previousViewer.current = null;
       }
       hadToken.current = next === "tokenReady";
     }
@@ -126,7 +136,7 @@ export function useCreateRoom() {
       waiter.resolve(next === "tokenReady");
       return false;
     });
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, invalidate]);
 
   useEffect(() => {
     const next = viewer?._id ?? null;
@@ -135,19 +145,19 @@ export function useCreateRoom() {
       next !== null &&
       previousViewer.current !== next
     ) {
-      lifetime.current.identity++;
-      pending.current = null;
+      invalidate();
     }
     if (next !== null) previousViewer.current = next;
-  }, [viewer?._id]);
+  }, [viewer?._id, invalidate]);
 
   return useCallback(
     (invite?: Id<"users">[]): Promise<Created> => {
       if (pending.current) return pending.current;
       const owner = lifetime.current;
-      // Cancellation deliberately never resolves, preserving the app-facing
-      // contract: callers cannot navigate using an abandoned result.
-      const abandoned = () => new Promise<never>(() => {});
+      const abandoned = (): Created => ({ kind: "cancelled" });
+      const cancelled = new Promise<Created>((resolve) => {
+        cancel.current = () => resolve(abandoned());
+      });
       const settledAuth = (until: "settled" | "tokenReady") =>
         readiness.current === "tokenReady" ||
         (readiness.current === "anonymous" && until === "settled")
@@ -178,8 +188,11 @@ export function useCreateRoom() {
           });
         }
       };
-      const promise = operation().finally(() => {
-        if (pending.current === promise) pending.current = null;
+      const promise = Promise.race([operation(), cancelled]).finally(() => {
+        if (pending.current === promise) {
+          pending.current = null;
+          cancel.current = null;
+        }
       });
       pending.current = promise;
       return promise;

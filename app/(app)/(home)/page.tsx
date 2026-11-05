@@ -207,7 +207,11 @@ function CreateRoom({
       router.push(`/r/${result.code}`);
     } else {
       onOpeningChange(false);
-      setCreation({ kind: "failed", picking, failure: result });
+      setCreation(
+        result.kind === "cancelled"
+          ? { kind: "ready", picking }
+          : { kind: "failed", picking, failure: result },
+      );
       pending.current = false;
     }
   }
