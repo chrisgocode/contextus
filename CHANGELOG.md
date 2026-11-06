@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3](https://github.com/chrisgocode/contextus/compare/v0.4.2...v0.4.3) (2026-11-06)
+
+
+### Bug Fixes
+
+* enable build typecheck on Release Please PRs ([#302](https://github.com/chrisgocode/contextus/issues/302)) ([a9cd5e4](https://github.com/chrisgocode/contextus/commit/a9cd5e428a67a8111b1736b6a244eb0b6601bed4))
+* reinstall Vercel dependencies from the frozen lockfile ([#304](https://github.com/chrisgocode/contextus/issues/304)) ([aae0e50](https://github.com/chrisgocode/contextus/commit/aae0e50f7e6a8bfc07c31b434cd2f2ca8ed436c2))
+
 ## [0.4.2](https://github.com/chrisgocode/contextus/compare/v0.4.1...v0.4.2) (2026-11-05)
 
 
