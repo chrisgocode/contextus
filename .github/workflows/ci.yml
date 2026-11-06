@@ -115,7 +115,9 @@ jobs:
           restore-keys: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
       - run: bun run build
         env:
-          SKIP_BUILD_TYPECHECK: "1"
+          # Release PRs exercise the same build-time typecheck as production.
+          # Other runs rely on the check job's standalone tsc checks.
+          SKIP_BUILD_TYPECHECK: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--main') && '0' || '1' }}
           NEXT_PUBLIC_CONVEX_URL: http://127.0.0.1:3210
           NEXT_PUBLIC_CONVEX_SITE_URL: http://127.0.0.1:3211
 
