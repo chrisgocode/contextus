@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2](https://github.com/chrisgocode/contextus/compare/v0.4.1...v0.4.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* align Convex typecheck with ES2024 test APIs ([#300](https://github.com/chrisgocode/contextus/issues/300)) ([d817673](https://github.com/chrisgocode/contextus/commit/d817673019dcb161bb83ce889a23538029ee4d14))
+
+
+### Performance Improvements
+
+* **guesses:** share player metadata in live guess lists ([#299](https://github.com/chrisgocode/contextus/issues/299)) ([6d56178](https://github.com/chrisgocode/contextus/commit/6d561781fbea37fb8c1fabd6c083799a44a94885))
+
 ## [0.4.1](https://github.com/chrisgocode/contextus/compare/v0.4.0...v0.4.1) (2026-11-05)
 
 
