@@ -60,7 +60,7 @@
     "convex-test": "^0.0.67",
     "dotenv": "^18.0.9",
     "husky": "^9.1.7",
-    "jsdom": "^30.1.3",
+    "jsdom": "^31.0.0",
     "oauth2-mock-server": "^9.3.0",
     "oxfmt": "^0.76.0",
     "oxlint": "^1.90.0",
